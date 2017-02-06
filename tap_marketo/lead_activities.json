@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer",
+      "key": true
+    },
+    "leadId": {
+      "type": "integer"
+    },
+    "activityDate": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "activityTypeId": {
+      "type": "integer"
+    },
+    "primaryAttributeValueId": {
+      "type": "integer"
+    },
+    "primaryAttributeValue": {
+      "type": "any"
+    },
+    "attributes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "any"
+          }
+        }
+      }
+    }
+  }
+}

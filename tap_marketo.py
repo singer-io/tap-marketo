@@ -4,11 +4,11 @@ import os
 import sys
 import argparse
 import datetime
+import json
 
 import requests
 import stitchstream as ss
 import backoff
-import arrow
 
 config = None
 access_token_expires = None
@@ -17,8 +17,8 @@ return_limit = 100
 
 default_start_date = '2000-01-01T00:00:00Z'
 
-state = {
-}
+schemas = {}
+state = {}
 
 logger = ss.get_logger()
 
@@ -49,7 +49,7 @@ def refresh_token():
     global config, access_token_expires
     
     headers = {
-        'Content-Type': 'www-form-urlencoded'
+        'Content-Type': 'application/x-www-form-urlencoded'
     }
 
     data = {
@@ -58,24 +58,55 @@ def refresh_token():
         'client_secret': config['client_secret']
     }
 
-    response = request(url='{identity}/oauth/token'.format(config), headers=headers, data=data)
+    response = request(method='post', 
+                       url='{identity}/oauth/token'.format(**config),
+                       headers=headers,
+                       data=data)
 
     data = response.json()
 
-    session.headers.update('Authorization', 'Bearer {access_token}'.format(data))
+    session.headers.update({'Authorization': 'Bearer {access_token}'.format(**data)})
 
     # set access_token_expires and add 10 minute buffer
     access_token_expires = datetime.datetime.now() - datetime.timedelta(seconds = data['expires_in'] - 600)
 
-def marketo_request(**kwargs):
-    global access_token_expires
+def marketo_request(path, **kwargs):
+    global config, access_token_expires
+
+    kwargs['url'] = config['endpoint'] + path
     
     if access_token_expires == None or access_token_expires > datetime.datetime.now():
         refresh_token()
 
-    return request(**kwargs)
+    response = request(**kwargs)
 
-def get_lead_batch(endpoint, lead_schema, lead_ids):
+    body = response.json()
+
+    if 'success' in body and body['success'] == False:
+        raise StitchException('Unsuccessful request to ' + kwargs['url'])
+
+    return body
+
+def marketo_request_paging(path, **kwargs):
+    data = []
+
+    body = marketo_request(path, **kwargs)
+    data += body['result']
+
+    if 'moreResult' in body and body['moreResult'] == True:
+        if 'params' not in kwargs:
+            kwargs['params'] = {}
+        kwargs['params']['nextPageToken'] = body['nextPageToken']
+        data += marketo_request_paging(path)
+
+    return data
+
+def get_activity_types():
+    data = marketo_request_paging('/v1/activities/types.json')
+
+    ss.write_records('lead_activity_types', data)
+
+def get_lead_batch(lead_schema, lead_ids):
     # We're actually doing a GET request, POSTing with _method
     # allows Marketo to overcome URL / query param length limitations
     query_params = {
@@ -89,36 +120,56 @@ def get_lead_batch(endpoint, lead_schema, lead_ids):
     data = {
         'filterType': 'id',
         'filterValues': lead_ids.join(','),
-        'fields': lead_schema['properties'].keys()
+        'fields': list(lead_schema['properties'].keys())
     }
 
-    response = request(url=endpoint + '/v1/leads.json',
-                       params=query_params,
-                       headers=headers,
-                       data=data)
-
-    data = response.json()
-
-    ## TODO: handle errors / success == false
+    data = marketo_request('/v1/leads.json',
+                           params=query_params,
+                           headers=headers,
+                           data=data)
 
     ## TODO: data typing leads
 
     ss.write_records('leads', data['result'])
 
-def get_leads_schema(endpoint):
-    response = request(url=endpoint + '/v1/leads/describe.json')
+def marketo_to_json_type(marketo_type):
+    if marketo_type in ['datetime', 'date']:
+        return {
+            'type': ['null','string'],
+            'format': 'date-time'
+        }
+    if marketo_type == 'integer':
+        return {'type': ['null','integer']}
+    if marketo_type in ['float','currency']:
+        return {'type': ['null','number']}
+    if marketo_type == 'boolean':
+        return {'type': ['null','boolean']}
+    return {'type': ['null','string']}
+
+def get_leads_schema():
+    data = marketo_request_paging('/v1/leads/describe.json')
+
+    properties = {}
+    for field in data:
+        data_type = marketo_to_json_type(field['dataType'])
+        field_name = field['rest']['name']
+        if field_name == 'id':
+            data_type['key'] = True
+        properties[field_name] = data_type
+
+    return {
+        'type': 'object',
+        'properties': properties
+    }
 
 def do_check(args):
+    global config
+
     with open(args.config) as file:
         config = json.load(file)
 
-    auth = (config['api_key'],'')
-
-    params = {
-    }
-
     try:
-        request(url=base_url + '/lead/', params=params, auth=auth)
+        marketo_request('/v1/leads/describe.json')
     except requests.exceptions.RequestException as e:
         logger.fatal("Error checking connection using " + e.request.url +
                      "; received status " + str(e.response.status_code) +
@@ -128,21 +179,22 @@ def do_check(args):
 def get_abs_path(path):
     return os.path.join(os.path.dirname(os.path.realpath(__file__)), path)
 
-def load_schemas(auth):
+def load_schemas():
     schemas = {}
 
-    with open(get_abs_path('tap_closeio/leads.json')) as file:
-        schemas['leads'] = json.load(file)
+    schemas['leads'] = get_leads_schema()
 
-    get_leads_schema(auth, schemas['leads'])
+    with open(get_abs_path('tap_marketo/lead_activity_types.json')) as file:
+        schemas['lead_activity_types'] = json.load(file)
 
-    with open(get_abs_path('tap_closeio/activities.json')) as file:
-        schemas['activities'] = json.load(file)
+    with open(get_abs_path('tap_marketo/lead_activities.json')) as file:
+        schemas['lead_activities'] = json.load(file)
 
     return schemas
 
 def do_sync(args):
-    global state
+    global config, schemas, state
+
     with open(args.config) as file:
         config = json.load(file)
 
@@ -150,21 +202,21 @@ def do_sync(args):
         logger.info("Loading state from " + args.state)
         with open(args.state) as file:
             state_arg = json.load(file)
-        for key in ['leads', 'activities']:
+        for key in ['leads', 'lead_activities']:
             if key in state_arg:
                 state[key] = state_arg[key]
 
     logger.info('Replicating all Marketo data, with starting state ' + repr(state))
 
-    session.headers.update('Authorization', 'Bearer {}'.format(config['']))
+    ## TODO: check usage
 
-    schemas = load_schemas(auth)
+    schemas = load_schemas()
     for k in schemas:
         ss.write_schema(k, schemas[k])
 
     try:
-        get_leads(auth, schemas['leads'])
-        get_activities(auth)
+        get_activity_types()
+        #get_leads(schemas['leads'])
         logger.info("Tap exiting normally")
     except requests.exceptions.RequestException as e:
         logger.fatal("Error on " + e.request.url +
@@ -184,7 +236,6 @@ def main():
     args = parser.parse_args()
 
     do_sync(args)
-
 
 if __name__ == '__main__':
     main()

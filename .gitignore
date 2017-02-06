@@ -90,3 +90,4 @@ ENV/
 
 # Custom stuff
 env.sh
+config.json
