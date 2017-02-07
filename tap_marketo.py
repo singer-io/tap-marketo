@@ -18,7 +18,10 @@ return_limit = 100
 default_start_date = '2000-01-01T00:00:00Z'
 
 schemas = {}
-state = {}
+state = {
+    'new_leads': default_start_date
+}
+lead_activity_types = None
 
 logger = ss.get_logger()
 
@@ -71,8 +74,6 @@ def refresh_token():
     access_token_expires = datetime.datetime.now() - datetime.timedelta(seconds = data['expires_in'] - 600)
 
 def marketo_request(path, **kwargs):
-    global config, access_token_expires
-
     kwargs['url'] = config['endpoint'] + path
     
     if access_token_expires == None or access_token_expires > datetime.datetime.now():
@@ -83,30 +84,35 @@ def marketo_request(path, **kwargs):
     body = response.json()
 
     if 'success' in body and body['success'] == False:
-        raise StitchException('Unsuccessful request to ' + kwargs['url'])
+        raise StitchException('Unsuccessful request to ' + kwargs['url'] + ' ' + response.text)
 
     return body
 
-def marketo_request_paging(path, **kwargs):
-    data = []
-
+def marketo_request_paging(path, f=None, **kwargs):
     body = marketo_request(path, **kwargs)
-    data += body['result']
+    
+    if f != None:
+        f(body['result'])
 
     if 'moreResult' in body and body['moreResult'] == True:
         if 'params' not in kwargs:
             kwargs['params'] = {}
         kwargs['params']['nextPageToken'] = body['nextPageToken']
-        data += marketo_request_paging(path)
 
-    return data
+        return body['result'] + marketo_request_paging(path, f, **kwargs)
+
+    return body['result']
 
 def get_activity_types():
+    global lead_activity_types
+
     data = marketo_request_paging('/v1/activities/types.json')
+
+    lead_activity_types = data
 
     ss.write_records('lead_activity_types', data)
 
-def get_lead_batch(lead_schema, lead_ids):
+def get_lead_batch(lead_ids):
     # We're actually doing a GET request, POSTing with _method
     # allows Marketo to overcome URL / query param length limitations
     query_params = {
@@ -114,16 +120,17 @@ def get_lead_batch(lead_schema, lead_ids):
     }
 
     headers = {
-        'Content-Type': 'www-form-urlencoded'
+        'Content-Type': 'application/x-www-form-urlencoded'
     }
 
     data = {
         'filterType': 'id',
-        'filterValues': lead_ids.join(','),
-        'fields': list(lead_schema['properties'].keys())
+        'filterValues': ','.join(lead_ids),
+        'fields': ','.join(list(schemas['leads']['properties'].keys()))
     }
 
     data = marketo_request('/v1/leads.json',
+                           method='post',
                            params=query_params,
                            headers=headers,
                            data=data)
@@ -131,6 +138,27 @@ def get_lead_batch(lead_schema, lead_ids):
     ## TODO: data typing leads
 
     ss.write_records('leads', data['result'])
+
+def get_new_lead_activity():
+    params = {'sinceDatetime': state['new_leads']}
+    paging_token = marketo_request('/v1/activities/pagingtoken.json', params=params)['nextPageToken']
+
+    for activity_type in lead_activity_types:
+        if activity_type['name'] == 'New Lead':
+            new_lead_activity_id = activity_type['id']
+            break
+
+    params = {
+        'activityTypeIds': new_lead_activity_id,
+        'nextPageToken': paging_token,
+        'batchSize': 300
+    }
+
+    def persist(lead_activities):
+        ss.write_records('lead_activities', lead_activities)
+        get_lead_batch(list(map(lambda x: str(x['leadId']), lead_activities)))
+
+    marketo_request_paging('/v1/activities.json', params=params, f=persist)
 
 def marketo_to_json_type(marketo_type):
     if marketo_type in ['datetime', 'date']:
@@ -202,7 +230,7 @@ def do_sync(args):
         logger.info("Loading state from " + args.state)
         with open(args.state) as file:
             state_arg = json.load(file)
-        for key in ['leads', 'lead_activities']:
+        for key in ['leads', 'new_leads', 'lead_activities']:
             if key in state_arg:
                 state[key] = state_arg[key]
 
@@ -216,7 +244,7 @@ def do_sync(args):
 
     try:
         get_activity_types()
-        #get_leads(schemas['leads'])
+        get_new_lead_activity()
         logger.info("Tap exiting normally")
     except requests.exceptions.RequestException as e:
         logger.fatal("Error on " + e.request.url +
