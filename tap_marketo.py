@@ -150,8 +150,6 @@ def get_lead_batch(lead_ids):
                            headers=headers,
                            data=data)
 
-    ## TODO: data typing leads
-
     ss.write_records('leads', data['result'])
 
 def get_lead_activity(activity_type_id, state_key):
@@ -198,6 +196,21 @@ def get_existing_lead_activity():
     for activity_type_id in activity_type_ids:
         state_key = 'activities_' + activity_type_id
         get_lead_activity(activity_type_id, state_key)
+
+def get_lists():
+    global state
+
+    if 'lists' not in state:
+        state['lists'] = default_start_date
+
+    data = marketo_request_paging('/v1/lists.json')
+
+    data = list(filter(lambda x: x['updatedAt'] >= state['lists'], data))
+    ss.write_records('lists', data)
+
+    max_date = reduce(lambda a,b: a if (a > b) else b, map(lambda x: x['updatedAt'], data))
+    state['lists'] = max_date if max_date > state['lists'] else state['lists']
+    ss.write_state(state)
 
 def marketo_to_json_type(marketo_type):
     if marketo_type in ['datetime', 'date']:
@@ -273,6 +286,8 @@ def do_sync(args):
     logger.info('Replicating all Marketo data, with starting state ' + repr(state))
 
     ## TODO: check usage
+    ## TODO: quota management
+    ## TODO: rate limiting
 
     schemas = load_schemas()
     for k in schemas:
@@ -282,6 +297,7 @@ def do_sync(args):
         get_activity_types()
         get_new_lead_activity()
         get_existing_lead_activity()
+        get_lists()
         logger.info("Tap exiting normally")
     except requests.exceptions.RequestException as e:
         logger.fatal("Error on " + e.request.url +
