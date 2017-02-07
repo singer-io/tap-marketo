@@ -49,7 +49,7 @@ def request(**kwargs):
     return response
 
 def refresh_token():
-    global config, access_token_expires
+    global access_token_expires
     
     headers = {
         'Content-Type': 'application/x-www-form-urlencoded'
@@ -90,25 +90,35 @@ def marketo_request(path, **kwargs):
 
 def marketo_request_paging(path, f=None, **kwargs):
     body = marketo_request(path, **kwargs)
+
+    if 'result' in body:
+        data = body['result']
+    else:
+        data = []
     
     if f != None:
-        f(body['result'])
+        f(data)
 
     if 'moreResult' in body and body['moreResult'] == True:
         if 'params' not in kwargs:
             kwargs['params'] = {}
         kwargs['params']['nextPageToken'] = body['nextPageToken']
 
-        return body['result'] + marketo_request_paging(path, f, **kwargs)
+        return data + marketo_request_paging(path, f=f, **kwargs)
 
-    return body['result']
+    return data
 
 def get_activity_types():
-    global lead_activity_types
+    global lead_activity_types, new_lead_activity_id
 
     data = marketo_request_paging('/v1/activities/types.json')
 
     lead_activity_types = data
+
+    for activity_type in lead_activity_types:
+        if activity_type['name'] == 'New Lead':
+            new_lead_activity_id = activity_type['id']
+            break
 
     ss.write_records('lead_activity_types', data)
 
@@ -139,26 +149,40 @@ def get_lead_batch(lead_ids):
 
     ss.write_records('leads', data['result'])
 
-def get_new_lead_activity():
-    params = {'sinceDatetime': state['new_leads']}
+def get_lead_activity(activity_type_id, start_date):
+    params = {'sinceDatetime': start_date}
     paging_token = marketo_request('/v1/activities/pagingtoken.json', params=params)['nextPageToken']
 
-    for activity_type in lead_activity_types:
-        if activity_type['name'] == 'New Lead':
-            new_lead_activity_id = activity_type['id']
-            break
-
     params = {
-        'activityTypeIds': new_lead_activity_id,
+        'activityTypeIds': activity_type_id,
         'nextPageToken': paging_token,
         'batchSize': 300
     }
 
     def persist(lead_activities):
-        ss.write_records('lead_activities', lead_activities)
-        get_lead_batch(list(map(lambda x: str(x['leadId']), lead_activities)))
+        if len(lead_activities) > 0:
+            ss.write_records('lead_activities', lead_activities)
+            get_lead_batch(list(map(lambda x: str(x['leadId']), lead_activities)))
+
+    ## TODO: return max actvitiy date
 
     marketo_request_paging('/v1/activities.json', params=params, f=persist)
+
+def get_new_lead_activity():
+    get_lead_activity(new_lead_activity_id, state['new_leads'])
+
+def get_existing_lead_activity():
+    activity_type_ids = list(map(lambda x: str(x),
+                                filter(lambda x: x != new_lead_activity_id,
+                                    map(lambda x: x['id'], lead_activity_types))))
+    
+    for activity_type_id in activity_type_ids:
+        state_key = 'activities_' + activity_type_id
+        if state_key in state:
+            start_date = state[state_key]
+        else:
+            start_date = default_start_date
+        get_lead_activity(activity_type_id, start_date)
 
 def marketo_to_json_type(marketo_type):
     if marketo_type in ['datetime', 'date']:
@@ -229,10 +253,7 @@ def do_sync(args):
     if args.state != None:
         logger.info("Loading state from " + args.state)
         with open(args.state) as file:
-            state_arg = json.load(file)
-        for key in ['leads', 'new_leads', 'lead_activities']:
-            if key in state_arg:
-                state[key] = state_arg[key]
+            state = json.load(file)
 
     logger.info('Replicating all Marketo data, with starting state ' + repr(state))
 
@@ -245,6 +266,7 @@ def do_sync(args):
     try:
         get_activity_types()
         get_new_lead_activity()
+        get_existing_lead_activity()
         logger.info("Tap exiting normally")
     except requests.exceptions.RequestException as e:
         logger.fatal("Error on " + e.request.url +
