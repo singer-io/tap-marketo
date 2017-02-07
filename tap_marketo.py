@@ -5,6 +5,7 @@ import sys
 import argparse
 import datetime
 import json
+from functools import reduce
 
 import requests
 import stitchstream as ss
@@ -104,9 +105,13 @@ def marketo_request_paging(path, f=None, **kwargs):
             kwargs['params'] = {}
         kwargs['params']['nextPageToken'] = body['nextPageToken']
 
-        return data + marketo_request_paging(path, f=f, **kwargs)
+        if f != None:
+            return marketo_request_paging(path, f=f, **kwargs)
 
-    return data
+        return data + marketo_request_paging(path, **kwargs)
+
+    if f == None:
+        return data
 
 def get_activity_types():
     global lead_activity_types, new_lead_activity_id
@@ -149,7 +154,15 @@ def get_lead_batch(lead_ids):
 
     ss.write_records('leads', data['result'])
 
-def get_lead_activity(activity_type_id, start_date):
+def get_lead_activity(activity_type_id, state_key):
+    global state
+
+    if state_key in state:
+        start_date = state[state_key]
+    else:
+        start_date = default_start_date
+        state[state_key] = default_start_date
+
     params = {'sinceDatetime': start_date}
     paging_token = marketo_request('/v1/activities/pagingtoken.json', params=params)['nextPageToken']
 
@@ -160,16 +173,22 @@ def get_lead_activity(activity_type_id, start_date):
     }
 
     def persist(lead_activities):
+        global state
+
         if len(lead_activities) > 0:
             ss.write_records('lead_activities', lead_activities)
             get_lead_batch(list(map(lambda x: str(x['leadId']), lead_activities)))
 
-    ## TODO: return max actvitiy date
+            max_batch_date = reduce(lambda a,b: a if (a > b) else b,
+                                    map(lambda x: x['activityDate'], lead_activities))
+            state[state_key] = max_batch_date if max_batch_date > state[state_key] else state[state_key]
 
     marketo_request_paging('/v1/activities.json', params=params, f=persist)
 
+    ss.write_state(state)
+
 def get_new_lead_activity():
-    get_lead_activity(new_lead_activity_id, state['new_leads'])
+    max_date = get_lead_activity(new_lead_activity_id, 'new_leads')
 
 def get_existing_lead_activity():
     activity_type_ids = list(map(lambda x: str(x),
@@ -178,11 +197,7 @@ def get_existing_lead_activity():
     
     for activity_type_id in activity_type_ids:
         state_key = 'activities_' + activity_type_id
-        if state_key in state:
-            start_date = state[state_key]
-        else:
-            start_date = default_start_date
-        get_lead_activity(activity_type_id, start_date)
+        get_lead_activity(activity_type_id, state_key)
 
 def marketo_to_json_type(marketo_type):
     if marketo_type in ['datetime', 'date']:
