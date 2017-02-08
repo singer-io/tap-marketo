@@ -11,6 +11,8 @@ import requests
 import stitchstream as ss
 import backoff
 
+from ratelimit import ratelimit
+
 config = None
 access_token_expires = None
 
@@ -41,6 +43,7 @@ def client_error(e):
                       max_tries=5,
                       giveup=client_error,
                       factor=2)
+@ratelimit(100, 20)
 def request(**kwargs):
     if 'method' not in kwargs:
         kwargs['method'] = 'get'
@@ -287,7 +290,7 @@ def do_sync(args):
 
     ## TODO: check usage
     ## TODO: quota management
-    ## TODO: rate limiting
+    ## TODO: gzip? http://developers.marketo.com/performance/
 
     schemas = load_schemas()
     for k in schemas:
