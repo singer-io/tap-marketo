@@ -15,9 +15,10 @@ from ratelimit import ratelimit
 
 config = None
 access_token_expires = None
+call_count = 0
 
-return_limit = 100
-
+usage_check_freq = 100 # calls
+default_max_daily_usage = 8000
 default_start_date = '2000-01-01T00:00:00Z'
 
 schemas = {}
@@ -77,11 +78,38 @@ def refresh_token():
     # set access_token_expires and add 10 minute buffer
     access_token_expires = datetime.datetime.now() - datetime.timedelta(seconds = data['expires_in'] - 600)
 
+def check_usage():
+    global call_count
+
+    call_count += 1
+
+    body = request(url=config['endpoint'] + '/v1/stats/usage.json').json()
+
+    usage = body['result'][0]
+
+    logger.info('Marketo API Usage: {total} calls for {date}'.format(**usage))
+
+    if 'max_daily_usage' in config:
+        max_calls = config.max_daily_usage
+    else:
+        max_calls = default_max_daily_usage
+
+    if usage['total'] >= max_calls:
+        logger.error('Hit Marketo daily quota')
+        sys.exit(1)
+
 def marketo_request(path, **kwargs):
+    global call_count
+
     kwargs['url'] = config['endpoint'] + path
     
     if access_token_expires == None or access_token_expires > datetime.datetime.now():
         refresh_token()
+
+    if call_count % usage_check_freq == 0:
+        check_usage()
+
+    call_count += 1
 
     response = request(**kwargs)
 
@@ -288,8 +316,6 @@ def do_sync(args):
 
     logger.info('Replicating all Marketo data, with starting state ' + repr(state))
 
-    ## TODO: check usage
-    ## TODO: quota management
     ## TODO: gzip? http://developers.marketo.com/performance/
 
     schemas = load_schemas()
