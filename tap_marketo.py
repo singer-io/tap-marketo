@@ -31,6 +31,9 @@ logger = ss.get_logger()
 
 session = requests.Session()
 
+# http://developers.marketo.com/performance/
+session.headers.update({'Accept-Encoding': 'gzip'})
+
 class StitchException(Exception):
     """Used to mark Exceptions that originate within this tap."""
     def __init__(self, message):
@@ -315,8 +318,6 @@ def do_sync(args):
             state = json.load(file)
 
     logger.info('Replicating all Marketo data, with starting state ' + repr(state))
-
-    ## TODO: gzip? http://developers.marketo.com/performance/
 
     schemas = load_schemas()
     for k in schemas:
