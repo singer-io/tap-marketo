@@ -267,8 +267,6 @@ def get_leads_schema():
     for field in data:
         data_type = marketo_to_json_type(field['dataType'])
         field_name = field['rest']['name']
-        if field_name == 'id':
-            data_type['key'] = True
         properties[field_name] = data_type
 
     return {
@@ -304,6 +302,9 @@ def load_schemas():
     with open(get_abs_path('tap_marketo/lead_activities.json')) as file:
         schemas['lead_activities'] = json.load(file)
 
+    with open(get_abs_path('tap_marketo/lists.json')) as file:
+        schemas['lists'] = json.load(file)
+
     return schemas
 
 def do_sync(args):
@@ -321,7 +322,7 @@ def do_sync(args):
 
     schemas = load_schemas()
     for k in schemas:
-        ss.write_schema(k, schemas[k])
+        ss.write_schema(k, schemas[k], 'id')
 
     try:
         get_activity_types()

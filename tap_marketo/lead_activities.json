@@ -2,8 +2,7 @@
   "type": "object",
   "properties": {
     "id": {
-      "type": "integer",
-      "key": true
+      "type": "integer"
     },
     "leadId": {
       "type": "integer"
