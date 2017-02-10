@@ -17,9 +17,7 @@
     "primaryAttributeValueId": {
       "type": "integer"
     },
-    "primaryAttributeValue": {
-      "type": "any"
-    },
+    "primaryAttributeValue": {},
     "attributes": {
       "type": "array",
       "items": {
@@ -28,9 +26,7 @@
           "name": {
             "type": "string"
           },
-          "value": {
-            "type": "any"
-          }
+          "value": {}
         }
       }
     }

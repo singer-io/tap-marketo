@@ -10,6 +10,7 @@ from functools import reduce
 import requests
 import stitchstream as ss
 import backoff
+import arrow
 
 from ratelimit import ratelimit
 
@@ -161,6 +162,24 @@ def get_activity_types():
 
     ss.write_records('lead_activity_types', data)
 
+def normalize_datetime(d):
+    if d is None:
+        return d
+    if not isinstance(d, str):
+        raise Exception('Expected string but got {} of type {}'
+                        .format(d, type(d)))
+
+    try:
+        return arrow.get(d).isoformat()
+    except arrow.parser.ParserError:
+        raise Exception('Unrecognized date/time value ' + d)
+
+def normalize_lead(lead):
+    for field_name in schemas['leads']['properties']:
+        field = schemas['leads']['properties'][field_name]
+        if 'format' in field and field['format'] == 'date-time':
+            lead[field_name] = normalize_datetime(lead[field_name])
+
 def get_lead_batch(lead_ids):
     # We're actually doing a GET request, POSTing with _method
     # allows Marketo to overcome URL / query param length limitations
@@ -183,6 +202,9 @@ def get_lead_batch(lead_ids):
                            params=query_params,
                            headers=headers,
                            data=data)
+
+    for lead in data['result']:
+        normalize_lead(lead)
 
     ss.write_records('leads', data['result'])
 
@@ -247,7 +269,7 @@ def get_lists():
     ss.write_state(state)
 
 def marketo_to_json_type(marketo_type):
-    if marketo_type in ['datetime', 'date']:
+    if marketo_type in ['datetime','date']:
         return {
             'type': ['null','string'],
             'format': 'date-time'
@@ -258,6 +280,8 @@ def marketo_to_json_type(marketo_type):
         return {'type': ['null','number']}
     if marketo_type == 'boolean':
         return {'type': ['null','boolean']}
+    if marketo_type == 'reference':
+        return {'type': ['null','integer']}
     return {'type': ['null','string']}
 
 def get_leads_schema():

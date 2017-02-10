@@ -12,7 +12,8 @@ setup(name='tap-marketo',
       install_requires=['stitchstream-python==0.6.0'
                         'requests==2.12.4',
                         'backoff==1.3.2',
-                        'python-dateutil==2.6.0'],
+                        'python-dateutil==2.6.0',
+                        'arrow==0.10.0'],
       entry_points='''
           [console_scripts]
           tap-marketo=tap_marketo:main
