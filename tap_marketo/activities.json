@@ -7,26 +7,27 @@
     "leadId": {
       "type": "integer"
     },
+    "activityTypeId": {
+      "type": "integer"
+    },
     "activityDate": {
       "type": "string",
       "format": "date-time"
     },
-    "activityTypeId": {
-      "type": "integer"
+    "primaryAttributeValue": {
+      "type": "string"
     },
     "primaryAttributeValueId": {
       "type": "integer"
     },
-    "primaryAttributeValue": {},
     "attributes": {
       "type": "array",
       "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "value": {}
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
         }
       }
     }

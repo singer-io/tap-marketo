@@ -1,377 +1,200 @@
 #!/usr/bin/env python3
 
 import os
-import sys
 import argparse
 import datetime
-import json
-from functools import reduce
 
 import requests
-import stitchstream as ss
-import backoff
-import arrow
+# import singer
+import stitchstream as singer
+import utils
 
-from ratelimit import ratelimit
 
-config = None
-access_token_expires = None
-call_count = 0
+CONFIG = {
+    "base_url": "https://{}.mktorest.com",
+    "call_count": 0,
+    "access_token": None,
+    "token_expires": None,
+    "default_state_date": utils.strftime(datetime.datetime.utcnow() - datetime.timedelta(days=365)),
 
-usage_check_freq = 100 # calls
-default_max_daily_usage = 8000
-default_start_date = '2000-01-01T00:00:00Z'
-
-schemas = {}
-state = {
-    'new_leads': default_start_date
+    # in config file
+    "domain": None,
+    "client_id": None,
+    "client_secret": None,
+    "max_daily_calls": 8000,
 }
-lead_activity_types = None
+STATE = {}
 
-logger = ss.get_logger()
-
-session = requests.Session()
-
-# http://developers.marketo.com/performance/
-session.headers.update({'Accept-Encoding': 'gzip'})
-
-class StitchException(Exception):
-    """Used to mark Exceptions that originate within this tap."""
-    def __init__(self, message):
-        self.message = message
-
-def client_error(e):
-    return e.response is not None and 400 <= e.response.status_code < 500
-
-@backoff.on_exception(backoff.expo,
-                      (requests.exceptions.RequestException),
-                      max_tries=5,
-                      giveup=client_error,
-                      factor=2)
-@ratelimit(100, 20)
-def request(**kwargs):
-    if 'method' not in kwargs:
-        kwargs['method'] = 'get'
-
-    response = session.request(**kwargs)
-    response.raise_for_status()
-    return response
 
 def refresh_token():
-    global access_token_expires
-    
-    headers = {
-        'Content-Type': 'application/x-www-form-urlencoded'
+    global ACCESS_TOKEN
+    global TOKEN_EXPIRES
+
+    url = CONFIG['base_url'].format(CONFIG['domain']) + "/identity/oauth/token"
+    params = {
+        'grant_type': "client_credentials",
+        'client_id': CONFIG['client_id'],
+        'client_secret': CONFIG['client_secret'],
     }
+    resp = requests.get(url, params=params)
+    data = resp.json()
+    if resp.status_code != 200:
+        raise Exception("Authorization failed. {}".format(data['error_description']))
 
-    data = {
-        'grant_type': 'client_credentials',
-        'client_id': config['client_id'],
-        'client_secret': config['client_secret']
-    }
+    CONFIG['access_token'] = data['access_token']
+    CONFIG['token_expires'] = datetime.datetime.utcnow() + datetime.timedelta(seconds=data['expires_in'] - 600)
 
-    response = request(method='post', 
-                       url='{identity}/oauth/token'.format(**config),
-                       headers=headers,
-                       data=data)
 
-    data = response.json()
-
-    session.headers.update({'Authorization': 'Bearer {access_token}'.format(**data)})
-
-    # set access_token_expires and add 10 minute buffer
-    access_token_expires = datetime.datetime.now() - datetime.timedelta(seconds = data['expires_in'] - 600)
-
-def check_usage():
-    global call_count
-
-    call_count += 1
-
-    body = request(url=config['endpoint'] + '/v1/stats/usage.json').json()
-
-    usage = body['result'][0]
-
-    logger.info('Marketo API Usage: {total} calls for {date}'.format(**usage))
-
-    if 'max_daily_usage' in config:
-        max_calls = config.max_daily_usage
-    else:
-        max_calls = default_max_daily_usage
-
-    if usage['total'] >= max_calls:
-        logger.error('Hit Marketo daily quota')
-        sys.exit(1)
-
-def marketo_request(path, **kwargs):
-    global call_count
-
-    kwargs['url'] = config['endpoint'] + path
-    
-    if access_token_expires == None or access_token_expires > datetime.datetime.now():
+@utils.ratelimit(100, 20)
+def request(url, params=None):
+    if not CONFIG['token_expires'] or datetime.datetime.utcnow() >= CONFIG['token_expires']:
         refresh_token()
 
-    if call_count % usage_check_freq == 0:
+    CONFIG['call_count'] += 1
+    if CONFIG['call_count'] % 250 == 0:
         check_usage()
 
-    call_count += 1
+    url = CONFIG['base_url'].format(CONFIG['domain']) + "/rest" + url
+    params = params or {}
+    headers = {'Authorization': 'Bearer {}'.format(CONFIG['access_token'])}
+    response = requests.get(url, params=params, headers=headers)
+    response.raise_for_status()
+    return response.json()
 
-    response = request(**kwargs)
 
-    body = response.json()
+def check_usage():
+    data = request("/v1/stats/usage.json")
+    if data[0]['total'] >= CONFIG['max_daily_calls']:
+        raise Exception("Exceeded daily quota of {} requests".format(CONFIG['max_daily_calls']))
 
-    if 'success' in body and body['success'] == False:
-        raise StitchException('Unsuccessful request to ' + kwargs['url'] + ' ' + response.text)
 
-    return body
-
-def marketo_request_paging(path, f=None, **kwargs):
-    body = marketo_request(path, **kwargs)
-
-    if 'result' in body:
-        data = body['result']
-    else:
-        data = []
-    
-    if f != None:
-        f(data)
-
-    if 'moreResult' in body and body['moreResult'] == True:
-        if 'params' not in kwargs:
-            kwargs['params'] = {}
-        kwargs['params']['nextPageToken'] = body['nextPageToken']
-
-        if f != None:
-            return marketo_request_paging(path, f=f, **kwargs)
-
-        return data + marketo_request_paging(path, **kwargs)
-
-    if f == None:
-        return data
-
-def get_activity_types():
-    global lead_activity_types, new_lead_activity_id
-
-    data = marketo_request_paging('/v1/activities/types.json')
-
-    lead_activity_types = data
-
-    for activity_type in lead_activity_types:
-        if activity_type['name'] == 'New Lead':
-            new_lead_activity_id = activity_type['id']
+def gen_request(endpoint, params=None):
+    params = params or {}
+    while True:
+        data = request(endpoint, params=params)
+        if 'result' not in data:
             break
 
-    ss.write_records('lead_activity_types', data)
+        for row in data['result']:
+            yield row
 
-def normalize_datetime(d):
-    if d is None:
-        return d
-    if not isinstance(d, str):
-        raise Exception('Expected string but got {} of type {}'
-                        .format(d, type(d)))
+        if data.get('moreResult', False):
+            params['nextPageToken'] = data['nextPageToken']
+        else:
+            break
 
-    try:
-        return arrow.get(d).isoformat()
-    except arrow.parser.ParserError:
-        raise Exception('Unrecognized date/time value ' + d)
-
-def normalize_lead(lead):
-    for field_name in schemas['leads']['properties']:
-        field = schemas['leads']['properties'][field_name]
-        if 'format' in field and field['format'] == 'date-time':
-            lead[field_name] = normalize_datetime(lead[field_name])
-
-def get_lead_batch(lead_ids):
-    # We're actually doing a GET request, POSTing with _method
-    # allows Marketo to overcome URL / query param length limitations
-    query_params = {
-        '_method': 'GET'
-    }
-
-    headers = {
-        'Content-Type': 'application/x-www-form-urlencoded'
-    }
-
-    data = {
-        'filterType': 'id',
-        'filterValues': ','.join(lead_ids),
-        'fields': ','.join(list(schemas['leads']['properties'].keys()))
-    }
-
-    data = marketo_request('/v1/leads.json',
-                           method='post',
-                           params=query_params,
-                           headers=headers,
-                           data=data)
-
-    for lead in data['result']:
-        normalize_lead(lead)
-
-    ss.write_records('leads', data['result'])
-
-def get_lead_activity(activity_type_id, state_key):
-    global state
-
-    if state_key in state:
-        start_date = state[state_key]
-    else:
-        start_date = default_start_date
-        state[state_key] = default_start_date
-
-    params = {'sinceDatetime': start_date}
-    paging_token = marketo_request('/v1/activities/pagingtoken.json', params=params)['nextPageToken']
-
-    params = {
-        'activityTypeIds': activity_type_id,
-        'nextPageToken': paging_token,
-        'batchSize': 300
-    }
-
-    def persist(lead_activities):
-        global state
-
-        if len(lead_activities) > 0:
-            ss.write_records('lead_activities', lead_activities)
-            get_lead_batch(list(map(lambda x: str(x['leadId']), lead_activities)))
-
-            max_batch_date = reduce(lambda a,b: a if (a > b) else b,
-                                    map(lambda x: x['activityDate'], lead_activities))
-            state[state_key] = max_batch_date if max_batch_date > state[state_key] else state[state_key]
-
-    marketo_request_paging('/v1/activities.json', params=params, f=persist)
-
-    ss.write_state(state)
-
-def get_new_lead_activity():
-    max_date = get_lead_activity(new_lead_activity_id, 'new_leads')
-
-def get_existing_lead_activity():
-    activity_type_ids = list(map(lambda x: str(x),
-                                filter(lambda x: x != new_lead_activity_id,
-                                    map(lambda x: x['id'], lead_activity_types))))
-    
-    for activity_type_id in activity_type_ids:
-        state_key = 'activities_' + activity_type_id
-        get_lead_activity(activity_type_id, state_key)
-
-def get_lists():
-    global state
-
-    if 'lists' not in state:
-        state['lists'] = default_start_date
-
-    data = marketo_request_paging('/v1/lists.json')
-
-    data = list(filter(lambda x: x['updatedAt'] >= state['lists'], data))
-    ss.write_records('lists', data)
-
-    max_date = reduce(lambda a,b: a if (a > b) else b, map(lambda x: x['updatedAt'], data))
-    state['lists'] = max_date if max_date > state['lists'] else state['lists']
-    ss.write_state(state)
 
 def marketo_to_json_type(marketo_type):
-    if marketo_type in ['datetime','date']:
-        return {
-            'type': ['null','string'],
-            'format': 'date-time'
-        }
-    if marketo_type == 'integer':
-        return {'type': ['null','integer']}
-    if marketo_type in ['float','currency']:
-        return {'type': ['null','number']}
-    if marketo_type == 'boolean':
-        return {'type': ['null','boolean']}
-    if marketo_type == 'reference':
-        return {'type': ['null','integer']}
-    return {'type': ['null','string']}
+    if marketo_type in ['datetime', 'date']:
+        return {'anyOf': [{'type': 'null'}, {'type': 'string', 'format': 'date-time'}]}
+    elif marketo_type in ['integer', 'reference']:
+        return {'type': ['null', 'integer']}
+    elif marketo_type in ['float', 'currency']:
+        return {'type': ['null', 'number']}
+    elif marketo_type == 'boolean':
+        return {'type': ['null', 'boolean']}
+    return {'type': ['null', 'string']}
+
 
 def get_leads_schema():
-    data = marketo_request_paging('/v1/leads/describe.json')
-
-    properties = {}
-    for field in data:
-        data_type = marketo_to_json_type(field['dataType'])
-        field_name = field['rest']['name']
-        properties[field_name] = data_type
-
+    data = request("/v1/leads/describe.json")['result']
+    properties = {row['rest']['name']: marketo_to_json_type(row['dataType']) for row in data if 'rest' in row}
     return {
-        'type': 'object',
-        'properties': properties
+        'type': "object",
+        'properties': properties,
     }
 
-def do_check(args):
-    global config
 
-    with open(args.config) as file:
-        config = json.load(file)
+def sync_activity_types():
+    schema = utils.load_schema("tap_marketo", "activity_types")
+    singer.write_schema("activity_types", schema, ["id"])
+    activity_type_ids = set()
 
-    try:
-        marketo_request('/v1/leads/describe.json')
-    except requests.exceptions.RequestException as e:
-        logger.fatal("Error checking connection using " + e.request.url +
-                     "; received status " + str(e.response.status_code) +
-                     ": " + e.response.text)
-        sys.exit(-1)
+    for row in gen_request("/v1/activities/types.json"):
+        activity_type_ids.add(row['id'])
+        singer.write_record("activity_types", row)
 
-def get_abs_path(path):
-    return os.path.join(os.path.dirname(os.path.realpath(__file__)), path)
+    return activity_type_ids
 
-def load_schemas():
-    schemas = {}
 
-    schemas['leads'] = get_leads_schema()
+def sync_activities(activity_type_id, schema):
+    state_key = 'activities_{}'.format(activity_type_id)
+    start_date = STATE.get(state_key, DEFAULT_START_DATE)
+    data = request("/v1/activities/pagingtoken.json", {'sinceDatetime': start_date})
+    params = {
+        'activityTypeIds': activity_type_id,
+        'nextPageToken': data['nextPageToken'],
+        'batchSize': 300,
+    }
 
-    with open(get_abs_path('tap_marketo/lead_activity_types.json')) as file:
-        schemas['lead_activity_types'] = json.load(file)
+    lead_ids = set()
+    for row in gen_request("/v1/activities.json", params=params):
+        lead_ids.add(row['leadId'])
+        singer.write_record("activities", row)
+        utils.update_state(STATE, state_key, row['activityDate'])
 
-    with open(get_abs_path('tap_marketo/lead_activities.json')) as file:
-        schemas['lead_activities'] = json.load(file)
+    return lead_ids
 
-    with open(get_abs_path('tap_marketo/lists.json')) as file:
-        schemas['lists'] = json.load(file)
 
-    return schemas
+def sync_leads(lead_ids):
+    params = {
+        'filterType': 'id',
+        'fields': ','.join(schema['properties'].keys()),
+    }
 
-def do_sync(args):
-    global config, schemas, state
+    for ids in utils.chunk(sorted(lead_ids), 300):
+        params['filterValues'] = ','.join(ids)
+        data = request("/v1/leads.json", params=params)
+        singer.write_records("leads", data['result'])
 
-    with open(args.config) as file:
-        config = json.load(file)
 
-    if args.state != None:
-        logger.info("Loading state from " + args.state)
-        with open(args.state) as file:
-            state = json.load(file)
+def sync_lists():
+    start_date = STATE.get("lists", DEFAULT_START_DATE)
+    for row in gen_request("/v1/lists.json"):
+        if row['updatedAt'] >= start_date:
+            singer.write_record("lists", row)
+            utils.update_state(STATE, "lists", row['updatedAt'])
 
-    logger.info('Replicating all Marketo data, with starting state ' + repr(state))
 
-    schemas = load_schemas()
-    for k in schemas:
-        ss.write_schema(k, schemas[k], 'id')
+def do_sync():
+    # Sync all activity types. We'll be using the activity type ids to
+    # query for activities in the next step.
+    schema = utils.load_schema("tap_marketo", "activity_types")
+    singer.write_schema("activity_types", schema, ["id"])
+    activity_type_ids = sync_activity_types()
 
-    try:
-        get_activity_types()
-        get_new_lead_activity()
-        get_existing_lead_activity()
-        get_lists()
-        logger.info("Tap exiting normally")
-    except requests.exceptions.RequestException as e:
-        logger.fatal("Error on " + e.request.url +
-                     "; received status " + str(e.response.status_code) +
-                     ": " + e.response.text)
-        sys.exit(-1)
+    # Now we sync activities one activity type at a time. While syncing
+    # activities, we'll find leadIds that have been created or edited
+    # that also need to be synced. Since a lead might have been altered
+    # by multiple activity types, we'll collect all the leadIds into a
+    # set and sync those after.
+    activity_schema = utils.load_schema("tap_marketo", "activities")
+    singer.write_schema("activities", activity_schema, ["id"])
+    lead_ids = set()
+    for activity_type_id in activity_type_ids:
+        lead_ids.update(sync_activities(activity_type_id, activity_schema))
+
+    # Now that we have the set of leadIds, we need to sync all the altered
+    # leads. Once we have done that, we can update the state.
+    schema = get_leads_schema()
+    singer.write_schema("leads", schema, ["id"])
+    sync_leads(lead_ids_to_check)
+    singer.write_state(STATE)
+
+    # Finally we'll sync the contact lists and update the state.
+    schema = utils.load_schema("tap_marketo", "lists")
+    singer.write_schema("lists", schema, ["id"])
+    sync_lists()
+    singer.write_state(STATE)
+
 
 def main():
-    global logger
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        '-c', '--config', help='Config file', required=True)
-    parser.add_argument(
-        '-s', '--state', help='State file')
-
-    args = parser.parse_args()
-
+    args = utils.parse_args()
+    CONFIG.update(utils.load_json(args.config))
+    if args.state:
+        STATE.update(utils.load_json(args.state))
     do_sync(args)
+
 
 if __name__ == '__main__':
     main()

@@ -8,13 +8,13 @@
       "type": "string"
     },
     "description": {
-      "type": "string"
+      "type": ["null", "string"]
     },
     "programName": {
-      "type": "string"
+      "type": ["null", "string"]
     },
     "workspaceName": {
-      "type": "string"
+      "type": ["null", "string"]
     },
     "createdAt": {
       "type": "string",
