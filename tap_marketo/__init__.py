@@ -7,7 +7,7 @@ import datetime
 import requests
 # import singer
 import stitchstream as singer
-import utils
+from . import utils
 
 
 CONFIG = {
@@ -87,7 +87,7 @@ def gen_request(endpoint, params=None):
             break
 
 
-def marketo_to_json_type(marketo_type):
+def datatype_to_schema(marketo_type):
     if marketo_type in ['datetime', 'date']:
         return {'anyOf': [{'type': 'null'}, {'type': 'string', 'format': 'date-time'}]}
     elif marketo_type in ['integer', 'reference']:
@@ -99,18 +99,25 @@ def marketo_to_json_type(marketo_type):
     return {'type': ['null', 'string']}
 
 
-def get_leads_schema():
+def get_leads_schema_and_date_fields():
     data = request("/v1/leads/describe.json")['result']
-    properties = {row['rest']['name']: marketo_to_json_type(row['dataType']) for row in data if 'rest' in row}
-    return {
-        'type': "object",
-        'properties': properties,
+    rtn = {
+        "type": "object",
+        "properties": {},
     }
+    date_fields = []
+    for row in data:
+        if 'rest' not in row:
+            continue
+
+        rtn['properties'][row['rest']['name']] = datatype_to_schema(row['dataType'])
+        if row['dataType'] == 'date':
+            date_fields.append(row['rest']['name'])
+
+    return rtn, date_fields
 
 
 def sync_activity_types():
-    schema = utils.load_schema("tap_marketo", "activity_types")
-    singer.write_schema("activity_types", schema, ["id"])
     activity_type_ids = set()
 
     for row in gen_request("/v1/activities/types.json"):
@@ -120,7 +127,7 @@ def sync_activity_types():
     return activity_type_ids
 
 
-def sync_activities(activity_type_id, schema):
+def sync_activities(activity_type_id):
     state_key = 'activities_{}'.format(activity_type_id)
     start_date = STATE.get(state_key, CONFIG['default_state_date'])
     data = request("/v1/activities/pagingtoken.json", {'sinceDatetime': start_date})
@@ -139,7 +146,7 @@ def sync_activities(activity_type_id, schema):
     return lead_ids
 
 
-def sync_leads(lead_ids, fields):
+def sync_leads(lead_ids, fields, date_fields):
     params = {
         'filterType': 'id',
         'fields': ','.join(fields),
@@ -148,7 +155,12 @@ def sync_leads(lead_ids, fields):
     for ids in utils.chunk(sorted(lead_ids), 300):
         params['filterValues'] = ','.join(map(str, ids))
         data = request("/v1/leads.json", params=params)
-        singer.write_records("leads", data['result'])
+        for row in data['result']:
+            for date_field in date_fields:
+                if row.get(date_field) is not None:
+                    row[date_field] += "T00:00:00Z"
+
+            singer.write_record("leads", row)
 
 
 def sync_lists():
@@ -164,7 +176,7 @@ def do_sync():
 
     # Sync all activity types. We'll be using the activity type ids to
     # query for activities in the next step.
-    schema = utils.load_schema("tap_marketo", "activity_types")
+    schema = utils.load_schema("activity_types")
     singer.write_schema("activity_types", schema, ["id"])
     activity_type_ids = sync_activity_types()
 
@@ -173,21 +185,21 @@ def do_sync():
     # that also need to be synced. Since a lead might have been altered
     # by multiple activity types, we'll collect all the leadIds into a
     # set and sync those after.
-    activity_schema = utils.load_schema("tap_marketo", "activities")
+    activity_schema = utils.load_schema("activities")
     singer.write_schema("activities", activity_schema, ["id"])
     lead_ids = set()
     for activity_type_id in activity_type_ids:
-        lead_ids.update(sync_activities(activity_type_id, activity_schema))
+        lead_ids.update(sync_activities(activity_type_id))
 
     # Now that we have the set of leadIds, we need to sync all the altered
     # leads. Once we have done that, we can update the state.
-    schema = get_leads_schema()
+    schema, date_fields = get_leads_schema_and_date_fields()
     singer.write_schema("leads", schema, ["id"])
-    sync_leads(lead_ids, schema['properties'].keys())
+    sync_leads(lead_ids, schema['properties'].keys(), date_fields)
     singer.write_state(STATE)
 
     # Finally we'll sync the contact lists and update the state.
-    schema = utils.load_schema("tap_marketo", "lists")
+    schema = utils.load_schema("lists")
     singer.write_schema("lists", schema, ["id"])
     sync_lists()
     singer.write_state(STATE)
@@ -205,3 +217,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

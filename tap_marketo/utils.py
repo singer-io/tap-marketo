@@ -50,8 +50,8 @@ def load_json(path):
         return json.load(f)
 
 
-def load_schema(path, entity):
-    return load_json(get_abs_path("{}/{}.json".format(path, entity)))
+def load_schema(entity):
+    return load_json(get_abs_path("schemas/{}.json".format(entity)))
 
 
 def update_state(state, entity, dt):
