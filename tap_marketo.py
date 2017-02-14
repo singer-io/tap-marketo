@@ -25,6 +25,8 @@ CONFIG = {
 }
 STATE = {}
 
+logger = singer.get_logger()
+
 
 def refresh_token():
     global ACCESS_TOKEN
@@ -56,6 +58,7 @@ def request(url, params=None):
 
     url = CONFIG['base_url'].format(CONFIG['domain']) + "/rest" + url
     params = params or {}
+    logger.info("Making request to {} with params {}".format(url, params))
     headers = {'Authorization': 'Bearer {}'.format(CONFIG['access_token'])}
     response = requests.get(url, params=params, headers=headers)
     response.raise_for_status()
@@ -119,7 +122,7 @@ def sync_activity_types():
 
 def sync_activities(activity_type_id, schema):
     state_key = 'activities_{}'.format(activity_type_id)
-    start_date = STATE.get(state_key, DEFAULT_START_DATE)
+    start_date = STATE.get(state_key, CONFIG['default_state_date'])
     data = request("/v1/activities/pagingtoken.json", {'sinceDatetime': start_date})
     params = {
         'activityTypeIds': activity_type_id,
@@ -136,20 +139,20 @@ def sync_activities(activity_type_id, schema):
     return lead_ids
 
 
-def sync_leads(lead_ids):
+def sync_leads(lead_ids, fields):
     params = {
         'filterType': 'id',
-        'fields': ','.join(schema['properties'].keys()),
+        'fields': ','.join(fields),
     }
 
     for ids in utils.chunk(sorted(lead_ids), 300):
-        params['filterValues'] = ','.join(ids)
+        params['filterValues'] = ','.join(map(str, ids))
         data = request("/v1/leads.json", params=params)
         singer.write_records("leads", data['result'])
 
 
 def sync_lists():
-    start_date = STATE.get("lists", DEFAULT_START_DATE)
+    start_date = STATE.get("lists", CONFIG['default_state_date'])
     for row in gen_request("/v1/lists.json"):
         if row['updatedAt'] >= start_date:
             singer.write_record("lists", row)
@@ -157,6 +160,8 @@ def sync_lists():
 
 
 def do_sync():
+    logger.info("Starting sync")
+
     # Sync all activity types. We'll be using the activity type ids to
     # query for activities in the next step.
     schema = utils.load_schema("tap_marketo", "activity_types")
@@ -178,7 +183,7 @@ def do_sync():
     # leads. Once we have done that, we can update the state.
     schema = get_leads_schema()
     singer.write_schema("leads", schema, ["id"])
-    sync_leads(lead_ids_to_check)
+    sync_leads(lead_ids, schema['properties'].keys())
     singer.write_state(STATE)
 
     # Finally we'll sync the contact lists and update the state.
@@ -187,13 +192,15 @@ def do_sync():
     sync_lists()
     singer.write_state(STATE)
 
+    logger.info("Sync complete")
+
 
 def main():
     args = utils.parse_args()
     CONFIG.update(utils.load_json(args.config))
     if args.state:
         STATE.update(utils.load_json(args.state))
-    do_sync(args)
+    do_sync()
 
 
 if __name__ == '__main__':

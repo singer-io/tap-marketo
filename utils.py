@@ -61,6 +61,9 @@ def update_state(state, entity, dt):
     if isinstance(dt, datetime.datetime):
         dt = strftime(dt)
 
+    if entity not in state:
+        state[entity] = dt
+
     if dt >= state[entity]:
         state[entity] = dt
 
