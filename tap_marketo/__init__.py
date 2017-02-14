@@ -5,8 +5,7 @@ import argparse
 import datetime
 
 import requests
-# import singer
-import stitchstream as singer
+import singer
 from . import utils
 
 
@@ -29,9 +28,6 @@ logger = singer.get_logger()
 
 
 def refresh_token():
-    global ACCESS_TOKEN
-    global TOKEN_EXPIRES
-
     url = CONFIG['base_url'].format(CONFIG['domain']) + "/identity/oauth/token"
     params = {
         'grant_type': "client_credentials",

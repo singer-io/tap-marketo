@@ -4,13 +4,13 @@ from setuptools import setup, find_packages
 
 setup(name='tap-marketo',
       version='0.1.1',
-      description='Taps Marketo data',
+      description='Singer.io tap for extracting data from the Marketo API',
       author='Stitch',
-      url='https://github.com/stitchstreams/tap-marketo',
+      url='https://github.com/singer-io/tap-marketo',
       classifiers=['Programming Language :: Python :: 3 :: Only'],
       py_modules=['tap_marketo'],
       install_requires=[
-          'stitchstream-python>=0.6.0',
+          'singer-python>=0.6.0',
           'requests==2.12.4',
       ],
       entry_points='''
