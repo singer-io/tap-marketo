@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
-from setuptools import setup, find_packages
+from setuptools import setup
 
 setup(name='tap-marketo',
-      version='0.2.0',
+      version='0.3.0',
       description='Singer.io tap for extracting data from the Marketo API',
       author='Stitch',
-      url='https://github.com/singer-io/tap-marketo',
+      url='https://singer.io',
       classifiers=['Programming Language :: Python :: 3 :: Only'],
       py_modules=['tap_marketo'],
       install_requires=[

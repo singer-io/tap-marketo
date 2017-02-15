@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 
-import os
-import argparse
 import datetime
 
 import requests
 import singer
+
 from . import utils
 
 
+BASE_URL = "https://{}.mktorest.com"
 CONFIG = {
-    "base_url": "https://{}.mktorest.com",
     "call_count": 0,
     "access_token": None,
     "token_expires": None,
-    "default_state_date": utils.strftime(datetime.datetime.utcnow() - datetime.timedelta(days=365)),
 
     # in config file
     "domain": None,
@@ -27,8 +25,15 @@ STATE = {}
 logger = singer.get_logger()
 
 
+def get_start(entity):
+    if entity not in STATE:
+        STATE[entity] = utils.strftime(datetime.datetime.utcnow() - datetime.timedelta(days=365))
+
+    return STATE[entity]
+
+
 def refresh_token():
-    url = CONFIG['base_url'].format(CONFIG['domain']) + "/identity/oauth/token"
+    url = BASE_URL.format(CONFIG['domain']) + "/identity/oauth/token"
     params = {
         'grant_type': "client_credentials",
         'client_id': CONFIG['client_id'],
@@ -52,7 +57,7 @@ def request(url, params=None):
     if CONFIG['call_count'] % 250 == 0:
         check_usage()
 
-    url = CONFIG['base_url'].format(CONFIG['domain']) + "/rest" + url
+    url = BASE_URL.format(CONFIG['domain']) + "/rest" + url
     params = params or {}
     logger.info("Making request to {} with params {}".format(url, params))
     headers = {'Authorization': 'Bearer {}'.format(CONFIG['access_token'])}
@@ -125,8 +130,7 @@ def sync_activity_types():
 
 def sync_activities(activity_type_id):
     state_key = 'activities_{}'.format(activity_type_id)
-    start_date = STATE.get(state_key, CONFIG['default_state_date'])
-    data = request("/v1/activities/pagingtoken.json", {'sinceDatetime': start_date})
+    data = request("/v1/activities/pagingtoken.json", {'sinceDatetime': get_start(state_key)})
     params = {
         'activityTypeIds': activity_type_id,
         'nextPageToken': data['nextPageToken'],
@@ -160,7 +164,7 @@ def sync_leads(lead_ids, fields, date_fields):
 
 
 def sync_lists():
-    start_date = STATE.get("lists", CONFIG['default_state_date'])
+    start_date = get_start("lists")
     for row in gen_request("/v1/lists.json"):
         if row['updatedAt'] >= start_date:
             singer.write_record("lists", row)
@@ -205,12 +209,16 @@ def do_sync():
 
 def main():
     args = utils.parse_args()
-    CONFIG.update(utils.load_json(args.config))
+
+    config = utils.load_json(args.config)
+    utils.check_config(config, ["domain", "client_id", "client_secret"])
+    CONFIG.update()
+
     if args.state:
         STATE.update(utils.load_json(args.state))
+
     do_sync()
 
 
 if __name__ == '__main__':
     main()
-
