@@ -23,6 +23,7 @@ CONFIG = {
 STATE = {}
 
 logger = singer.get_logger()
+session = requests.Session()
 
 
 def get_start(entity):
@@ -32,24 +33,31 @@ def get_start(entity):
     return STATE[entity]
 
 
+def get_url(endpoint):
+    return BASE_URL.format(CONFIG['domain']) + endpoint
+
+
 def refresh_token():
-    url = BASE_URL.format(CONFIG['domain']) + "/identity/oauth/token"
+    url = get_url("/identity/oauth/token")
     params = {
         'grant_type': "client_credentials",
         'client_id': CONFIG['client_id'],
         'client_secret': CONFIG['client_secret'],
     }
+    logger.info("Refreshing token")
     resp = requests.get(url, params=params)
     data = resp.json()
     if resp.status_code != 200:
         raise Exception("Authorization failed. {}".format(data['error_description']))
 
+    now = datetime.utcnow()
+    logger.info("Token valid until {}".format(now + datetime.timedelta(seconds=data['expires_in'])))
     CONFIG['access_token'] = data['access_token']
-    CONFIG['token_expires'] = datetime.datetime.utcnow() + datetime.timedelta(seconds=data['expires_in'] - 600)
+    CONFIG['token_expires'] = now + datetime.timedelta(seconds=data['expires_in'] - 600)
 
 
 @utils.ratelimit(100, 20)
-def request(url, params=None):
+def request(endpoint, params=None):
     if not CONFIG['token_expires'] or datetime.datetime.utcnow() >= CONFIG['token_expires']:
         refresh_token()
 
@@ -57,17 +65,19 @@ def request(url, params=None):
     if CONFIG['call_count'] % 250 == 0:
         check_usage()
 
-    url = BASE_URL.format(CONFIG['domain']) + "/rest" + url
+    url = get_url("/rest" + endpoint)
     params = params or {}
-    logger.info("Making request to {} with params {}".format(url, params))
     headers = {'Authorization': 'Bearer {}'.format(CONFIG['access_token'])}
-    response = requests.get(url, params=params, headers=headers)
-    response.raise_for_status()
-    return response.json()
+    req = requests.Request('GET', url, params=params, headers=headers).prepare()
+    logger.info("GET {}".format(req.url))
+    resp = session.send(req)
+    resp.raise_for_status()
+    return resp.json()
 
 
 def check_usage():
     data = request("/v1/stats/usage.json")
+    log.info("Used {} of {} requests".format(data[0]['total'], CONFIG['max_daily_calls']))
     if data[0]['total'] >= CONFIG['max_daily_calls']:
         raise Exception("Exceeded daily quota of {} requests".format(CONFIG['max_daily_calls']))
 
@@ -212,7 +222,7 @@ def main():
 
     config = utils.load_json(args.config)
     utils.check_config(config, ["domain", "client_id", "client_secret"])
-    CONFIG.update()
+    CONFIG.update(config)
 
     if args.state:
         STATE.update(utils.load_json(args.state))
