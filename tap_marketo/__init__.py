@@ -15,7 +15,7 @@ CONFIG = {
     "token_expires": None,
 
     # in config file
-    "domain": None,
+    "account_id": None,
     "client_id": None,
     "client_secret": None,
     "max_daily_calls": 8000,
@@ -34,7 +34,7 @@ def get_start(entity):
 
 
 def get_url(endpoint):
-    return BASE_URL.format(CONFIG['domain']) + endpoint
+    return BASE_URL.format(CONFIG['account_id']) + endpoint
 
 
 def refresh_token():
@@ -221,7 +221,7 @@ def main():
     args = utils.parse_args()
 
     config = utils.load_json(args.config)
-    utils.check_config(config, ["domain", "client_id", "client_secret"])
+    utils.check_config(config, ["account_id", "client_id", "client_secret"])
     CONFIG.update(config)
 
     if args.state:
