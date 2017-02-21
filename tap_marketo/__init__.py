@@ -8,14 +8,14 @@ import singer
 from . import utils
 
 
-BASE_URL = "https://{}.mktorest.com"
 CONFIG = {
     "call_count": 0,
     "access_token": None,
     "token_expires": None,
 
     # in config file
-    "account_id": None,
+    "endpoint": None,
+    "identity": None,
     "client_id": None,
     "client_secret": None,
     "max_daily_calls": 8000,
@@ -33,12 +33,8 @@ def get_start(entity):
     return STATE[entity]
 
 
-def get_url(endpoint):
-    return BASE_URL.format(CONFIG['account_id']) + endpoint
-
-
 def refresh_token():
-    url = get_url("/identity/oauth/token")
+    url = CONFIG['identity'] + "/oauth/token"
     params = {
         'grant_type': "client_credentials",
         'client_id': CONFIG['client_id'],
@@ -65,7 +61,7 @@ def request(endpoint, params=None):
     if CONFIG['call_count'] % 250 == 0:
         check_usage()
 
-    url = get_url("/rest" + endpoint)
+    url = CONFIG['endpoint'] + endpoint
     params = params or {}
     headers = {'Authorization': 'Bearer {}'.format(CONFIG['access_token'])}
     req = requests.Request('GET', url, params=params, headers=headers).prepare()
@@ -221,7 +217,7 @@ def main():
     args = utils.parse_args()
 
     config = utils.load_json(args.config)
-    utils.check_config(config, ["account_id", "client_id", "client_secret"])
+    utils.check_config(config, ["endpoint", "identity", "client_id", "client_secret"])
     CONFIG.update(config)
 
     if args.state:
