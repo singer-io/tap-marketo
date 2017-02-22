@@ -46,7 +46,7 @@ def refresh_token():
     if resp.status_code != 200:
         raise Exception("Authorization failed. {}".format(data['error_description']))
 
-    now = datetime.utcnow()
+    now = datetime.datetime.utcnow()
     logger.info("Token valid until {}".format(now + datetime.timedelta(seconds=data['expires_in'])))
     CONFIG['access_token'] = data['access_token']
     CONFIG['token_expires'] = now + datetime.timedelta(seconds=data['expires_in'] - 600)
