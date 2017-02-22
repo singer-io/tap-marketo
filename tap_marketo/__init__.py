@@ -19,6 +19,7 @@ CONFIG = {
     "client_id": None,
     "client_secret": None,
     "max_daily_calls": 8000,
+    "start_date": None,
 }
 STATE = {}
 
@@ -28,7 +29,7 @@ session = requests.Session()
 
 def get_start(entity):
     if entity not in STATE:
-        STATE[entity] = utils.strftime(datetime.datetime.utcnow() - datetime.timedelta(days=365))
+        STATE[entity] = CONFIG['start_date']
 
     return STATE[entity]
 
@@ -217,7 +218,7 @@ def main():
     args = utils.parse_args()
 
     config = utils.load_json(args.config)
-    utils.check_config(config, ["endpoint", "identity", "client_id", "client_secret"])
+    utils.check_config(config, ["endpoint", "identity", "client_id", "client_secret", "start_date"])
     CONFIG.update(config)
 
     if args.state:
