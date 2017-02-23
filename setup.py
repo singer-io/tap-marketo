@@ -20,8 +20,9 @@ setup(name='tap-marketo',
       packages=['tap_marketo'],
       package_data = {
           'tap_marketo/schemas': [
-            'lead_activities.json',
-            'lead_activity_types.json'
+              "activities.json",
+              "activity_types.json",
+              "lists.json",
           ]
       },
       include_package_data=True,
