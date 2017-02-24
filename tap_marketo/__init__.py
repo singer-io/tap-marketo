@@ -221,6 +221,12 @@ def main():
     utils.check_config(config, ["endpoint", "identity", "client_id", "client_secret", "start_date"])
     CONFIG.update(config)
 
+    if CONFIG['endpoint'][-1] != "/":
+        CONFIG['endpoint'] += "/"
+
+    if CONFIG['identity'][-1] != "/":
+        CONFIG['identity'] += "/"
+
     if args.state:
         STATE.update(utils.load_json(args.state))
 
