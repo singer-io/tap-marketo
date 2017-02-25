@@ -38,7 +38,7 @@ def get_start(entity):
 
 
 def refresh_token():
-    url = CONFIG['identity'] + "/oauth/token"
+    url = CONFIG['identity'] + "oauth/token"
     params = {
         'grant_type': "client_credentials",
         'client_id': CONFIG['client_id'],
