@@ -1,6 +1,5 @@
 import argparse
 import datetime
-import functools
 import json
 import os
 import threading
@@ -14,26 +13,6 @@ def strptime(dt):
 
 def strftime(dt):
     return dt.strftime(DATETIME_FMT)
-
-
-def ratelimit(limit, every):
-    def limitdecorator(fn):
-        semaphore = threading.Semaphore(limit)
-
-        @functools.wraps(fn)
-        def wrapper(*args, **kwargs):
-            semaphore.acquire()
-            try:
-                result = fn(*args, **kwargs)
-            finally:
-                timer = threading.Timer(every, semaphore.release)
-                timer.setDaemon(True)  # allows the timer to be canceled on exit
-                timer.start()
-                return result
-
-        return wrapper
-
-    return limitdecorator
 
 
 def chunk(l, n):
