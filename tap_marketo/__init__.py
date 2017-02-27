@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 
 import datetime
-import functools
 import time
 
 import requests
 import singer
 
-from collections import deque
-from . import utils
+from tap_marketo import utils
 
 
 CONFIG = {
@@ -56,28 +54,7 @@ def refresh_token():
     CONFIG['token_expires'] = now + datetime.timedelta(seconds=data['expires_in'] - 600)
 
 
-def ratelimit(limit, period):
-    def limitdecorator(fn):
-        times = deque()
-
-        @functools.wraps(fn)
-        def wrapper(*args, **kwargs):
-            if len(times) >= limit:
-                t0 = times.pop()
-                t = time.time()
-                sleep_time = period - (t - t0)
-                if sleep_time > 0:
-                    logger.info("t0 = {}, t = {}, sleeping for {} seconds".format(t0, t, sleep_time))
-                    time.sleep(sleep_time)
-            times.appendleft(time.time())
-            return fn(*args, **kwargs)
-
-        return wrapper
-
-    return limitdecorator
-
-
-@ratelimit(100, 20)
+@utils.ratelimit(100, 20)
 def request(endpoint, params=None):
     if not CONFIG['token_expires'] or datetime.datetime.utcnow() >= CONFIG['token_expires']:
         refresh_token()
