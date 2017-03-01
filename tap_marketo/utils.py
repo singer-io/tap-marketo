@@ -26,7 +26,7 @@ def ratelimit(limit, every):
             if len(times) >= limit:
                 t0 = times.pop()
                 t = time.time()
-                sleep_time = period - (t - t0)
+                sleep_time = every - (t - t0)
                 if sleep_time > 0:
                     logger.info("t0 = {}, t = {}, sleeping for {} seconds".format(t0, t, sleep_time))
                     time.sleep(sleep_time)
