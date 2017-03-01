@@ -2,6 +2,7 @@
 
 import datetime
 import time
+import sys
 
 import requests
 import singer
@@ -70,11 +71,18 @@ def request(endpoint, params=None):
     logger.info("GET {}".format(req.url))
     resp = session.send(req)
     resp.raise_for_status()
-    return resp.json()
+    data = resp.json()
+
+    if not data['success']:
+        reasons = ", ".join("{code}: {message}".format(**err) for err in data['errors'])
+        logger.error("API call failed. {}".format(reasons))
+        sys.exit(1)
+
+    return data
 
 
 def check_usage():
-    data = request("/v1/stats/usage.json")
+    data = request("v1/stats/usage.json")
     log.info("Used {} of {} requests".format(data[0]['total'], CONFIG['max_daily_calls']))
     if data[0]['total'] >= CONFIG['max_daily_calls']:
         raise Exception("Exceeded daily quota of {} requests".format(CONFIG['max_daily_calls']))
@@ -109,7 +117,7 @@ def datatype_to_schema(marketo_type):
 
 
 def get_leads_schema_and_date_fields():
-    data = request("/v1/leads/describe.json")['result']
+    data = request("v1/leads/describe.json")['result']
     rtn = {
         "type": "object",
         "properties": {},
@@ -129,7 +137,7 @@ def get_leads_schema_and_date_fields():
 def sync_activity_types():
     activity_type_ids = set()
 
-    for row in gen_request("/v1/activities/types.json"):
+    for row in gen_request("v1/activities/types.json"):
         activity_type_ids.add(row['id'])
         singer.write_record("activity_types", row)
 
@@ -138,7 +146,7 @@ def sync_activity_types():
 
 def sync_activities(activity_type_id):
     state_key = 'activities_{}'.format(activity_type_id)
-    data = request("/v1/activities/pagingtoken.json", {'sinceDatetime': get_start(state_key)})
+    data = request("v1/activities/pagingtoken.json", {'sinceDatetime': get_start(state_key)})
     params = {
         'activityTypeIds': activity_type_id,
         'nextPageToken': data['nextPageToken'],
@@ -146,7 +154,7 @@ def sync_activities(activity_type_id):
     }
 
     lead_ids = set()
-    for row in gen_request("/v1/activities.json", params=params):
+    for row in gen_request("v1/activities.json", params=params):
         lead_ids.add(row['leadId'])
         singer.write_record("activities", row)
         utils.update_state(STATE, state_key, row['activityDate'])
@@ -162,7 +170,7 @@ def sync_leads(lead_ids, fields, date_fields):
 
     for ids in utils.chunk(sorted(lead_ids), 300):
         params['filterValues'] = ','.join(map(str, ids))
-        data = request("/v1/leads.json", params=params)
+        data = request("v1/leads.json", params=params)
         for row in data['result']:
             for date_field in date_fields:
                 if row.get(date_field) is not None:
@@ -173,7 +181,7 @@ def sync_leads(lead_ids, fields, date_fields):
 
 def sync_lists():
     start_date = get_start("lists")
-    for row in gen_request("/v1/lists.json"):
+    for row in gen_request("v1/lists.json"):
         if row['updatedAt'] >= start_date:
             singer.write_record("lists", row)
             utils.update_state(STATE, "lists", row['updatedAt'])
