@@ -46,8 +46,13 @@ def refresh_token():
     logger.info("Refreshing token")
     resp = requests.get(url, params=params)
     data = resp.json()
-    if resp.status_code != 200:
-        raise Exception("Authorization failed. {}".format(data['error_description']))
+
+    if resp.status_code != 200 or data.get('error') == 'unauthorized':
+        logger.error("Authorization failed. {}".format(data['error_description']))
+        sys.exit(1)
+    elif 'error' in data:
+        logger.error("API returned an error. {}".format(data['error_description']))
+        sys.exit(1)
 
     now = datetime.datetime.utcnow()
     logger.info("Token valid until {}".format(now + datetime.timedelta(seconds=data['expires_in'])))
