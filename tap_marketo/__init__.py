@@ -88,7 +88,7 @@ def request(endpoint, params=None):
 
 def check_usage():
     data = request("v1/stats/usage.json")
-    log.info("Used {} of {} requests".format(data[0]['total'], CONFIG['max_daily_calls']))
+    logger.info("Used {} of {} requests".format(data[0]['total'], CONFIG['max_daily_calls']))
     if data[0]['total'] >= CONFIG['max_daily_calls']:
         raise Exception("Exceeded daily quota of {} requests".format(CONFIG['max_daily_calls']))
 
