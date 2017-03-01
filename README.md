@@ -1,31 +1,74 @@
 # tap-marketo
 
-Tap for Marketo
+This is a [Singer](https://singer.io) tap that produces JSON-formatted data following the [Singer spec](https://github.com/singer-io/getting-started/blob/master/SPEC.md).
 
-http://developers.marketo.com/rest-api/
+This tap:
+- Pulls raw data from Marketo's [REST API](http://developers.marketo.com/rest-api/)
+- Extracts the following resources from Marketo
+  - Activity types
+  - Activities
+  - Leads
+  - Lists
+- Outputs the schema for each resource
+- Incrementally pulls data based on the input state
 
-## Config values
+## Quick start
 
-### Endpoint and Identity
+1. Install
 
-The base URL contains the account id (a.k.a. Munchkin id) and is therefore unique for each Marketo subscription.
-Your base URL is found by logging into Marketo and navigating to the Admin > Integration > Web Services menu.
-It is labled as “Endpoint:” underneath the “REST API” section as shown in the following screenshots.
+    ```bash
+    > pip install tap-marketo
+    ```
 
-Identity is found direcly below the endpoint entry.
+2. Get your Endpoint, Identity, Client ID and Client Secret
 
-http://developers.marketo.com/rest-api/base-url/
+  **Endpoint and Identity**
 
-### Max Daily Calls
+  The base URL contains the account id (a.k.a. Munchkin id) and is therefore unique for each Marketo subscription.
+  Your base URL is found by logging into Marketo and navigating to the Admin > Integration > Web Services menu.
+  It is labled as “Endpoint:” underneath the “REST API” section as shown in the following screenshots.
 
-All accounts have a max number of 10000 account calls. We use 8000 as a default to allow the client to use their
-API access as well. Accounts can contact Marketo to raise the limit, so this is user-definable.
+  Identity is found directly below the endpoint entry.
 
-### Client ID and Secret
+  http://developers.marketo.com/rest-api/base-url/
 
-These values are obtained by creating an app to integrate with Marketo.
+  **Client ID and Secret**
 
-http://developers.marketo.com/rest-api/authentication/
+  These values are obtained by creating an app to integrate with Marketo.
+
+  http://developers.marketo.com/rest-api/authentication/
+
+3. Create the config file
+
+    Create a JSON file called `config.json` containing the Endpoint, Identity, Client ID and Client Secret.
+
+    ```json
+    {"endpoint": "your-endpoint",
+     "identity": "your-identity",
+     "client_id": "your-client_id",
+     "client_secret": "your-client-secret"}
+    ```
+
+4. [Optional] Create the initial state file
+
+    You can provide JSON file that contains a date for the API endpoints
+    to force the application to only fetch data newer than those dates.
+    If you omit the file it will fetch all Marketo data.
+
+    ```json
+    {"activity_types": "2017-01-01T00:00:00Z",
+     "activities": "2017-01-01T00:00:00Z",
+     "leads": "2017-01-01T00:00:00Z",
+     "lists": "2017-01-01T00:00:00Z"}
+    ```
+
+5. Run the application
+
+    `tap-marketo` can be run with:
+
+    ```bash
+    tap-marketo --config config.json [--state state.json]
+    ```
 
 
 ---
