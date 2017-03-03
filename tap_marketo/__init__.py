@@ -202,6 +202,7 @@ def do_sync():
     # query for activities in the next step.
     schema = utils.load_schema("activity_types")
     singer.write_schema("activity_types", schema, ["id"])
+    logger.info("Sycing activity types")
     activity_type_ids = sync_activity_types()
 
     # Now we sync activities one activity type at a time. While syncing
@@ -213,18 +214,21 @@ def do_sync():
     singer.write_schema("activities", activity_schema, ["id"])
     lead_ids = set()
     for activity_type_id in activity_type_ids:
+        logger.info("Syncing activity type {}".format(activity_type_id))
         lead_ids.update(sync_activities(activity_type_id))
 
     # Now that we have the set of leadIds, we need to sync all the altered
     # leads. Once we have done that, we can update the state.
     schema, date_fields = get_leads_schema_and_date_fields()
     singer.write_schema("leads", schema, ["id"])
+    logger.info("Syncing {} leads".format(len(lead_ids)))
     sync_leads(lead_ids, schema['properties'].keys(), date_fields)
     singer.write_state(STATE)
 
     # Finally we'll sync the contact lists and update the state.
     schema = utils.load_schema("lists")
     singer.write_schema("lists", schema, ["id"])
+    logger.info("Syncing contact lists")
     sync_lists()
     singer.write_state(STATE)
 
@@ -247,8 +251,12 @@ def main():
     if args.state:
         STATE.update(utils.load_json(args.state))
 
-    # do_sync()
-    check_usage()
+    logger.info("start_date: {}".format(CONFIG['start_date']))
+    logger.info("indentity: {}".format(CONFIG['identity']))
+    logger.info("endpoint: {}".format(CONFIG['endpoint']))
+    logger.info("STATE: {}".format(STATE))
+
+    do_sync()
 
 
 if __name__ == '__main__':
