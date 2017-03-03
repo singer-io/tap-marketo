@@ -88,8 +88,11 @@ def request(endpoint, params=None):
 
 def check_usage():
     data = request("v1/stats/usage.json")
-    logger.info("Used {} of {} requests".format(data[0]['total'], CONFIG['max_daily_calls']))
-    if data[0]['total'] >= CONFIG['max_daily_calls']:
+    if not data.get('success'):
+        raise Exception("Error occured while checking usage")
+
+    logger.info("Used {} of {} requests".format(data['result'][0]['total'], CONFIG['max_daily_calls']))
+    if data['result'][0]['total'] >= CONFIG['max_daily_calls']:
         raise Exception("Exceeded daily quota of {} requests".format(CONFIG['max_daily_calls']))
 
 
@@ -244,7 +247,8 @@ def main():
     if args.state:
         STATE.update(utils.load_json(args.state))
 
-    do_sync()
+    # do_sync()
+    check_usage()
 
 
 if __name__ == '__main__':
