@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import collections
 import datetime
 import time
 import sys
@@ -171,20 +172,29 @@ def sync_activities(activity_type_id):
 
 
 def sync_leads(lead_ids, fields, date_fields):
-    params = {
-        'filterType': 'id',
-        'fields': ','.join(fields),
-    }
+    params = {'filterType': 'id'}
 
     for ids in utils.chunk(sorted(lead_ids), 300):
+        # We're going to have to get each batch multiple times to get all the
+        # custom fields so we keep a map of id to row which can be updated
         params['filterValues'] = ','.join(map(str, ids))
-        data = request("v1/leads.json", params=params)
-        for row in data['result']:
-            for date_field in date_fields:
-                if row.get(date_field) is not None:
-                    row[date_field] += "T00:00:00Z"
+        id__row = collections.defaultdict(dict)
 
-            singer.write_record("leads", row)
+        # Chunk the fields into groups of 100 and get 300 leads with those 100
+        # fields until the 300 leads are completed.
+        for field_group in utils.chunk(list(fields), 100):
+            params['fields'] = ','.join(field_group)
+            data = request("v1/leads.json", params=params)
+
+            for row in data['result']:
+                for date_field in date_fields:
+                    if row.get(date_field) is not None:
+                        row[date_field] += "T00:00:00Z"
+
+                id__row[row['id']].update(row)
+
+        # When the group of 300 leads is completely grabbed, stream them
+        singer.write_records("leads", id__row.values())
 
 
 def sync_lists():
