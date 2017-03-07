@@ -25,6 +25,8 @@ CONFIG = {
     "start_date": None,
 }
 STATE = {}
+LEAD_IDS = set()
+LEAD_IDS_SYNCED = set()
 
 logger = singer.get_logger()
 session = requests.Session()
@@ -153,48 +155,72 @@ def sync_activity_types():
     return activity_type_ids
 
 
-def sync_activities(activity_type_id):
+def sync_activities(activity_type_id, lead_fields, date_fields):
+    global LEAD_IDS, LEAD_IDS_SYNCED
+
     state_key = 'activities_{}'.format(activity_type_id)
-    data = request("v1/activities/pagingtoken.json", {'sinceDatetime': get_start(state_key)})
+    start = get_start(state_key)
+    data = request("v1/activities/pagingtoken.json", {'sinceDatetime': start})
     params = {
         'activityTypeIds': activity_type_id,
         'nextPageToken': data['nextPageToken'],
         'batchSize': 300,
     }
 
-    lead_ids = set()
     for row in gen_request("v1/activities.json", params=params):
-        lead_ids.add(row['leadId'])
+        # Stream in the activity and update the state.
         singer.write_record("activities", row)
         utils.update_state(STATE, state_key, row['activityDate'])
 
-    return lead_ids
+        # Add the lead id to the set of lead ids that need synced unless
+        # already synced.
+        lead_id = row['leadId']
+        if lead_id not in LEAD_IDS and lead_id not in LEAD_IDS_SYNCED:
+            LEAD_IDS.add(lead_id)
+
+        # If we have 300 or more lead ids (one page), sync those leads and mark
+        # the ids as synced. Once the leads have been synced we can update the
+        # state.
+        if len(LEAD_IDS) >= 300:
+            # Take the first 300 off the set and sync them.
+            lead_ids = list(LEAD_IDS)[:300]
+            sync_leads(lead_ids, lead_fields, date_fields)
+
+            # Remove the synced lead ids from the set to be synced and add them
+            # to the set of synced ids.
+            LEAD_IDS = LEAD_IDS.difference(lead_ids)
+            LEAD_IDS_SYNCED = LEAD_IDS_SYNCED.union(lead_ids)
+
+            # Update the state.
+            singer.write_state(STATE)
 
 
 def sync_leads(lead_ids, fields, date_fields):
-    params = {'filterType': 'id'}
+    logger.info("Syncing {} leads".format(len(lead_ids)))
+    params = {
+        'filterType': 'id',
+        'filterValues': ','.join(map(str, lead_ids)),
+    }
 
-    for ids in utils.chunk(sorted(lead_ids), 300):
-        # We're going to have to get each batch multiple times to get all the
-        # custom fields so we keep a map of id to row which can be updated
-        params['filterValues'] = ','.join(map(str, ids))
-        id__row = collections.defaultdict(dict)
+    # We're going to have to get each batch multiple times to get all the
+    # custom fields so we keep a map of id to row which can be updated
+    id__row = collections.defaultdict(dict)
 
-        # Chunk the fields into groups of 100 and get 300 leads with those 100
-        # fields until the 300 leads are completed.
-        for field_group in utils.chunk(list(fields), 100):
-            params['fields'] = ','.join(field_group)
-            data = request("v1/leads.json", params=params)
+    # Chunk the fields into groups of 100 and get 300 leads with those 100
+    # fields until the 300 leads are completed.
+    for field_group in utils.chunk(list(fields), 100):
+        params['fields'] = ','.join(field_group)
+        data = request("v1/leads.json", params=params)
 
-            for row in data['result']:
-                for date_field in date_fields:
-                    if row.get(date_field) is not None:
-                        row[date_field] += "T00:00:00Z"
+        for row in data['result']:
+            for date_field in date_fields:
+                if row.get(date_field) is not None:
+                    row[date_field] += "T00:00:00Z"
 
-                id__row[row['id']].update(row)
+            id__row[row['id']].update(row)
 
-        # When the group of 300 leads is completely grabbed, stream them
-        singer.write_records("leads", id__row.values())
+    # When the group of 300 leads is completely grabbed, stream them
+    singer.write_records("leads", id__row.values())
 
 
 def sync_lists():
@@ -206,7 +232,14 @@ def sync_lists():
 
 
 def do_sync():
+    global LEAD_IDS
     logger.info("Starting sync")
+
+    # First we need to send the custom leads schema in. We stream in leads
+    # once we have 300 ids that have been updated.
+    schema, date_fields = get_leads_schema_and_date_fields()
+    lead_fields = list(schema['properties'].keys())
+    singer.write_schema("leads", schema, ["id"])
 
     # Sync all activity types. We'll be using the activity type ids to
     # query for activities in the next step.
@@ -222,18 +255,14 @@ def do_sync():
     # set and sync those after.
     activity_schema = utils.load_schema("activities")
     singer.write_schema("activities", activity_schema, ["id"])
-    lead_ids = set()
     for activity_type_id in activity_type_ids:
         logger.info("Syncing activity type {}".format(activity_type_id))
-        lead_ids.update(sync_activities(activity_type_id))
+        sync_activities(activity_type_id, lead_fields, date_fields)
 
-    # Now that we have the set of leadIds, we need to sync all the altered
-    # leads. Once we have done that, we can update the state.
-    schema, date_fields = get_leads_schema_and_date_fields()
-    singer.write_schema("leads", schema, ["id"])
-    logger.info("Syncing {} leads".format(len(lead_ids)))
-    sync_leads(lead_ids, schema['properties'].keys(), date_fields)
-    singer.write_state(STATE)
+    # If there are any unsynced leads, sync them now
+    if len(LEAD_IDS) > 0:
+        sync_leads(list(LEAD_IDS), lead_fields, date_fields)
+        singer.write_state(STATE)
 
     # Finally we'll sync the contact lists and update the state.
     schema = utils.load_schema("lists")
