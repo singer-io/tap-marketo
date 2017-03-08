@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import backoff
 import collections
 import datetime
 import time
@@ -64,6 +65,11 @@ def refresh_token():
 
 
 @utils.ratelimit(100, 20)
+@backoff.on_exception(backoff.expo,
+                      (requests.exceptions.RequestException),
+                      max_tries=5,
+                      giveup=lambda e: e.response is not None and 400 <= e.response.status_code < 500,
+                      factor=2)
 def request(endpoint, params=None):
     if not CONFIG['token_expires'] or datetime.datetime.utcnow() >= CONFIG['token_expires']:
         refresh_token()
