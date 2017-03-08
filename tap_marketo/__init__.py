@@ -66,7 +66,7 @@ def refresh_token():
 
 @utils.ratelimit(100, 20)
 @backoff.on_exception(backoff.expo,
-                      (requests.exceptions.RequestException),
+                      (requests.exceptions.RequestException, requests.exceptions.ConnectionError),
                       max_tries=5,
                       giveup=lambda e: e.response is not None and 400 <= e.response.status_code < 500,
                       factor=2)
