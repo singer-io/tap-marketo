@@ -40,33 +40,9 @@ def get_start(entity):
     return STATE[entity]
 
 
-def refresh_token():
-    url = CONFIG['identity'] + "oauth/token"
-    params = {
-        'grant_type': "client_credentials",
-        'client_id': CONFIG['client_id'],
-        'client_secret': CONFIG['client_secret'],
-    }
-    logger.info("Refreshing token")
-    resp = requests.get(url, params=params)
-    data = resp.json()
-
-    if resp.status_code != 200 or data.get('error') == 'unauthorized':
-        logger.error("Authorization failed. {}".format(data['error_description']))
-        sys.exit(1)
-    elif 'error' in data:
-        logger.error("API returned an error. {}".format(data['error_description']))
-        sys.exit(1)
-
-    now = datetime.datetime.utcnow()
-    logger.info("Token valid until {}".format(now + datetime.timedelta(seconds=data['expires_in'])))
-    CONFIG['access_token'] = data['access_token']
-    CONFIG['token_expires'] = now + datetime.timedelta(seconds=data['expires_in'] - 600)
-
-
 @utils.ratelimit(100, 20)
 @backoff.on_exception(backoff.expo,
-                      (requests.exceptions.RequestException, requests.exceptions.ConnectionError),
+                      (requests.exceptions.RequestException),
                       max_tries=5,
                       giveup=lambda e: e.response is not None and 400 <= e.response.status_code < 500,
                       factor=2)
@@ -106,6 +82,38 @@ def check_usage():
     logger.info("Used {} of {} requests".format(data['result'][0]['total'], CONFIG['max_daily_calls']))
     if data['result'][0]['total'] >= CONFIG['max_daily_calls']:
         raise Exception("Exceeded daily quota of {} requests".format(CONFIG['max_daily_calls']))
+
+
+def refresh_token():
+    url = CONFIG['identity'] + "oauth/token"
+    params = {
+        'grant_type': "client_credentials",
+        'client_id': CONFIG['client_id'],
+        'client_secret': CONFIG['client_secret'],
+    }
+    logger.info("Refreshing token")
+
+    try:
+        resp = requests.get(url, params=params)
+    except requests.exceptions.ConnectionError:
+        logger.error("Connection error while refreshing token at {}. "
+                     "Please check the URL matches `https://123-ABC-456.mktorest.com/identity."
+                     .format(url))
+        sys.exit(1)
+
+    data = resp.json()
+
+    if resp.status_code != 200 or data.get('error') == 'unauthorized':
+        logger.error("Authorization failed. {}".format(data['error_description']))
+        sys.exit(1)
+    elif 'error' in data:
+        logger.error("API returned an error. {}".format(data['error_description']))
+        sys.exit(1)
+
+    now = datetime.datetime.utcnow()
+    logger.info("Token valid until {}".format(now + datetime.timedelta(seconds=data['expires_in'])))
+    CONFIG['access_token'] = data['access_token']
+    CONFIG['token_expires'] = now + datetime.timedelta(seconds=data['expires_in'] - 600)
 
 
 def gen_request(endpoint, params=None):
