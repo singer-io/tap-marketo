@@ -3,13 +3,13 @@
 import backoff
 import collections
 import datetime
+import os
 import time
 import sys
 
 import requests
 import singer
-
-from tap_marketo import utils
+from singer import utils
 
 
 CONFIG = {
@@ -32,6 +32,11 @@ LEAD_IDS_SYNCED = set()
 logger = singer.get_logger()
 session = requests.Session()
 
+def get_abs_path(path):
+    return os.path.join(os.path.dirname(os.path.realpath(__file__)), path)
+
+def load_schema(entity):
+    return utils.load_json(get_abs_path("schemas/{}.json".format(entity)))
 
 def get_start(entity):
     if entity not in STATE:
@@ -263,7 +268,7 @@ def do_sync():
 
     # Sync all activity types. We'll be using the activity type ids to
     # query for activities in the next step.
-    schema = utils.load_schema("activity_types")
+    schema = load_schema("activity_types")
     singer.write_schema("activity_types", schema, ["id"])
     logger.info("Sycing activity types")
     activity_type_ids = sync_activity_types()
@@ -273,7 +278,7 @@ def do_sync():
     # that also need to be synced. Since a lead might have been altered
     # by multiple activity types, we'll collect all the leadIds into a
     # set and sync those after.
-    activity_schema = utils.load_schema("activities")
+    activity_schema = load_schema("activities")
     singer.write_schema("activities", activity_schema, ["id"])
     for activity_type_id in activity_type_ids:
         logger.info("Syncing activity type {}".format(activity_type_id))
@@ -285,7 +290,7 @@ def do_sync():
         singer.write_state(STATE)
 
     # Finally we'll sync the contact lists and update the state.
-    schema = utils.load_schema("lists")
+    schema = load_schema("lists")
     singer.write_schema("lists", schema, ["id"])
     logger.info("Syncing contact lists")
     sync_lists()
@@ -295,11 +300,8 @@ def do_sync():
 
 
 def main():
-    args = utils.parse_args()
-
-    config = utils.load_json(args.config)
-    utils.check_config(config, ["endpoint", "identity", "client_id", "client_secret", "start_date"])
-    CONFIG.update(config)
+    args = utils.parse_args(["endpoint", "identity", "client_id", "client_secret", "start_date"])
+    CONFIG.update(args.config)
 
     if CONFIG['endpoint'][-1] != "/":
         CONFIG['endpoint'] += "/"
@@ -308,7 +310,7 @@ def main():
         CONFIG['identity'] += "/"
 
     if args.state:
-        STATE.update(utils.load_json(args.state))
+        STATE.update(args.state)
 
     logger.info("start_date: {}".format(CONFIG['start_date']))
     logger.info("indentity: {}".format(CONFIG['identity']))
