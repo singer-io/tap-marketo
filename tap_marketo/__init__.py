@@ -149,7 +149,7 @@ def datatype_to_schema(marketo_type):
         return {'type': ['null', 'number']}
     elif marketo_type == 'boolean':
         return {'type': ['null', 'boolean']}
-    elif marketo_type in ['string', 'email', 'reference', 'url', 'phone', 'textarea']:
+    elif marketo_type in ['string', 'email', 'reference', 'url', 'phone', 'textarea', 'text']:
         return {'type': ['null', 'string']}
     else:
         raise Exception("Unexpected field type: {}".format(marketo_type))
