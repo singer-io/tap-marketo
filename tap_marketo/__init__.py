@@ -143,13 +143,16 @@ def gen_request(endpoint, params=None):
 def datatype_to_schema(marketo_type):
     if marketo_type in ['datetime', 'date']:
         return {'anyOf': [{'type': 'null'}, {'type': 'string', 'format': 'date-time'}]}
-    elif marketo_type in ['integer', 'reference']:
+    elif marketo_type in ['integer', 'percent', 'score']:
         return {'type': ['null', 'integer']}
     elif marketo_type in ['float', 'currency']:
         return {'type': ['null', 'number']}
     elif marketo_type == 'boolean':
         return {'type': ['null', 'boolean']}
-    return {'type': ['null', 'string']}
+    elif marketo_type in ['string', 'email', 'reference', 'url', 'phone', 'textarea']:
+        return {'type': ['null', 'string']}
+    else:
+        raise Exception("Unexpected field type: {}".format(marketo_type))
 
 
 def get_leads_schema_and_date_fields():
