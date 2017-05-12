@@ -157,7 +157,7 @@ def datatype_to_schema(marketo_type):
 
 def get_leads_schema_and_date_fields():
     data = request("v1/leads/describe.json")['result']
-    rtn = {
+    schema = {
         "type": "object",
         "properties": {},
     }
@@ -166,11 +166,14 @@ def get_leads_schema_and_date_fields():
         if 'rest' not in row:
             continue
 
-        rtn['properties'][row['rest']['name']] = datatype_to_schema(row['dataType'])
+        schema['properties'][row['rest']['name']] = datatype_to_schema(row['dataType'])
         if row['dataType'] == 'date':
             date_fields.append(row['rest']['name'])
 
-    return rtn, date_fields
+    logger.info("/leads/describe.json endpoint returned {} and we inferred a json schema of {}"
+                .format(data, schema))
+
+    return schema, date_fields
 
 
 def sync_activity_types():
