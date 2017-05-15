@@ -149,15 +149,14 @@ def datatype_to_schema(marketo_type):
         return {'type': ['null', 'number']}
     elif marketo_type == 'boolean':
         return {'type': ['null', 'boolean']}
-    elif marketo_type in ['string', 'email', 'reference', 'url', 'phone', 'textarea', 'text']:
+    elif marketo_type in ['string', 'email', 'reference', 'url', 'phone', 'textarea', 'text', 'lead_function']:
         return {'type': ['null', 'string']}
     else:
-        raise Exception("Unexpected field type: {}".format(marketo_type))
+        return None
 
 
 def get_leads_schema_and_date_fields():
     data = request("v1/leads/describe.json")['result']
-    logger.info("/leads/describe.json endpoint returned %s", data)
 
     schema = {
         "type": "object",
@@ -168,12 +167,14 @@ def get_leads_schema_and_date_fields():
         if 'rest' not in row:
             continue
 
-        schema['properties'][row['rest']['name']] = datatype_to_schema(row['dataType'])
+        row_type = datatype_to_schema(row['dataType'])
+
+        if row_type is None:
+            raise Exception("Unexpected dataType for leads field: {}".format(row))
+
+        schema['properties'][row['rest']['name']] = row_type
         if row['dataType'] == 'date':
             date_fields.append(row['rest']['name'])
-
-    logger.info("/leads/describe.json endpoint returned {} and we inferred a json schema of {}"
-                .format(data, schema))
 
     return schema, date_fields
 
