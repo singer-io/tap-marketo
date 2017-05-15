@@ -157,7 +157,6 @@ def datatype_to_schema(marketo_type):
 
 def get_leads_schema_and_date_fields():
     data = request("v1/leads/describe.json")['result']
-    logger.info("/leads/describe.json endpoint returned %s", data)
 
     schema = {
         "type": "object",
@@ -176,9 +175,6 @@ def get_leads_schema_and_date_fields():
         schema['properties'][row['rest']['name']] = row_type
         if row['dataType'] == 'date':
             date_fields.append(row['rest']['name'])
-
-    logger.info("/leads/describe.json endpoint returned {} and we inferred a json schema of {}"
-                .format(data, schema))
 
     return schema, date_fields
 
