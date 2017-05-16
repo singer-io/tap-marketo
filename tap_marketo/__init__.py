@@ -10,6 +10,7 @@ import sys
 import requests
 import singer
 from singer import utils
+from singer.transform import transform
 
 
 CONFIG = {
@@ -189,7 +190,7 @@ def sync_activity_types():
     return activity_type_ids
 
 
-def sync_activities(activity_type_id, lead_fields, date_fields):
+def sync_activities(activity_type_id, lead_fields, date_fields, leads_schema):
     global LEAD_IDS, LEAD_IDS_SYNCED
 
     state_key = 'activities_{}'.format(activity_type_id)
@@ -218,7 +219,7 @@ def sync_activities(activity_type_id, lead_fields, date_fields):
         if len(LEAD_IDS) >= 300:
             # Take the first 300 off the set and sync them.
             lead_ids = list(LEAD_IDS)[:300]
-            sync_leads(lead_ids, lead_fields, date_fields)
+            sync_leads(lead_ids, lead_fields, date_fields, leads_schema)
 
             # Remove the synced lead ids from the set to be synced and add them
             # to the set of synced ids.
@@ -229,7 +230,7 @@ def sync_activities(activity_type_id, lead_fields, date_fields):
             singer.write_state(STATE)
 
 
-def sync_leads(lead_ids, fields, date_fields):
+def sync_leads(lead_ids, fields, date_fields, leads_schema):
     logger.info("Syncing {} leads".format(len(lead_ids)))
     params = {
         'filterType': 'id',
@@ -254,7 +255,8 @@ def sync_leads(lead_ids, fields, date_fields):
             id__row[row['id']].update(row)
 
     # When the group of 300 leads is completely grabbed, stream them
-    singer.write_records("leads", id__row.values())
+    transformed_leads = [transform(lead, leads_schema) for lead in id__row.values()]
+    singer.write_records("leads", transformed_leads)
 
 
 def sync_lists():
@@ -271,9 +273,9 @@ def do_sync():
 
     # First we need to send the custom leads schema in. We stream in leads
     # once we have 300 ids that have been updated.
-    schema, date_fields = get_leads_schema_and_date_fields()
-    lead_fields = list(schema['properties'].keys())
-    singer.write_schema("leads", schema, ["id"])
+    leads_schema, date_fields = get_leads_schema_and_date_fields()
+    lead_fields = list(leads_schema['properties'].keys())
+    singer.write_schema("leads", leads_schema, ["id"])
 
     # Sync all activity types. We'll be using the activity type ids to
     # query for activities in the next step.
@@ -291,11 +293,11 @@ def do_sync():
     singer.write_schema("activities", activity_schema, ["id"])
     for activity_type_id in activity_type_ids:
         logger.info("Syncing activity type {}".format(activity_type_id))
-        sync_activities(activity_type_id, lead_fields, date_fields)
+        sync_activities(activity_type_id, lead_fields, date_fields, leads_schema)
 
     # If there are any unsynced leads, sync them now
     if len(LEAD_IDS) > 0:
-        sync_leads(list(LEAD_IDS), lead_fields, date_fields)
+        sync_leads(list(LEAD_IDS), lead_fields, date_fields, leads_schema)
         singer.write_state(STATE)
 
     # Finally we'll sync the contact lists and update the state.
