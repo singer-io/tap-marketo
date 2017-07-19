@@ -84,13 +84,14 @@ def request(endpoint, params=None):
 
 
 def check_usage():
+    max_calls = int(CONFIG['max_daily_calls'])
     data = request("v1/stats/usage.json")
     if not data.get('success'):
         raise Exception("Error occured while checking usage")
 
-    logger.info("Used {} of {} requests".format(data['result'][0]['total'], CONFIG['max_daily_calls']))
-    if data['result'][0]['total'] >= CONFIG['max_daily_calls']:
-        raise Exception("Exceeded daily quota of {} requests".format(CONFIG['max_daily_calls']))
+    logger.info("Used {} of {} requests".format(data['result'][0]['total'], max_calls))
+    if data['result'][0]['total'] >= max_calls:
+        raise Exception("Exceeded daily quota of {} requests".format(max_calls))
 
 
 def refresh_token():
