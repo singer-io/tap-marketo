@@ -29,9 +29,13 @@ CONFIG = {
 STATE = {}
 LEAD_IDS = set()
 LEAD_IDS_SYNCED = set()
+LEADS_CHANGED_IDS = [12, 13]  # new leads and changed data values
+NEW_LEADS_ID = 12
+LEADS_BATCH_SIZE = 300
 
 logger = singer.get_logger()
 session = requests.Session()
+
 
 def get_abs_path(path):
     return os.path.join(os.path.dirname(os.path.realpath(__file__)), path)
@@ -191,7 +195,7 @@ def sync_activity_types():
     return activity_type_ids
 
 
-def sync_activities(activity_type_id, lead_fields, date_fields, leads_schema):
+def sync_activities(activity_type_id, lead_fields, date_fields, leads_schema, do_leads=False):
     global LEAD_IDS, LEAD_IDS_SYNCED
 
     state_key = 'activities_{}'.format(activity_type_id)
@@ -200,7 +204,7 @@ def sync_activities(activity_type_id, lead_fields, date_fields, leads_schema):
     params = {
         'activityTypeIds': activity_type_id,
         'nextPageToken': data['nextPageToken'],
-        'batchSize': 300,
+        'batchSize': LEADS_BATCH_SIZE,
     }
 
     for row in gen_request("v1/activities.json", params=params):
@@ -208,27 +212,28 @@ def sync_activities(activity_type_id, lead_fields, date_fields, leads_schema):
         singer.write_record("activities", row)
         utils.update_state(STATE, state_key, row['activityDate'])
 
-        # Add the lead id to the set of lead ids that need synced unless
-        # already synced.
-        lead_id = row['leadId']
-        if lead_id not in LEAD_IDS and lead_id not in LEAD_IDS_SYNCED:
-            LEAD_IDS.add(lead_id)
+        if do_leads:
+            # Add the lead id to the set of lead ids that need synced unless
+            # already synced.
+            lead_id = row['leadId']
+            if lead_id not in LEAD_IDS_SYNCED:
+                LEAD_IDS.add(lead_id)
 
-        # If we have 300 or more lead ids (one page), sync those leads and mark
-        # the ids as synced. Once the leads have been synced we can update the
-        # state.
-        if len(LEAD_IDS) >= 300:
-            # Take the first 300 off the set and sync them.
-            lead_ids = list(LEAD_IDS)[:300]
-            sync_leads(lead_ids, lead_fields, date_fields, leads_schema)
+            # If we have 300 or more lead ids (one page), sync those leads and mark
+            # the ids as synced. Once the leads have been synced we can update the
+            # state.
+            if len(LEAD_IDS) >= LEADS_BATCH_SIZE:
+                # Take the first 300 off the set and sync them.
+                lead_ids = list(LEAD_IDS)[:LEADS_BATCH_SIZE]
+                sync_leads(lead_ids, lead_fields, date_fields, leads_schema)
 
-            # Remove the synced lead ids from the set to be synced and add them
-            # to the set of synced ids.
-            LEAD_IDS = LEAD_IDS.difference(lead_ids)
-            LEAD_IDS_SYNCED = LEAD_IDS_SYNCED.union(lead_ids)
+                # Remove the synced lead ids from the set to be synced and add them
+                # to the set of synced ids.
+                LEAD_IDS = LEAD_IDS.difference(lead_ids)
+                LEAD_IDS_SYNCED = LEAD_IDS_SYNCED.union(lead_ids)
 
-            # Update the state.
-            singer.write_state(STATE)
+        # Update the state.
+        singer.write_state(STATE)
 
 
 def sync_leads(lead_ids, fields, date_fields, leads_schema):
@@ -285,21 +290,28 @@ def do_sync():
     logger.info("Sycing activity types")
     activity_type_ids = sync_activity_types()
 
-    # Now we sync activities one activity type at a time. While syncing
-    # activities, we'll find leadIds that have been created or edited
-    # that also need to be synced. Since a lead might have been altered
-    # by multiple activity types, we'll collect all the leadIds into a
-    # set and sync those after.
     activity_schema = load_schema("activities")
     singer.write_schema("activities", activity_schema, ["id"])
-    for activity_type_id in activity_type_ids:
-        logger.info("Syncing activity type {}".format(activity_type_id))
-        sync_activities(activity_type_id, lead_fields, date_fields, leads_schema)
 
-    # If there are any unsynced leads, sync them now
+    # Certain activity types alter leads. These activity types return lead ids
+    # which have been added or altered. While syncing the activities, we track
+    # the ids of these leads. When we have 300 leads (max batch size), we sync
+    # the leads.
+    for activity_type_id in LEADS_CHANGED_IDS:
+        activity_type_ids.remove(activity_type_id)
+        logger.info("Syncing lead-altering activity type %d", activity_type_id)
+        sync_activities(activity_type_id, lead_fields, date_fields, leads_schema, do_leads=True)
+
+    # If there are any unsynced leads after the last mutating activity type,
+    # sync them before continuing
     if len(LEAD_IDS) > 0:
         sync_leads(list(LEAD_IDS), lead_fields, date_fields, leads_schema)
         singer.write_state(STATE)
+
+    # Sync the non-mutating activity types ignoring the lead ids.
+    for activity_type_id in activity_type_ids:
+        logger.info("Syncing activity type %d", activity_type_id)
+        sync_activities(activity_type_id, lead_fields, date_fields, leads_schema, do_leads=False)
 
     # Finally we'll sync the contact lists and update the state.
     schema = load_schema("lists")
