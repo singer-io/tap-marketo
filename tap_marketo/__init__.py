@@ -1,347 +1,473 @@
 #!/usr/bin/env python3
 
 import backoff
-import collections
 import datetime
+import json
 import os
-import time
 import sys
 
 import requests
 import singer
-from singer import utils
-from singer.transform import transform
+from singer import (
+    bookmarks,
+    metrics,
+    Transformer,
+    utils,
+)
 
 
-CONFIG = {
-    "call_count": 0,
-    "access_token": None,
-    "token_expires": None,
-
-    # in config file
-    "endpoint": None,
-    "identity": None,
-    "client_id": None,
-    "client_secret": None,
-    "max_daily_calls": 8000,
-    "start_date": None,
-}
-STATE = {}
-LEAD_IDS = set()
-LEAD_IDS_SYNCED = set()
+REQUIRED_CONFIG_KEYS = ["endpoint", "identity", "client_id", "client_secret", "start_date"]
 LEADS_CHANGED_IDS = [12, 13]  # new leads and changed data values
-NEW_LEADS_ID = 12
 LEADS_BATCH_SIZE = 300
+DEFAULT_MAX_DAILY_CALLS = 8000
 
-logger = singer.get_logger()
-session = requests.Session()
+LOGGER = singer.get_logger()
 
 
 def get_abs_path(path):
     return os.path.join(os.path.dirname(os.path.realpath(__file__)), path)
 
+
 def load_schema(entity):
     return utils.load_json(get_abs_path("schemas/{}.json".format(entity)))
 
-def get_start(entity):
-    if entity not in STATE:
-        STATE[entity] = CONFIG['start_date']
 
-    return STATE[entity]
-
-
-@utils.ratelimit(100, 20)
-@backoff.on_exception(backoff.expo,
-                      (requests.exceptions.RequestException),
-                      max_tries=5,
-                      giveup=lambda e: e.response is not None and 400 <= e.response.status_code < 500,
-                      factor=2)
-def request(endpoint, params=None):
-    if not CONFIG['token_expires'] or datetime.datetime.utcnow() >= CONFIG['token_expires']:
-        refresh_token()
-
-    CONFIG['call_count'] += 1
-    if CONFIG['call_count'] % 250 == 0:
-        check_usage()
-
-    url = CONFIG['endpoint'] + endpoint
-    params = params or {}
-    headers = {'Authorization': 'Bearer {}'.format(CONFIG['access_token'])}
-    if 'user_agent' in CONFIG:
-        headers['User-Agent'] = CONFIG['user_agent']
-
-    req = requests.Request('GET', url, params=params, headers=headers).prepare()
-    logger.info("GET {}".format(req.url))
-    resp = session.send(req)
-    if resp.status_code >= 400:
-        logger.error("GET {} [{} - {}]".format(req.url, resp.status_code, resp.content))
-        sys.exit(1)
-
-    data = resp.json()
-
-    if not data['success']:
-        reasons = ", ".join("{code}: {message}".format(**err) for err in data['errors'])
-        logger.error("API call failed. {}".format(reasons))
-        sys.exit(1)
-
-    return data
+class SyncErrorsDetected(Exception):
+    def __init__(self, errors):
+        self.errors = errors
+        errs = ["{}: {}".format(name, exc) for name, exc in errors]
+        msg = "Errors occured during sync:\n\t{}".format("\n\t".join(errs))
+        super(SyncErrorsDetected, self).__init__(msg)
 
 
-def check_usage():
-    max_calls = int(CONFIG['max_daily_calls'])
-    data = request("v1/stats/usage.json")
-    if not data.get('success'):
-        raise Exception("Error occured while checking usage")
+class Client:
+    def __init__(self, endpoint, identity, client_id, client_secret, start_date,
+                 max_daily_calls=DEFAULT_MAX_DAILY_CALLS,
+                 user_agent=None):
+        self.endpoint = endpoint
+        if not self.endpoint[-1] == "/":
+            self.endpoint += "/"
 
-    logger.info("Used {} of {} requests".format(data['result'][0]['total'], max_calls))
-    if data['result'][0]['total'] >= max_calls:
-        raise Exception("Exceeded daily quota of {} requests".format(max_calls))
+        self.identity = identity
+        if not self.identity[-1] == "/":
+            self.identity += "/"
+
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.start_date = start_date
+        self.max_daily_calls = int(max_daily_calls)
+        self.user_agent = user_agent
+
+        self._access_token = None
+        self._token_expires = None
+        self._session = requests.Session()
+
+        self.refresh_token()
+        self.update_call_count()
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
+    def get_url(self, endpoint):
+        return self.endpoint + endpoint
+
+    def get_headers(self):
+        rtn = {"Authorization": "Bearer {}".format(self._access_token)}
+        if self.user_agent:
+            rtn['User-Agent'] = self.user_agent
+        return rtn
+
+    def refresh_token(self):
+        LOGGER.info("Refreshing token...")
+        url = self.identity + "oauth/token"
+        params = {
+            "grant_type": "client_credentials",
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+        }
+
+        try:
+            resp = self._session.get(url, params=params)
+            data = resp.json()
+        except requests.exceptions.ConnectionError:
+            LOGGER.error("Connection error while refreshing token at {}." .format(url))
+            raise
+
+        if resp.status_code != 200:
+            if data.get("error") == "unauthorized":
+                raise Exception("Authorization failed. {}".format(data['error_description']))
+            else:
+                raise Exception("API returned an error. {}".format(data['error_description']))
+
+        now = datetime.datetime.utcnow()
+        LOGGER.info("Token valid until %s", now + datetime.timedelta(seconds=data['expires_in']))
+        self._access_token = data['access_token']
+        self._token_expires = now + datetime.timedelta(seconds=data['expires_in'] - 15)
+
+    def update_call_count(self):
+        LOGGER.info("Checking remaining API call count...")
+        url = self.get_url("v1/stats/usage.json")
+        headers = self.get_headers()
+        resp = self._session.get(url, headers=headers)
+        data = resp.json()
+        if not data.get('success'):
+            raise Exception("Error occured checking usage.")
+
+        self._call_count = data['result'][0]['total']
+        LOGGER.info("Used %s of %s requests.", self._call_count, self.max_daily_calls)
+
+    @utils.ratelimit(100, 20)
+    @backoff.on_exception(backoff.expo,
+                          (requests.exceptions.RequestException),
+                          max_tries=5,
+                          giveup=lambda e: e.response is not None and 400 <= e.response.status_code < 500,
+                          factor=2)
+    def request(self, method, endpoint, **kwargs):
+        if self._call_count >= self.max_daily_calls:
+            raise Exception("Exceeded daily quota of {} requests. Ending sync.".format(self.max_daily_calls))
+
+        if not self._access_token or datetime.datetime.utcnow() >= self._token_expires:
+            self.refresh_token()
+
+        self._call_count += 1
+        if self._call_count % 250 == 0:
+            self.update_call_count()
+
+        url = self.get_url(endpoint)
+        headers = self.get_headers()
+        req = requests.Request(method, url, headers=headers, **kwargs).prepare()
+        LOGGER.info("%s %s", method, req.url)
+
+        with metrics.http_request_timer(endpoint=endpoint):
+            resp = self._session.send(req)
+
+        if resp.status_code >= 400:
+            LOGGER.error("%s %s [%s %s]", method, req.url, resp.status_code, resp.content)
+
+        resp.raise_for_status()
+
+        data = resp.json()
+        if not data['success']:
+            reasons = ",".join("{code}: {message}".format(**err) for err in data['errors'])
+            raise Exception("API call failed. {}".format(reasons))
+
+        return data
+
+    def gen_request(self, method, endpoint, **kwargs):
+        params = kwargs.pop("params", {})
+        while True:
+            data = self.request(method, endpoint, params=params, **kwargs)
+            if "result" not in data:
+                break
+
+            for row in data["result"]:
+                yield row
+
+            if data.get("moreResult"):
+                params["nextPageToken"] = data["nextPageToken"]
+            else:
+                break
 
 
-def refresh_token():
-    url = CONFIG['identity'] + "oauth/token"
-    params = {
-        'grant_type': "client_credentials",
-        'client_id': CONFIG['client_id'],
-        'client_secret': CONFIG['client_secret'],
-    }
-    logger.info("Refreshing token")
+class ActivityTypeStream:
+    def __init__(self, client, state):
+        self._client = client
+        self._state = state
 
-    try:
-        resp = requests.get(url, params=params)
-    except requests.exceptions.ConnectionError:
-        logger.error("Connection error while refreshing token at {}. "
-                     "Please check the URL matches `https://123-ABC-456.mktorest.com/identity."
-                     .format(url))
-        sys.exit(1)
+    @property
+    def schema(self):
+        if not hasattr(self, "_schema"):
+            setattr(self, "_schema", load_schema("activity_types"))
+        return self._schema
 
-    data = resp.json()
+    def sync(self):
+        activity_type_ids = set()
+        with metrics.record_counter(endpoint="activity_types") as counter:
+            with Transformer() as transformer:
+                for row in self._client.gen_request("GET", "v1/activities/types.json"):
+                    transformed = transformer.transform(row, self.schema)
+                    singer.write_record("activity_types", transformed)
+                    activity_type_ids.add(transformed["id"])
+                    counter.increment()
 
-    if resp.status_code != 200 or data.get('error') == 'unauthorized':
-        logger.error("Authorization failed. {}".format(data['error_description']))
-        sys.exit(1)
-    elif 'error' in data:
-        logger.error("API returned an error. {}".format(data['error_description']))
-        sys.exit(1)
-
-    now = datetime.datetime.utcnow()
-    logger.info("Token valid until {}".format(now + datetime.timedelta(seconds=data['expires_in'])))
-    CONFIG['access_token'] = data['access_token']
-    CONFIG['token_expires'] = now + datetime.timedelta(seconds=data['expires_in'] - 15)
+        return activity_type_ids
 
 
-def gen_request(endpoint, params=None):
-    params = params or {}
-    while True:
-        data = request(endpoint, params=params)
-        if 'result' not in data:
-            break
+class LeadsStream:
+    def __init__(self, client, state):
+        self._client = client
+        self._state = state
+        self._to_sync = set()
+        self._synced = set()
+        self._counter = metrics.Counter(metrics.Metric.record_count, {metrics.Tag.endpoint: "leads"})
+        self._transformer = Transformer()
 
-        for row in data['result']:
-            yield row
-
-        if data.get('moreResult', False):
-            params['nextPageToken'] = data['nextPageToken']
+    @staticmethod
+    def datatype_to_schema(datatype):
+        if datatype in ['datetime', 'date']:
+            return {'anyOf': [{'type': 'null'}, {'type': 'string', 'format': 'date-time'}]}
+        elif datatype in ['integer', 'percent', 'score']:
+            return {'type': ['null', 'integer']}
+        elif datatype in ['float', 'currency']:
+            return {'type': ['null', 'number']}
+        elif datatype == 'boolean':
+            return {'type': ['null', 'boolean']}
+        elif datatype in ['string', 'email', 'reference', 'url', 'phone', 'textarea', 'text', 'lead_function']:
+            return {'type': ['null', 'string']}
         else:
-            break
-
-
-def datatype_to_schema(marketo_type):
-    if marketo_type in ['datetime', 'date']:
-        return {'anyOf': [{'type': 'null'}, {'type': 'string', 'format': 'date-time'}]}
-    elif marketo_type in ['integer', 'percent', 'score']:
-        return {'type': ['null', 'integer']}
-    elif marketo_type in ['float', 'currency']:
-        return {'type': ['null', 'number']}
-    elif marketo_type == 'boolean':
-        return {'type': ['null', 'boolean']}
-    elif marketo_type in ['string', 'email', 'reference', 'url', 'phone', 'textarea', 'text', 'lead_function']:
-        return {'type': ['null', 'string']}
-    else:
-        return None
-
-
-def get_leads_schema_and_date_fields():
-    data = request("v1/leads/describe.json")['result']
-
-    schema = {
-        "type": "object",
-        "properties": {},
-    }
-    date_fields = []
-    for row in data:
-        if 'rest' not in row:
-            continue
-
-        row_type = datatype_to_schema(row['dataType'])
-
-        if row_type is None:
             raise Exception("Unexpected dataType for leads field: {}".format(row))
 
-        schema['properties'][row['rest']['name']] = row_type
-        if row['dataType'] == 'date':
-            date_fields.append(row['rest']['name'])
+    def _get_schema(self):
+        data = self._client.request("GET", "v1/leads/describe.json")["result"]
+        schema = {
+            "type": "object",
+            "properties": {},
+        }
+        for row in data:
+            if "rest" not in row:
+                continue
 
-    return schema, date_fields
+            row_type = self.datatype_to_schema(row["dataType"])
+            schema["properties"][row["rest"]["name"]] = row_type
 
+        return schema
 
-def sync_activity_types():
-    activity_type_ids = set()
+    @property
+    def schema(self):
+        if not hasattr(self, "_schema"):
+            setattr(self, "_schema", self._get_schema())
+        return self._schema
 
-    for row in gen_request("v1/activities/types.json"):
-        activity_type_ids.add(row['id'])
-        singer.write_record("activity_types", row)
+    @property
+    def fields(self):
+        return list(self.schema["properties"].keys())
 
-    return activity_type_ids
+    def sync(self, lead_ids):
+        params = {
+            "filterType": "id",
+            "filterValues": ",".join(map(str, lead_ids)),
+        }
 
+        for field_group in utils.chunk(self.fields, 100):
+            params["fields"] = ",".join(field_group)
+            data = self._client.request("GET", "v1/leads.json", params=params)
 
-def sync_activities(activity_type_id, lead_fields, date_fields, leads_schema, do_leads=False):
-    global LEAD_IDS, LEAD_IDS_SYNCED
+            for row in data["result"]:
+                transformed = self._transformer.transform(row, self.schema)
+                singer.write_record("leads", transformed)
+                self._counter.increment()
 
-    state_key = 'activities_{}'.format(activity_type_id)
-    start = get_start(state_key)
-    data = request("v1/activities/pagingtoken.json", {'sinceDatetime': start})
-    params = {
-        'activityTypeIds': activity_type_id,
-        'nextPageToken': data['nextPageToken'],
-        'batchSize': LEADS_BATCH_SIZE,
-    }
+        self._to_sync = self._to_sync.difference(lead_ids)
+        self._synced = self._synced.union(lead_ids)
 
-    for row in gen_request("v1/activities.json", params=params):
-        # Stream in the activity and update the state.
-        singer.write_record("activities", row)
-        utils.update_state(STATE, state_key, row['activityDate'])
+    def add(self, lead_id):
+        if lead_id not in self._to_sync and lead_id not in self._synced:
+            self._to_sync.add(lead_id)
 
-        if do_leads:
-            # Add the lead id to the set of lead ids that need synced unless
-            # already synced.
-            lead_id = row['leadId']
-            if lead_id not in LEAD_IDS_SYNCED:
-                LEAD_IDS.add(lead_id)
+        if len(self._to_sync) >= LEADS_BATCH_SIZE:
+            self.sync(list(self._to_sync))
 
-            # If we have 300 or more lead ids (one page), sync those leads and mark
-            # the ids as synced. Once the leads have been synced we can update the
-            # state.
-            if len(LEAD_IDS) >= LEADS_BATCH_SIZE:
-                # Take the first 300 off the set and sync them.
-                lead_ids = list(LEAD_IDS)[:LEADS_BATCH_SIZE]
-                sync_leads(lead_ids, lead_fields, date_fields, leads_schema)
+    def finish(self):
+        if len(self._to_sync):
+            self.sync(list(self._to_sync))
 
-                # Remove the synced lead ids from the set to be synced and add them
-                # to the set of synced ids.
-                LEAD_IDS = LEAD_IDS.difference(lead_ids)
-                LEAD_IDS_SYNCED = LEAD_IDS_SYNCED.union(lead_ids)
-
-        # Update the state.
-        singer.write_state(STATE)
-
-
-def sync_leads(lead_ids, fields, date_fields, leads_schema):
-    logger.info("Syncing {} leads".format(len(lead_ids)))
-    params = {
-        'filterType': 'id',
-        'filterValues': ','.join(map(str, lead_ids)),
-    }
-
-    # We're going to have to get each batch multiple times to get all the
-    # custom fields so we keep a map of id to row which can be updated
-    id__row = collections.defaultdict(dict)
-
-    # Chunk the fields into groups of 100 and get 300 leads with those 100
-    # fields until the 300 leads are completed.
-    for field_group in utils.chunk(list(fields), 100):
-        params['fields'] = ','.join(field_group)
-        data = request("v1/leads.json", params=params)
-
-        for row in data['result']:
-            for date_field in date_fields:
-                if row.get(date_field) is not None:
-                    row[date_field] += "T00:00:00Z"
-
-            id__row[row['id']].update(row)
-
-    # When the group of 300 leads is completely grabbed, stream them
-    transformed_leads = [transform(lead, leads_schema) for lead in id__row.values()]
-    singer.write_records("leads", transformed_leads)
+        self._counter._pop()
+        self._transformer.log_warning()
 
 
-def sync_lists():
-    start_date = get_start("lists")
-    for row in gen_request("v1/lists.json"):
-        if row['updatedAt'] >= start_date:
-            singer.write_record("lists", row)
-            utils.update_state(STATE, "lists", row['updatedAt'])
+class ActivityStream:
+    def __init__(self, client, state, type_id, mutates=False):
+        self._client = client
+        self._state = state
+        self.type_id = type_id
+        self.mutates = mutates
+
+    @property
+    def schema(self):
+        if not hasattr(self, "_schema"):
+            setattr(self, "_schema", load_schema("activities"))
+        return self._schema
+
+    @property
+    def state_key(self):
+        return "activities_{}".format(self.type_id)
+
+    def sync(self, leads_stream):
+        start = bookmarks.get_bookmark(self._state, self.state_key, "sinceDatetime") or self._client.start_date
+        data = self._client.request("GET", "v1/activities/pagingtoken.json", params={"sinceDatetime": start})
+        params = {
+            "activityTypeIds": self.type_id,
+            "nextPageToken": data["nextPageToken"],
+            "batchSize": LEADS_BATCH_SIZE,
+        }
+
+        with metrics.record_counter(endpoint=self.state_key) as counter:
+            with Transformer() as transformer:
+                for row in self._client.gen_request("GET", "v1/activities.json", params=params):
+                    transformed = transformer.transform(row, self.schema)
+                    singer.write_record("activities", transformed)
+                    counter.increment()
+                    bookmarks.write_bookmark(self._state, self.state_key, "sinceDatetime", row["activityDate"])
+                    singer.write_state(self._state)
+
+                    if self.mutates:
+                        leads_stream.add(row["leadId"])
+
+        if self.mutates:
+            leads_stream.finish()
 
 
-def do_sync():
-    global LEAD_IDS
-    logger.info("Starting sync")
+class ListsStream:
+    def __init__(self, client, state):
+        self._client = client
+        self._state = state
 
-    # First we need to send the custom leads schema in. We stream in leads
-    # once we have 300 ids that have been updated.
-    leads_schema, date_fields = get_leads_schema_and_date_fields()
-    lead_fields = list(leads_schema['properties'].keys())
-    singer.write_schema("leads", leads_schema, ["id"])
+    @property
+    def schema(self):
+        if not hasattr(self, "_schema"):
+            setattr(self, "_schema", load_schema("lists"))
+        return self._schema
 
-    # Sync all activity types. We'll be using the activity type ids to
-    # query for activities in the next step.
-    schema = load_schema("activity_types")
-    singer.write_schema("activity_types", schema, ["id"])
-    logger.info("Sycing activity types")
-    activity_type_ids = sync_activity_types()
+    def sync(self):
+        start = bookmarks.get_bookmark(self._state, "lists", "updatedAt") or self._client.start_date
+        with metrics.record_counter(endpoint="lists") as counter:
+            with Transformer() as transformer:
+                for row in self._client.gen_request("GET", "v1/lists.json"):
+                    transformed = transformer.transform(row, self.schema)
+                    if transformed["updatedAt"] < start:
+                        continue
 
-    activity_schema = load_schema("activities")
-    singer.write_schema("activities", activity_schema, ["id"])
+                    singer.write_record("lists", transformed)
+                    counter.increment()
+                    bookmarks.write_bookmark(self._state, "lists", "updatedAt", transformed["updatedAt"])
+                    singer.write_state(self._state)
 
-    # Certain activity types alter leads. These activity types return lead ids
-    # which have been added or altered. While syncing the activities, we track
-    # the ids of these leads. When we have 300 leads (max batch size), we sync
-    # the leads.
+
+def do_sync(client, state):
+    LOGGER.info("Sync starting")
+    errors = []
+
+    leads_stream = LeadsStream(client, state)
+    singer.write_schema("leads", leads_stream.schema, ["id"])
+
+    activity_type_stream = ActivityTypeStream(client, state)
+    singer.write_schema("activity_types", activity_type_stream.schema, ["id"])
+
+    try:
+        activity_type_ids = activity_type_stream.sync()
+    except Exception as exc:
+        LOGGER.exception("An error occured while syncing activity_types")
+        errors.append(("activity_types", exc))
+
+    #write the activity schema only once
+    dummy_activity_stream = ActivityStream(client, state, 0)
+    singer.write_schema("activities", dummy_activity_stream.schema, ["id"])
+
+    # We need to reorder the list of activity type ids so that the mutating ids
+    # are first.
     for activity_type_id in LEADS_CHANGED_IDS:
         activity_type_ids.remove(activity_type_id)
-        logger.info("Syncing lead-altering activity type %d", activity_type_id)
-        sync_activities(activity_type_id, lead_fields, date_fields, leads_schema, do_leads=True)
+        activity_type_ids = [activity_type_id] + list(activity_type_ids)
 
-    # If there are any unsynced leads after the last mutating activity type,
-    # sync them before continuing
-    if len(LEAD_IDS) > 0:
-        sync_leads(list(LEAD_IDS), lead_fields, date_fields, leads_schema)
-        singer.write_state(STATE)
-
-    # Sync the non-mutating activity types ignoring the lead ids.
+    # Now we sync activity types with the leads-mutating activity types done
+    # first. If a job finished midway, the currently_syncing will be set and we
+    # can skip activities that do not match
     for activity_type_id in activity_type_ids:
-        logger.info("Syncing activity type %d", activity_type_id)
-        sync_activities(activity_type_id, lead_fields, date_fields, leads_schema, do_leads=False)
+        currently_syncing = bookmarks.get_currently_syncing(state)
+        if currently_syncing and activity_type_id != currently_syncing:
+            LOGGER.info("Skipping %d", activity_type_id)
+            continue
 
-    # Finally we'll sync the contact lists and update the state.
-    schema = load_schema("lists")
-    singer.write_schema("lists", schema, ["id"])
-    logger.info("Syncing contact lists")
-    sync_lists()
-    singer.write_state(STATE)
+        activity_stream = ActivityStream(client, state, activity_type_id, activity_type_id in LEADS_CHANGED_IDS)
+        bookmarks.set_currently_syncing(state, activity_stream.state_key)
+        try:
+            activity_stream.sync(leads_stream)
+        except Exception as exc:
+            LOGGER.exception("An error occured while syncing %s", activity_stream.state_key)
+            raise
+            errors.append((activity_stream.state_key, exc))
 
-    logger.info("Sync complete")
+        bookmarks.set_currently_syncing(state, None)
+
+    # Now we sync lists
+    lists_stream = ListsStream(client, state)
+    singer.write_schema("lists", lists_stream.schema, ["id"])
+    try:
+        lists_stream.sync()
+    except Exception as exc:
+        LOGGER.exception("An error occured while syncing lists")
+        errors.append(("lists", exc))
+
+    # If errors were detected during sync, don't exit 0 and let the user know
+    if errors:
+        raise SyncErrorsDetected(errors)
+    else:
+        LOGGER.info("Sync completed successfully")
+
+
+def do_discover(client, state):
+    LOGGER.info("Discovery starting")
+
+    schemas = []
+
+    leads_stream = LeadsStream(client, state)
+    schemas.append({
+        "stream": "leads",
+        "tap_stream_id": "leads",
+        "schema": leads_stream.schema,
+    })
+
+    activity_type_stream = ActivityTypeStream()
+    schemas.append({
+        "stream": "activity_types",
+        "tap_stream_id": "activity_types",
+        "schema": activity_type_stream.schema,
+    })
+
+    activity_stream = ActivityStream(0)
+    schemas.append({
+        "stream": "activities",
+        "tap_stream_id": "activities",
+        "schema": activity_stream.schema,
+    })
+
+    lists_stream = ListsStream()
+    schemas.append({
+        "stream": "lists",
+        "tap_stream_id": "lists",
+        "schema": lists_stream.schema,
+    })
+
+    json.dump({"streams": streams}, sys.stdout, indent=4)
+    LOGGER.info("Finished discovery")
+
+
+def convert_legacy_state_if_needed(state):
+    if "bookmarks" in state:
+        return state
+
+    new_state = {"bookmarks": {}, "currently_syncing": None}
+    for tap_stream_id, start_date in state.items():
+        new_state["bookmarks"][tap_stream_id] = {"sinceDatetime": start_date}
+
+    return new_state
 
 
 def main():
-    args = utils.parse_args(["endpoint", "identity", "client_id", "client_secret", "start_date"])
-    CONFIG.update(args.config)
+    args = singer.parse_args(REQUIRED_CONFIG_KEYS)
+    client = Client.from_config(args.config)
+    state = convert_legacy_state_if_needed(args.state)
 
-    if CONFIG['endpoint'][-1] != "/":
-        CONFIG['endpoint'] += "/"
+    LOGGER.info("start_date: %s", client.start_date)
+    LOGGER.info("identity: %s", client.identity)
+    LOGGER.info("endpoint: %s", client.endpoint)
+    LOGGER.info("STATE: %s", state)
 
-    if CONFIG['identity'][-1] != "/":
-        CONFIG['identity'] += "/"
-
-    if args.state:
-        STATE.update(args.state)
-
-    logger.info("start_date: {}".format(CONFIG['start_date']))
-    logger.info("indentity: {}".format(CONFIG['identity']))
-    logger.info("endpoint: {}".format(CONFIG['endpoint']))
-    logger.info("STATE: {}".format(STATE))
-
-    do_sync()
+    if args.discover:
+        do_discover(client, state)
+    else:
+        do_sync(client, state)
 
 
 if __name__ == '__main__':
