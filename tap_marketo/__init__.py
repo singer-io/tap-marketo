@@ -308,7 +308,7 @@ def do_sync():
 
     # If there are any unsynced leads after the last mutating activity type,
     # sync them before continuing
-    if LEAD_IDS > 0:
+    if LEAD_IDS:
         sync_leads(list(LEAD_IDS), lead_fields, date_fields, leads_schema)
         singer.write_state(STATE)
 
