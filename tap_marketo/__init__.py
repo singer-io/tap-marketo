@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
-import backoff
 import collections
 import datetime
 import os
 import time
 import sys
+
+import backoff
 
 import requests
 import singer
@@ -33,8 +34,8 @@ LEADS_CHANGED_IDS = [12, 13]  # new leads and changed data values
 NEW_LEADS_ID = 12
 LEADS_BATCH_SIZE = 300
 
-logger = singer.get_logger()
-session = requests.Session()
+LOGGER = singer.get_logger()
+SESSION = requests.Session()
 
 
 def get_abs_path(path):
@@ -54,14 +55,16 @@ def get_start(entity):
 @backoff.on_exception(backoff.expo,
                       (requests.exceptions.RequestException),
                       max_tries=5,
-                      giveup=lambda e: e.response is not None and 400 <= e.response.status_code < 500,
+                      giveup=lambda e: e.response is not None and
+                      400 <= e.response.status_code < 500,
                       factor=2)
+
 def request(endpoint, params=None):
     if not CONFIG['token_expires'] or datetime.datetime.utcnow() >= CONFIG['token_expires']:
         refresh_token()
 
     CONFIG['call_count'] += 1
-    if CONFIG['call_count'] % 250 == 0:
+    if CONFIG['call_count'] % 250 == 1:
         check_usage()
 
     url = CONFIG['endpoint'] + endpoint
@@ -71,17 +74,17 @@ def request(endpoint, params=None):
         headers['User-Agent'] = CONFIG['user_agent']
 
     req = requests.Request('GET', url, params=params, headers=headers).prepare()
-    logger.info("GET {}".format(req.url))
-    resp = session.send(req)
+    LOGGER.info("GET {}".format(req.url))
+    resp = SESSION.send(req)
     if resp.status_code >= 400:
-        logger.error("GET {} [{} - {}]".format(req.url, resp.status_code, resp.content))
+        LOGGER.error("GET {} [{} - {}]".format(req.url, resp.status_code, resp.content))
         sys.exit(1)
 
     data = resp.json()
 
     if not data['success']:
         reasons = ", ".join("{code}: {message}".format(**err) for err in data['errors'])
-        logger.error("API call failed. {}".format(reasons))
+        LOGGER.error("API call failed. {}".format(reasons))
         sys.exit(1)
 
     return data
@@ -93,7 +96,7 @@ def check_usage():
     if not data.get('success'):
         raise Exception("Error occured while checking usage")
 
-    logger.info("Used {} of {} requests".format(data['result'][0]['total'], max_calls))
+    LOGGER.info("Used {} of {} requests".format(data['result'][0]['total'], max_calls))
     if data['result'][0]['total'] >= max_calls:
         raise Exception("Exceeded daily quota of {} requests".format(max_calls))
 
@@ -105,12 +108,12 @@ def refresh_token():
         'client_id': CONFIG['client_id'],
         'client_secret': CONFIG['client_secret'],
     }
-    logger.info("Refreshing token")
+    LOGGER.info("Refreshing token")
 
     try:
         resp = requests.get(url, params=params)
     except requests.exceptions.ConnectionError:
-        logger.error("Connection error while refreshing token at {}. "
+        LOGGER.error("Connection error while refreshing token at {}. "
                      "Please check the URL matches `https://123-ABC-456.mktorest.com/identity."
                      .format(url))
         sys.exit(1)
@@ -118,14 +121,14 @@ def refresh_token():
     data = resp.json()
 
     if resp.status_code != 200 or data.get('error') == 'unauthorized':
-        logger.error("Authorization failed. {}".format(data['error_description']))
+        LOGGER.error("Authorization failed. {}".format(data['error_description']))
         sys.exit(1)
     elif 'error' in data:
-        logger.error("API returned an error. {}".format(data['error_description']))
+        LOGGER.error("API returned an error. {}".format(data['error_description']))
         sys.exit(1)
 
     now = datetime.datetime.utcnow()
-    logger.info("Token valid until {}".format(now + datetime.timedelta(seconds=data['expires_in'])))
+    LOGGER.info("Token valid until {}".format(now + datetime.timedelta(seconds=data['expires_in'])))
     CONFIG['access_token'] = data['access_token']
     CONFIG['token_expires'] = now + datetime.timedelta(seconds=data['expires_in'] - 15)
 
@@ -155,10 +158,11 @@ def datatype_to_schema(marketo_type):
         return {'type': ['null', 'number']}
     elif marketo_type == 'boolean':
         return {'type': ['null', 'boolean']}
-    elif marketo_type in ['string', 'email', 'reference', 'url', 'phone', 'textarea', 'text', 'lead_function']:
+    elif marketo_type in ['string', 'email', 'reference', 'url', 'phone', 'textarea',
+                          'text', 'lead_function']:
         return {'type': ['null', 'string']}
-    else:
-        return None
+
+    return None
 
 
 def get_leads_schema_and_date_fields():
@@ -237,7 +241,7 @@ def sync_activities(activity_type_id, lead_fields, date_fields, leads_schema, do
 
 
 def sync_leads(lead_ids, fields, date_fields, leads_schema):
-    logger.info("Syncing {} leads".format(len(lead_ids)))
+    LOGGER.info("Syncing {} leads".format(len(lead_ids)))
     params = {
         'filterType': 'id',
         'filterValues': ','.join(map(str, lead_ids)),
@@ -275,7 +279,7 @@ def sync_lists():
 
 def do_sync():
     global LEAD_IDS
-    logger.info("Starting sync")
+    LOGGER.info("Starting sync")
 
     # First we need to send the custom leads schema in. We stream in leads
     # once we have 300 ids that have been updated.
@@ -287,7 +291,7 @@ def do_sync():
     # query for activities in the next step.
     schema = load_schema("activity_types")
     singer.write_schema("activity_types", schema, ["id"])
-    logger.info("Sycing activity types")
+    LOGGER.info("Sycing activity types")
     activity_type_ids = sync_activity_types()
 
     activity_schema = load_schema("activities")
@@ -299,28 +303,28 @@ def do_sync():
     # the leads.
     for activity_type_id in LEADS_CHANGED_IDS:
         activity_type_ids.remove(activity_type_id)
-        logger.info("Syncing lead-altering activity type %d", activity_type_id)
+        LOGGER.info("Syncing lead-altering activity type %d", activity_type_id)
         sync_activities(activity_type_id, lead_fields, date_fields, leads_schema, do_leads=True)
 
     # If there are any unsynced leads after the last mutating activity type,
     # sync them before continuing
-    if len(LEAD_IDS) > 0:
+    if LEAD_IDS:
         sync_leads(list(LEAD_IDS), lead_fields, date_fields, leads_schema)
         singer.write_state(STATE)
 
     # Sync the non-mutating activity types ignoring the lead ids.
     for activity_type_id in activity_type_ids:
-        logger.info("Syncing activity type %d", activity_type_id)
+        LOGGER.info("Syncing activity type %d", activity_type_id)
         sync_activities(activity_type_id, lead_fields, date_fields, leads_schema, do_leads=False)
 
     # Finally we'll sync the contact lists and update the state.
     schema = load_schema("lists")
     singer.write_schema("lists", schema, ["id"])
-    logger.info("Syncing contact lists")
+    LOGGER.info("Syncing contact lists")
     sync_lists()
     singer.write_state(STATE)
 
-    logger.info("Sync complete")
+    LOGGER.info("Sync complete")
 
 
 def main():
@@ -336,10 +340,11 @@ def main():
     if args.state:
         STATE.update(args.state)
 
-    logger.info("start_date: {}".format(CONFIG['start_date']))
-    logger.info("indentity: {}".format(CONFIG['identity']))
-    logger.info("endpoint: {}".format(CONFIG['endpoint']))
-    logger.info("STATE: {}".format(STATE))
+    LOGGER.info("start_date: {}".format(CONFIG['start_date']))
+    LOGGER.info("indentity: {}".format(CONFIG['identity']))
+    LOGGER.info("endpoint: {}".format(CONFIG['endpoint']))
+
+    LOGGER.info("STATE: {}".format(STATE))
 
     do_sync()
 
