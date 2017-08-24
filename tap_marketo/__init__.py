@@ -56,12 +56,13 @@ def get_start(entity):
                       max_tries=5,
                       giveup=lambda e: e.response is not None and 400 <= e.response.status_code < 500,
                       factor=2)
+
 def request(endpoint, params=None):
     if not CONFIG['token_expires'] or datetime.datetime.utcnow() >= CONFIG['token_expires']:
         refresh_token()
 
     CONFIG['call_count'] += 1
-    if CONFIG['call_count'] % 250 == 0:
+    if CONFIG['call_count'] % 250 == 0 or CONFIG['call_count'] == 1:
         check_usage()
 
     url = CONFIG['endpoint'] + endpoint
