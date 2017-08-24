@@ -64,7 +64,7 @@ def request(endpoint, params=None):
         refresh_token()
 
     CONFIG['call_count'] += 1
-    if CONFIG['call_count'] % 250 == 0 or CONFIG['call_count'] == 1:
+    if CONFIG['call_count'] % 250 == 1:
         check_usage()
 
     url = CONFIG['endpoint'] + endpoint
