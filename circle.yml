@@ -1,6 +1,6 @@
 machine:
   python:
-    version: 3.4.4
+    version: 3.5.2
 
 dependencies:
   pre:
@@ -8,4 +8,4 @@ dependencies:
 
 test:
   post:
-    - pylint tap_marketo --disable missing-docstring,logging-format-interpolation,no-member,broad-except,redefined-variable-type,too-many-branches,global-statement,unsubscriptable-object,invalid-name
+    - pylint tap_marketo -d C,R
