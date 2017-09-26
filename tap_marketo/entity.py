@@ -87,6 +87,12 @@ class Entity:
         if self.replication_key and record[self.replication_key] > state.get_bookmark(self):
             state.set_bookmark(self, record[self.replication_key])
 
+    def record_is_new(self, record, state):
+        if self.replication_key:
+            return record[self.replication_key] > state.get_bookmark(self)
+        else:
+            return True
+
     def get_query(self, start):
         raise NotImplemented()
 

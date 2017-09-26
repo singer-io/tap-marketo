@@ -4,7 +4,9 @@ from singer.catalog import Catalog
 
 from tap_marketo.client import Client
 from tap_marketo.discover import discover_entities
+from tap_marketo.entity import Entity, LeadEntity, ActivityEntity
 from tap_marketo.state import State
+from tap_marketo.streamer import BulkStreamer, RestStreamer
 
 
 REQUIRED_CONFIG_KEYS = [
@@ -17,14 +19,14 @@ REQUIRED_CONFIG_KEYS = [
 
 DEFAULT_MAX_DAILY_CALLS = 8000
 
-BULK_ENTITIES = [
-    "leads",
-    "activities",
-]
-
 ENTITY_CLASS_OVERRIDES = {
     "leads": LeadEntity,
     "activities": ActivityEntity,
+}
+
+STREAMER_CLASS_OVERRIDES = {
+    "leads": BulkStreamer,
+    "activities": BulkStreamer,
 }
 
 
@@ -52,13 +54,12 @@ def do_sync(client, state, catalog, ignore_lead_activities=False):
         else:
             LOGGER.info("Syncing %s", catalog_entry.tap_stream_id)
 
-        entity = Entity.from_catalog_entry(catalog_entry)
-        if entity.name in BULK_ENTITIES:
-            Streamer = BulkStreamer
-        else:
-            Streamer = RestStreamer
+        EntityClass = ENTITY_CLASS_OVERRIDES.get(catalog_entry.tap_stream_id, Entity)
+        entity = EntityClass.from_catalog_entry(catalog_entry)
+        entity.ignore_lead_activities = ignore_lead_activities
 
-        streamer = Streamer(entity, client, state)
+        StreamerClass = STREAMER_CLASS_OVERRIDES.get(catalog_entry.tap_stream_id, RestStreamer)
+        streamer = StreamerClass(entity, client, state)
 
         state.current_stream = entity.name
         singer.write_state(state.to_dict())
@@ -94,14 +95,14 @@ def main(config, state=None, properties=None, discover=False):
 
     if discover:
         do_discover(client)
+
     elif properties:
-        state = State(
-            bookmarks=state.get("bookmarks"),
-            current_stream=state.get("current_stream"),
-            default_start_date=config["start_date"],
-        )
+        state = State.from_dict(state)
+        state.default_start_date = config["start_date"]
+
         catalog = Catalog.from_dict(properties)
         do_sync(client, state, catalog, ignore_lead_activities)
+
     else:
         raise Exception("Must have properties or run discovery")
 

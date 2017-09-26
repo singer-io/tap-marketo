@@ -4,6 +4,10 @@ class State:
         self.current_stream = current_stream
         self.default_start_date = default_start_date
 
+    @classmethod
+    def from_dict(cls, state):
+        return cls(state.get("bookmarks"), state.get("current_stream"))
+
     def to_dict(self):
         rtn = {"bookmarks": self.bookmarks}
         if self.current_stream:

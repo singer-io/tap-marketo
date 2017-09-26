@@ -84,16 +84,11 @@ class BulkStreamer:
             job.start()
             self.state.set_export_id(job.export_id)
 
-            try:
-                for row in job:
-                    yield self.entity.format_values(row)
+            for row in job:
+                record = self.entity.format_values(row)
+                if self.entity.record_is_new(record, self.state):
+                    yield record
 
-            except ExportFailed:
-                # export failed, unset export_id and raise
-                self.state.set_export_id(None)
-                raise
-
-            # export completed, unset export_id and do the next time range
             self.state.set_export_id(None)
             start_dt = singer.utils.strptime(query[self.entity.replication_key]["endsAt"])
 
@@ -109,7 +104,9 @@ class RestStreamer:
                 break
 
             for row in data["result"]:
-                yield self.entity.format_values(row)
+                record = self.entity.format_values(row)
+                if self.entity.record_is_new(record, self.state):
+                    yield record
 
             if data.get('moreResult', False):
                 params['nextPageToken'] = data['nextPageToken']
