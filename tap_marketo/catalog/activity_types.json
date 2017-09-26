@@ -1,0 +1,50 @@
+{
+  "tap_stream_id": "activity_types",
+  "stream": "activity_types",
+  "key_properties": ["id"],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "integer",
+        "inclusion": "automatic"
+      },
+      "name": {
+        "type": "string",
+        "inclusion": "available"
+      },
+      "description": {
+        "type": "string",
+        "inclusion": "available"
+      },
+      "primaryAttribute": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "dataType": {
+            "type": "string"
+          }
+        },
+        "inclusion": "available"
+      },
+      "attributes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "dataType": {
+              "type": "string"
+            }
+          }
+        },
+        "inclusion": "available"
+      }
+    }
+  }
+}
+
