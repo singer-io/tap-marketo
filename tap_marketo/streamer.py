@@ -28,11 +28,15 @@ class ExportJob:
 
     @property
     def payload(self):
-        return {
+        rtn = {
             "fields": self.fields,
             "format": "CSV",
-            "filter": self.query,
         }
+
+        if self.query:
+            rtn["filter"] = self.query
+
+        return rtn
 
     def start(self):
         data = self.client.request("POST", "bulk/v1/leads/export/create.json", json=self.payload)
@@ -71,26 +75,46 @@ class Streamer:
 
 
 class BulkStreamer:
-    def __iter__(self):
+    def _run_job(self, query, export_id):
+        job = ExportJob(self.client, self.entity.get_fields(), query, export_id)
+        job.start()
+
+        self.state.set_export_id(job.export_id)
+        singer.write_state(self.state.to_dict())
+
+        for row in job:
+            record = self.entity.format_values(row)
+            if self.entity.record_is_new(record, self.state):
+                yield record
+
+        self.state.set_export_id(None)
+        singer.write_state(self.state.to_dict())
+
+    def _iter_corona(self):
         now_dt = datetime.datetime.utcnow()
 
         start_str = self.state.get_bookmark(self.entity)
         start_dt = singer.utils.strptime(start)
 
-        export_id = self.state.get_export_id(self.entity)
         while start_dt < now_dt:
+            export_id = self.state.get_export_id(self.entity)
             query = self.entity.get_query(start_dt, self.client)
-            job = ExportJob(self.client, self.entity.get_fields(), query, export_id)
-            job.start()
-            self.state.set_export_id(job.export_id)
-
-            for row in job:
-                record = self.entity.format_values(row)
-                if self.entity.record_is_new(record, self.state):
-                    yield record
-
-            self.state.set_export_id(None)
+            self._run_job(query, export_id)
             start_dt = singer.utils.strptime(query[self.entity.replication_key]["endsAt"])
+
+    def _iter_without_corona(self):
+        export_id = self.state.get_export_id(self.entity)
+        query = None
+        self._run_job(query, export_id)
+
+    def __iter__(self):
+        if self.state.use_corona:
+            iter_method = self._iter_corona
+        else:
+            iter_method = self._iter_without_corona
+
+        for record in iter_method():
+            yield record
 
 
 class RestStreamer:

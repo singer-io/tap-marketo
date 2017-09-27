@@ -1,7 +1,8 @@
 class State:
-    def __init__(self, bookmarks=None, current_stream=None, default_start_date=None):
+    def __init__(self, bookmarks=None, current_stream=None, use_corona=True, default_start_date=None):
         self.bookmarks = bookmarks
         self.current_stream = current_stream
+        self.use_corona = use_corona
         self.default_start_date = default_start_date
 
     @classmethod
