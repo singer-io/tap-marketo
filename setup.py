@@ -3,16 +3,15 @@
 from setuptools import setup
 
 setup(name='tap-marketo',
-      version='0.4.17',
+      version='0.5.0',
       description='Singer.io tap for extracting data from the Marketo API',
       author='Stitch',
       url='http://singer.io',
       classifiers=['Programming Language :: Python :: 3 :: Only'],
       py_modules=['tap_marketo'],
       install_requires=[
-          'singer-python==1.5.2',
+          'singer-python==3.5.2',
           'requests==2.12.4',
-          'backoff==1.3.2',
       ],
       entry_points='''
           [console_scripts]
@@ -20,10 +19,11 @@ setup(name='tap-marketo',
       ''',
       packages=['tap_marketo'],
       package_data = {
-          'tap_marketo/schemas': [
+          'tap_marketo/catalog': [
               "activities.json",
               "activity_types.json",
               "lists.json",
+              "programs.json",
           ]
       },
       include_package_data=True,

@@ -1,2 +1,2 @@
 include LICENSE
-include tap_marketo/schemas/*.json
+include tap_marketo/catalog/*.json
