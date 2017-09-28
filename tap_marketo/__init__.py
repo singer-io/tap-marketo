@@ -352,8 +352,8 @@ def main():
     try:
         main_impl()
     except Exception as e:
-        LOGGER.critical(e)
-        raise e
+        LOGGER.critical(exc)
+        raise exc
 
 
 if __name__ == '__main__':
