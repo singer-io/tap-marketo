@@ -327,7 +327,7 @@ def do_sync():
     LOGGER.info("Sync complete")
 
 
-def main():
+def main_impl():
     args = utils.parse_args(["endpoint", "identity", "client_id", "client_secret", "start_date"])
     CONFIG.update(args.config)
 
@@ -347,6 +347,13 @@ def main():
     LOGGER.info("STATE: {}".format(STATE))
 
     do_sync()
+
+def main():
+    try:
+        main_impl()
+    except Exception as e:
+        LOGGER.critical(e)
+        raise(e)
 
 
 if __name__ == '__main__':
