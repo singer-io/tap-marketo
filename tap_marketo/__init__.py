@@ -351,7 +351,7 @@ def main_impl():
 def main():
     try:
         main_impl()
-    except Exception as e:
+    except Exception as exc:
         LOGGER.critical(exc)
         raise exc
 
