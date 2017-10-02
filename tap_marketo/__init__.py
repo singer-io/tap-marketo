@@ -114,8 +114,8 @@ def refresh_token():
         resp = requests.get(url, params=params)
     except requests.exceptions.ConnectionError:
         LOGGER.critical("Connection error while refreshing token at {}. "
-                     "Please check the URL matches `https://123-ABC-456.mktorest.com/identity."
-                     .format(url))
+                        "Please check the URL matches `https://123-ABC-456.mktorest.com/identity."
+                        .format(url))
         sys.exit(1)
 
     data = resp.json()
