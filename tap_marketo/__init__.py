@@ -77,14 +77,14 @@ def request(endpoint, params=None):
     LOGGER.info("GET {}".format(req.url))
     resp = SESSION.send(req)
     if resp.status_code >= 400:
-        LOGGER.error("GET {} [{} - {}]".format(req.url, resp.status_code, resp.content))
+        LOGGER.critical("GET {} [{} - {}]".format(req.url, resp.status_code, resp.content))
         sys.exit(1)
 
     data = resp.json()
 
     if not data['success']:
         reasons = ", ".join("{code}: {message}".format(**err) for err in data['errors'])
-        LOGGER.error("API call failed. {}".format(reasons))
+        LOGGER.critical("API call failed. {}".format(reasons))
         sys.exit(1)
 
     return data
@@ -113,18 +113,18 @@ def refresh_token():
     try:
         resp = requests.get(url, params=params)
     except requests.exceptions.ConnectionError:
-        LOGGER.error("Connection error while refreshing token at {}. "
-                     "Please check the URL matches `https://123-ABC-456.mktorest.com/identity."
-                     .format(url))
+        LOGGER.critical("Connection error while refreshing token at {}. "
+                        "Please check the URL matches `https://123-ABC-456.mktorest.com/identity."
+                        .format(url))
         sys.exit(1)
 
     data = resp.json()
 
     if resp.status_code != 200 or data.get('error') == 'unauthorized':
-        LOGGER.error("Authorization failed. {}".format(data['error_description']))
+        LOGGER.critical("Authorization failed. {}".format(data['error_description']))
         sys.exit(1)
     elif 'error' in data:
-        LOGGER.error("API returned an error. {}".format(data['error_description']))
+        LOGGER.critical("API returned an error. {}".format(data['error_description']))
         sys.exit(1)
 
     now = datetime.datetime.utcnow()
