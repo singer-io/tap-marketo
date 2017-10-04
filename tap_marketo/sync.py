@@ -10,12 +10,16 @@ LOGGER = singer.get_logger()
 
 MAX_EXPORT_DAYS = 30
 
-ACTIVITY_FIELDS = [
+BASE_ACTIVITY_FIELDS = [
     "marketoGUID",
     "leadId",
     "activityDate",
     "activityTypeId",
+]
+
+ACTIVITY_FIELDS = BASE_ACTIVITY_FIELDS + [
     "primaryAttributeValue",
+    "primaryAttributeValueId",
     "attributes",
 ]
 
@@ -49,9 +53,7 @@ def format_values(stream, row):
     for field, schema in stream["schema"]["properties"].items():
         if not schema.get("selected"):
             continue
-
         rtn[field] = format_value(row.get(field), schema)
-
     return rtn
 
 
@@ -60,7 +62,7 @@ def parse_csv_line(line):
     return next(reader)
 
 
-def get_primary(stream):
+def get_primary_field(stream):
     # The primary field is the only automatic field not in activity fields
     for field, schema in stream["schema"]["properties"].items():
         if schema["inclusion"] == "automatic" and field not in ACTIVITY_FIELDS:
@@ -68,24 +70,30 @@ def get_primary(stream):
 
 
 def flatten_activity(stream, row):
-    # The primary attribute needs to be moved to the named column
-    primary = get_primary(stream)
-    row[primary] = row.pop("primaryAttributeValue")
+    # Start with the base fields
+    rtn = {field: row[field] for field in BASE_ACTIVITY_FIELDS}
 
-    attrs = json.loads(row.pop("attributes"))
+    # Move the primary attribute to the named column
+    primary_field = get_primary_field(stream)
+    rtn[primary_field] = row["primaryAttributeValue"]
+    rtn[primary_field + "_id"] = row["primaryAttributeValueId"]
+
+    # Now flatten the attrs json to it's selected columns
+    attrs = json.loads(row["attributes"])
     for key, value in attrs.items():
         key = key.lower().replace(" ", "_")
-        row[key] = value
+        if stream["schema"]["properties"].get(key, {}).get("selected"):
+            rtn[key] = value
 
-    return row
+    return rtn
 
 
 def stream_leads(client, state, stream):
     fields = [f for f, s in stream["schema"]["properties"].items() if s.get("selected")]
-    export_id = state["bookmarks"][stream["tap_stream_id"]].get("export_id")
+    export_id = state["bookmarks"][stream["stream"]].get("export_id")
 
     started = pendulum.utcnow()
-    start_date = state["bookmarks"][stream["tap_stream_id"]][stream["replication_key"]]
+    start_date = state["bookmarks"][stream["stream"]][stream["replication_key"]]
     start_pen = pendulum.parse(start_date)
 
     while start_pen < started:
@@ -94,7 +102,7 @@ def stream_leads(client, state, stream):
             end_pen = started
 
         if not export_id:
-            if state.get("use_corona", True):
+            if client.use_corona:
                 query = {
                     "updatedAt": {
                         "startAt": start_pen.isoformat(),
@@ -105,7 +113,7 @@ def stream_leads(client, state, stream):
                 query = None
 
             export_id = client.create_export("leads", fields, query)
-            state["bookmarks"][stream["tap_stream_id"]]["export_id"] = export_id
+            state["bookmarks"][stream["stream"]]["export_id"] = export_id
             singer.write_state(state)
 
         client.wait_for_export("leads", export_id)
@@ -116,17 +124,17 @@ def stream_leads(client, state, stream):
             yield dict(zip(headers, parsed_line))
 
         export_id = None
-        state["bookmarks"][stream["tap_stream_id"]]["export_id"] = None
+        state["bookmarks"][stream["stream"]]["export_id"] = None
         singer.write_state(state)
         start_pen = end_pen
 
 
 def stream_activities(client, state, stream):
     _, activity_type_id = stream["stream"].split("_")
-    export_id = state["bookmarks"][stream["tap_stream_id"]].get("export_id")
+    export_id = state["bookmarks"][stream["stream"]].get("export_id")
 
     started = pendulum.utcnow()
-    start_date = state["bookmarks"][stream["tap_stream_id"]][stream["replication_key"]]
+    start_date = state["bookmarks"][stream["stream"]][stream["replication_key"]]
     start_pen = pendulum.parse(start_date)
 
     while start_pen < started:
@@ -143,7 +151,7 @@ def stream_activities(client, state, stream):
                 "activityTypeIds": [activity_type_id],
             }
             export_id = client.create_export("activities", ACTIVITY_FIELDS, query)
-            state["bookmarks"][stream["tap_stream_id"]]["export_id"] = export_id
+            state["bookmarks"][stream["stream"]]["export_id"] = export_id
             singer.write_state(state)
 
         client.wait_for_export("activities", export_id)
@@ -155,7 +163,7 @@ def stream_activities(client, state, stream):
             yield flatten_activity(stream, row)
 
         export_id = None
-        state["bookmarks"][stream["tap_stream_id"]]["export_id"] = None
+        state["bookmarks"][stream["stream"]]["export_id"] = None
         singer.write_state(state)
         start_pen = end_pen
 
@@ -180,11 +188,11 @@ def stream_programs(client, state, stream):  # pylint: disable=unused-argument
             yield row
 
 
-def stream_campaigns(client, state, stream):  # pylint: disable=unused-argument
+def stream_paginated(client, state, stream):  # pylint: disable=unused-argument
     params = {"batchSize": 300}
-    endpoint = "rest/v1/campaigns.json"
+    endpoint = "rest/v1/{}.json".format(stream["stream"])
 
-    next_page_token = state["bookmarks"]["campaigns"].get("next_page_token")
+    next_page_token = state["bookmarks"][stream["stream"]].get("next_page_token")
     if next_page_token:
         params["nextPageToken"] = next_page_token
 
@@ -196,10 +204,10 @@ def stream_campaigns(client, state, stream):  # pylint: disable=unused-argument
         if "nextPageToken" not in data:
             break
 
-        state["bookmarks"]["campaigns"]["next_page_token"] = data["nextPageToken"]
+        state["bookmarks"][stream["stream"]]["next_page_token"] = data["nextPageToken"]
         singer.write_state(state)
 
-    state["bookmarks"]["campaigns"]["next_page_token"] = None
+    state["bookmarks"][stream["stream"]]["next_page_token"] = None
     singer.write_state(state)
 
 
@@ -211,20 +219,20 @@ def stream_activity_types(client, state, stream):  # pylint: disable=unused-argu
 
 
 def sync_stream(client, state, stream, stream_func):
-    singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
-    start_date = state["bookmarks"][stream["tap_stream_id"]].get(stream["replication_key"])
-    with singer.metrics.record_counter(stream["tap_stream_id"]) as counter:
+    singer.write_schema(stream["stream"], stream["schema"], stream["key_properties"])
+    start_date = state["bookmarks"][stream["stream"]].get(stream["replication_key"])
+    with singer.metrics.record_counter(stream["stream"]) as counter:
         for row in stream_func(client, state, stream):
             record = format_values(stream, row)
             if stream.get("replication_key"):
                 replication_value = record[stream["replication_key"]]
                 if replication_value >= start_date:
-                    singer.write_record(stream["tap_stream_id"], record)
+                    singer.write_record(stream["stream"], record)
                     counter.increment()
-                    state["bookmarks"][stream["tap_stream_id"]][stream["replication_key"]] = replication_value
+                    state["bookmarks"][stream["stream"]][stream["replication_key"]] = replication_value
                     singer.write_state(state)
             else:
-                singer.write_record(stream["tap_stream_id"], record)
+                singer.write_record(stream["stream"], record)
                 counter.increment()
 
 
@@ -237,32 +245,32 @@ def sync(client, catalog, state):
 
     for stream in catalog["streams"]:
         if not stream.get("selected"):
-            LOGGER.info("%s: not selected", stream["tap_stream_id"])
+            LOGGER.info("%s: not selected", stream["stream"])
             continue
 
-        if starting_stream and stream["tap_stream_id"] != starting_stream:
-            LOGGER.info("%s: already synced", stream["tap_stream_id"])
+        if starting_stream and stream["stream"] != starting_stream:
+            LOGGER.info("%s: already synced", stream["stream"])
             continue
 
-        LOGGER.info("%s: starting sync", stream["tap_stream_id"])
+        LOGGER.info("%s: starting sync", stream["stream"])
         starting_stream = None
-        state["current_stream"] = stream["tap_stream_id"]
+        state["current_stream"] = stream["stream"]
         singer.write_state(state)
 
-        if stream["tap_stream_id"] == "leads":
+        if stream["stream"] == "leads":
             stream_func = stream_leads
-        elif stream["tap_stream_id"] == "activity_types":
+        elif stream["stream"] == "activity_types":
             stream_func = stream_activity_types
-        elif stream["tap_stream_id"].startswith("activities_"):
+        elif stream["stream"].startswith("activities_"):
             stream_func = stream_activities
-        elif stream["tap_stream_id"] == "campaigns":
-            stream_func = stream_campaigns
-        elif stream["tap_stream_id"] == "programs":
+        elif stream["stream"] in ["campaigns", "lists"]:
+            stream_func = stream_paginated
+        elif stream["stream"] == "programs":
             stream_func = stream_programs
         else:
             raise Exception("Not implemented")
 
         sync_stream(client, state, stream, stream_func)
-        LOGGER.info("%s: finished sync", stream["tap_stream_id"])
+        LOGGER.info("%s: finished sync", stream["stream"])
 
     LOGGER.info("Finished sync")
