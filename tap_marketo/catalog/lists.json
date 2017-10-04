@@ -1,0 +1,42 @@
+{
+    "tap_stream_id": "lists",
+    "stream": "lists",
+    "replication_key": "updatedAt",
+    "key_properties": ["id"],
+    "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "id": {
+                "type": "integer",
+                "inclusion": "automatic"
+            },
+            "name": {
+                "type": "string",
+                "inclusion": "automatic"
+            },
+            "createdAt": {
+                "type": "string",
+                "format": "date-time",
+                "inclusion": "automatic"
+            },
+            "updatedAt": {
+                "type": "string",
+                "format": "date-time",
+                "inclusion": "automatic"
+            },
+            "description": {
+                "type": ["string", "null"],
+                "inclusion": "available"
+            },
+            "programName": {
+                "type": ["string", "null"],
+                "inclusion": "available"
+            },
+            "workspaceName": {
+                "type": ["string", "null"],
+                "inclusion": "available"
+            }
+        }
+    }
+}
