@@ -34,15 +34,16 @@ def validate_state(config, catalog, state):
 
     for stream in catalog["streams"]:
         if not stream.get("selected"):
-            # If a stream is deselected while it's the current stream,
-            # unset the current stream.
-            if stream["tap_stream_id"] == state["current_stream"]:
+            # If a stream is deselected while it's the current stream, unset the
+            # current stream.
+            if stream["stream"] == state["current_stream"]:
                 state["current_stream"] = None
-
             continue
 
-        if stream["tap_stream_id"] not in state["bookmarks"]:
-            state["bookmarks"][stream["tap_stream_id"]] = {
+        # If there's no bookmark for a stream (new integration, newly selected,
+        # reset, etc) we need to use the default start date from the config.
+        if stream["stream"] not in state["bookmarks"] and stream.get("replication_key"):
+            state["bookmarks"][stream["stream"]] = {
                 stream["replication_key"]: config["start_date"],
             }
 

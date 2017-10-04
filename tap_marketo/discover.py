@@ -43,11 +43,11 @@ def get_activity_type_stream(activity):
 
     primary = clean_string(activity["primaryAttribute"]["name"])
     properties[primary] = get_schema_for_type(activity["primaryAttribute"]["type"], null=False)
+    properties[primary + "_id"] = get_schema_for_type("integer", null=False)
 
     for attr in activity["attributes"]:
         attr_name = clean_string(attr["name"])
         properties[attr_name] = get_schema_for_type(attr["type"], null=True)
-        properties[attr_name]["inclusion"] = "available"
 
     tap_stream_id = "activities_{}".format(activity["id"])
     return {
@@ -110,6 +110,7 @@ def discover(client):
     streams.append(discover_catalog("activity_types"))
     streams.extend(discover_activities(client))
     streams.append(discover_catalog("campaigns"))
+    streams.append(discover_catalog("lists"))
     streams.append(discover_catalog("programs"))
 
     LOGGER.info("Finished discover")
