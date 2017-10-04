@@ -42,8 +42,6 @@ def get_activity_type_stream(activity):
         "activityTypeId": {"type": "integer", "inclusion": "automatic"},
     }
 
-    LOGGER.info(activity)
-
     if "primaryAttribute" in activity:
         primary = clean_string(activity["primaryAttribute"]["name"])
         properties[primary] = get_schema_for_type(activity["primaryAttribute"]["dataType"], null=False)
@@ -52,7 +50,9 @@ def get_activity_type_stream(activity):
     if "attributes" in activity:
         for attr in activity["attributes"]:
             attr_name = clean_string(attr["name"])
-            properties[attr_name] = get_schema_for_type(attr["dataType"], null=True)
+            field_schema = get_schema_for_type(attr["dataType"], null=True)
+            if field_schema:
+                properties[attr_name] = field_schema
 
     tap_stream_id = "activities_{}".format(activity["id"])
     return {
