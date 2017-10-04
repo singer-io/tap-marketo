@@ -28,8 +28,8 @@ class ExportFailed(Exception):
 
 class Client:
     def __init__(self, domain, client_id, client_secret,
-                 max_daily_calls=8000, user_agent="Singer.io/tap-marketo"
-                 job_timeout=JOB_TIMEOUT, poll_interval=POLL_INTERVAL):
+                 max_daily_calls=8000, user_agent="Singer.io/tap-marketo",
+                 job_timeout=JOB_TIMEOUT, poll_interval=POLL_INTERVAL, **kwargs):
 
         self.domain = domain
         self.client_id = client_id
@@ -45,16 +45,6 @@ class Client:
 
         self._session = requests.Session()
         self.refresh_token()
-
-    @classmethod
-    def from_config(cls, config):
-        return cls(
-            domain=config["domain"],
-            client_id=config["client_id"],
-            client_secret=config["client_secret"],
-            max_daily_calls=config.get("max_daily_calls"),
-            user_agent=config.get("user_agent"),
-        )
 
     @property
     def use_corona(self):

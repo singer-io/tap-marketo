@@ -75,15 +75,17 @@ def flatten_activity(stream, row):
 
     # Move the primary attribute to the named column
     primary_field = get_primary_field(stream)
-    rtn[primary_field] = row["primaryAttributeValue"]
-    rtn[primary_field + "_id"] = row["primaryAttributeValueId"]
+    if primary_field:
+        rtn[primary_field] = row["primaryAttributeValue"]
+        rtn[primary_field + "_id"] = row["primaryAttributeValueId"]
 
     # Now flatten the attrs json to it's selected columns
-    attrs = json.loads(row["attributes"])
-    for key, value in attrs.items():
-        key = key.lower().replace(" ", "_")
-        if stream["schema"]["properties"].get(key, {}).get("selected"):
-            rtn[key] = value
+    if "attributes" in row:
+        attrs = json.loads(row["attributes"])
+        for key, value in attrs.items():
+            key = key.lower().replace(" ", "_")
+            if stream["schema"]["properties"].get(key, {}).get("selected"):
+                rtn[key] = value
 
     return rtn
 

@@ -50,9 +50,8 @@ def validate_state(config, catalog, state):
     return state
 
 
-def main(config, catalog, state, discover_mode=False):
-    client = Client.from_config(config)
-
+def _main(config, catalog, state, discover_mode=False):
+    client = Client(**config)
     if discover_mode:
         discover(client)
     elif catalog:
@@ -64,11 +63,15 @@ def main(config, catalog, state, discover_mode=False):
         raise Exception("Must have catalog if syncing")
 
 
-if __name__ == "__main__":
+def main():
     args = singer.utils.parse_args(REQUIRED_CONFIG_KEYS)
 
     try:
-        main(args.config, args.catalog, args.state, args.discover)
+        _main(args.config, args.catalog, args.state, args.discover)
     except Exception as e:
         LOGGER.fatal(e)
         raise e
+
+
+if __name__ == "__main__":
+    main()

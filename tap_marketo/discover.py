@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 
 import singer
 
@@ -41,13 +42,17 @@ def get_activity_type_stream(activity):
         "activityTypeId": {"type": "integer", "inclusion": "automatic"},
     }
 
-    primary = clean_string(activity["primaryAttribute"]["name"])
-    properties[primary] = get_schema_for_type(activity["primaryAttribute"]["type"], null=False)
-    properties[primary + "_id"] = get_schema_for_type("integer", null=False)
+    LOGGER.info(activity)
 
-    for attr in activity["attributes"]:
-        attr_name = clean_string(attr["name"])
-        properties[attr_name] = get_schema_for_type(attr["type"], null=True)
+    if "primaryAttribute" in activity:
+        primary = clean_string(activity["primaryAttribute"]["name"])
+        properties[primary] = get_schema_for_type(activity["primaryAttribute"]["dataType"], null=False)
+        properties[primary + "_id"] = get_schema_for_type("integer", null=False)
+
+    if "attributes" in activity:
+        for attr in activity["attributes"]:
+            attr_name = clean_string(attr["name"])
+            properties[attr_name] = get_schema_for_type(attr["dataType"], null=True)
 
     tap_stream_id = "activities_{}".format(activity["id"])
     return {
@@ -70,10 +75,14 @@ def discover_activities(client):
 
 
 def discover_leads(client):
-    data = client.request("rest/v1/leads/describe.json")
+    endpoint = "rest/v1/leads/describe.json"
+    data = client.request("GET", endpoint)
     properties = {}
-    for field in data["result"][0]["fields"]:
-        if field["name"] == "id":
+    for field in data["result"]:
+        if "rest" not in field:
+            continue
+
+        if field["rest"]["name"] == "id":
             field_schema = get_schema_for_type(field["dataType"], null=False)
         else:
             field_schema = get_schema_for_type(field["dataType"], null=True)
@@ -81,7 +90,7 @@ def discover_leads(client):
         if not field_schema:
             continue
 
-        properties[field["name"]] = field_schema
+        properties[field["rest"]["name"]] = field_schema
 
     return {
         "tap_stream_id": "leads",
@@ -112,6 +121,7 @@ def discover(client):
     streams.append(discover_catalog("campaigns"))
     streams.append(discover_catalog("lists"))
     streams.append(discover_catalog("programs"))
+    json.dump({"streams": streams}, sys.stdout, indent=2)
 
     LOGGER.info("Finished discover")
     return streams
