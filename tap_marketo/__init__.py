@@ -8,41 +8,21 @@ from tap_marketo.sync import sync
 
 REQUIRED_CONFIG_KEYS = [
     "start_date",
-    "endpoint",
-    "identity",
+
+    # Log in to Marketo
+    # Go to Admin, select Integration->Web Services
+    # Endpoint url matches https://123-ABC-456.mktorest.com/rest
+    # Domain is the 9 character alpha numeric part of the url
+    "domain",
+
+    # Log in to Marketo
+    # Go to Admin, select Integration->Launch Point
+    # Client ID and Secret can be found by clicking "View Details"
     "client_id",
     "client_secret",
 ]
 
-NO_CORONA_CODE = "1035"
-
 LOGGER = singer.get_logger()
-
-
-def corona_supported(client):
-    start_pen = pendulum.utcnow().subtract(days=1).replace(microsecond=0)
-    end_pen = start_pen.add(seconds=1)
-    payload = {
-        "format": "CSV",
-        "fields": ["id"],
-        "filter": {
-            "updatedAt": {
-                "startAt": start_pen.isoformat(),
-                "endAt": end_pen.isoformat(),
-            },
-        },
-    }
-    endpoint = client.get_bulk_endpoint("leads", "create")
-    data = client.request("POST", endpoint, json=payload)
-
-    if "errors" in data:
-        for err in data["errors"]:
-            if err["code"] == NO_CORONA_CODE:
-                return False
-
-    endpoint = client.get_bulk_endpoint("leads", "cancel", data["exportId"])
-    client.request("POST", endpoint)
-    return True
 
 
 def validate_state(config, catalog, state):
@@ -75,18 +55,9 @@ def main(config, catalog, state, discover_mode=False):
     if discover_mode:
         discover(client)
     elif catalog:
-        # singer-python's Catalog class doesn't provide much use to this tap, so we
-        # treat the catalog simply as a data structure.
         if isinstance(catalog, singer.catalog.Catalog):
             catalog = catalog.to_dict()
-
         state = validate_state(config, catalog, state)
-
-        # Corona allows us to do bulk queries for Leads using updatedAt as a filter.
-        # Clients without Corona (should only be clients with < 50,000 Leads) must
-        # do a full Leads bulk export every sync.
-        state["use_corona"] = corona_supported(client)
-
         sync(client, catalog, state)
     else:
         raise Exception("Must have catalog if syncing")

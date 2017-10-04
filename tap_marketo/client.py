@@ -5,29 +5,39 @@ import requests
 import singer
 
 
+# By default, jobs will run for 30 minutes and be polled every 3 minutes.
 JOB_TIMEOUT = 60 * 30
 POLL_INTERVAL = 60 * 3
+
+# If Corona is not supported, an error "1035" will be returned by the API.
+# http://developers.marketo.com/rest-api/bulk-extract/bulk-lead-extract/#filters
+NO_CORONA_CODE = "1035"
 
 LOGGER = singer.get_logger()
 
 
 class ApiException(Exception):
+    """Indicates an error occured communicating with the Marketo API."""
     pass
 
 
 class ExportFailed(Exception):
+    """Indicates an error occured while attempting a bulk export."""
     pass
 
 
 class Client:
     def __init__(self, domain, client_id, client_secret,
-                 max_daily_calls=8000, user_agent="Singer.io/tap-marketo"):
+                 max_daily_calls=8000, user_agent="Singer.io/tap-marketo"
+                 job_timeout=JOB_TIMEOUT, poll_interval=POLL_INTERVAL):
 
         self.domain = domain
         self.client_id = client_id
         self.client_secret = client_secret
         self.max_daily_calls = int(max_daily_calls)
         self.user_agent = user_agent
+        self.job_timeout = job_timeout
+        self.poll_interval = poll_interval
 
         self.token_expires = None
         self.access_token = None
@@ -47,6 +57,12 @@ class Client:
         )
 
     @property
+    def use_corona(self):
+        if not hasattr(self, "_use_corona"):
+            self._use_corona = self.test_corona()
+        return self._use_corona
+
+    @property
     def headers(self):
         if not self.token_expires or self.token_expires <= pendulum.utcnow():
             raise Exception("Must refresh token first")
@@ -63,10 +79,10 @@ class Client:
         endpoint = "bulk/v1/{}/export/".format(stream_name)
         if export_id is not None:
             endpoint += "{}/".format(export_id)
-
         endpoint += "{}.json".format(action)
         return endpoint
 
+    @singer.utils.backoff((requests.exceptions.RequestException), singer.utils.exception_is_4xx)
     def refresh_token(self):
         params = {
             "grant_type": "client_credentials",
@@ -83,7 +99,7 @@ class Client:
             raise ApiException("Connection error while refreshing token at %s.", url)
 
         if resp.status_code != 200:
-            resp.raise_for_status()
+            raise ApiException("Error refreshing token [%s]: %s", resp.status_code, resp.content)
 
         data = resp.json()
         if "error" in data:
@@ -99,6 +115,8 @@ class Client:
         self.token_expires = resp_time.add(seconds=data["expires_in"] - 15)
         LOGGER.info("Token valid until %s", self.token_expires)
 
+    @singer.utils.ratelimit(100, 20)
+    @singer.utils.backoff((requests.exceptions.RequestException), singer.utils.exception_is_4xx)
     def _request(self, method, url, stream=False, **kwargs):
         headers = kwargs.pop("headers", {})
         headers.update(self.headers)
@@ -107,9 +125,7 @@ class Client:
         with singer.metrics.http_request_timer(url):
             resp = self._session.send(req, stream=stream)
 
-        if resp.status_code >= 400:
-            raise ApiException(resp)
-
+        resp.raise_for_status()
         return resp
 
     def update_calls_today(self):
@@ -120,8 +136,6 @@ class Client:
         self.calls_today = int(data["result"][0]["total"])
         LOGGER.info("Used %s of %s requests", self.calls_today, self.max_daily_calls)
 
-    @singer.utils.ratelimit(100, 20)
-    @singer.utils.backoff((requests.exceptions.RequestException), singer.utils.exception_is_4xx)
     def request(self, method, url, **kwargs):
         if not self.token_expires or self.token_expires <= pendulum.utcnow():
             self.refresh_token()
@@ -171,7 +185,7 @@ class Client:
         return self.request("GET", endpoint, stream=True)
 
     def wait_for_export(self, stream_type, export_id):
-        timeout_time = pendulum.utcnow().add(seconds=JOB_TIMEOUT)
+        timeout_time = pendulum.utcnow().add(seconds=self.job_timeout)
         while pendulum.utcnow() < timeout_time:
             endpoint = self.get_bulk_endpoint(stream_type, "status", export_id)
             status = self.request("GET", endpoint)["result"][0]["status"]
@@ -185,6 +199,35 @@ class Client:
             elif status == "Complete":
                 return True
 
-            time.sleep(POLL_INTERVAL)
+            time.sleep(self.poll_interval)
 
         raise ExportFailed("Timed out")
+
+    def test_corona(self):
+        # Corona allows us to do bulk queries for Leads using updatedAt as a filter.
+        # Clients without Corona (should only be clients with < 50,000 Leads) must
+        # do a full Leads bulk export every sync.
+        LOGGER.info("Testing for Corona support")
+        start_pen = pendulum.utcnow().subtract(days=1).replace(microsecond=0)
+        end_pen = start_pen.add(seconds=1)
+        payload = {
+            "format": "CSV",
+            "fields": ["id"],
+            "filter": {
+                "updatedAt": {
+                    "startAt": start_pen.isoformat(),
+                    "endAt": end_pen.isoformat(),
+                },
+            },
+        }
+        endpoint = self.get_bulk_endpoint("leads", "create")
+        data = self.request("POST", endpoint, json=payload)
+        err_codes = set(err["code"] for err in data.get("errors", []))
+        if NO_CORONA_CODE in err_codes:
+            LOGGER.info("Corona not supported.")
+            return False
+        else:
+            LOGGER.info("Corona is supported.")
+            endpoint = self.get_bulk_endpoint("leads", "cancel", data["exportId"])
+            self.request("POST", endpoint)
+            return True
