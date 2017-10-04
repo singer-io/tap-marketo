@@ -3,6 +3,7 @@
   "stream": "campaigns",
   "replication_key": "updatedAt",
   "key_properties": ["id"],
+  "inclusion": "available",
   "schema": {
     "type": "object",
     "additionalProperties": false,
