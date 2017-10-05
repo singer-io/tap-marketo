@@ -60,7 +60,7 @@ def get_activity_type_stream(activity):
         "stream": tap_stream_id,
         "key_properties": ["marketoGUID"],
         "replication_key": "activityDate",
-        "inclusion": "available,
+        "inclusion": "available",
         "schema": {
             "type": "object",
             "additionalProperties": False,

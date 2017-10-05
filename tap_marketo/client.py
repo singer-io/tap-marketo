@@ -108,6 +108,7 @@ class Client:
     @singer.utils.ratelimit(100, 20)
     @singer.utils.backoff((requests.exceptions.RequestException), singer.utils.exception_is_4xx)
     def _request(self, method, url, stream=False, **kwargs):
+        url = self.get_url(url)
         headers = kwargs.pop("headers", {})
         headers.update(self.headers)
         req = requests.Request(method, url, headers=headers, **kwargs).prepare()
@@ -119,7 +120,7 @@ class Client:
         return resp
 
     def update_calls_today(self):
-        data = self._request("GET", self.get_url("rest/v1/stats/usage.json")).json()
+        data = self._request("GET", "rest/v1/stats/usage.json").json()
         if "result" not in data:
             raise ApiException(data)
 
@@ -137,7 +138,7 @@ class Client:
         if self.calls_today > self.max_daily_calls:
             raise ApiException("Exceeded daily quota of %s calls", self.max_daily_calls)
 
-        resp = self._request(method, self.get_url(url), **kwargs)
+        resp = self._request(method, url, **kwargs)
         if "stream" not in kwargs:
             data = resp.json()
             if not data["success"]:
@@ -151,14 +152,12 @@ class Client:
 
             return resp.iter_lines()
 
-    def create_export(self, stream_type, fields=None, query=None):
-        payload = {"format": "CSV"}
-        if fields:
-            payload["fields"] = fields
-
-        if query:
-            payload["filter"] = query
-
+    def create_export(self, stream_type, fields, query):
+        payload = {
+            "format": "CSV",
+            "fields": fields,
+            "filter": query,
+        }
         endpoint = self.get_bulk_endpoint(stream_type, "create")
         return self.request("POST", endpoint, json=payload)["result"][0]["exportId"]
 
@@ -181,12 +180,12 @@ class Client:
             status = self.request("GET", endpoint)["result"][0]["status"]
 
             if status == "Created":
-                self.request("POST", self.get_bulk_endpoint("activities", "enqueue", export_id))
+                self.enqueue_export(stream_type, export_id)
 
             elif status in ["Cancelled", "Failed"]:
                 raise ExportFailed(status)
 
-            elif status == "Complete":
+            elif status == "Completed":
                 return True
 
             time.sleep(self.poll_interval)
@@ -211,7 +210,7 @@ class Client:
             },
         }
         endpoint = self.get_bulk_endpoint("leads", "create")
-        data = self.request("POST", endpoint, json=payload)
+        data = self._request("POST", endpoint, json=payload).json()
         err_codes = set(err["code"] for err in data.get("errors", []))
         if NO_CORONA_CODE in err_codes:
             LOGGER.info("Corona not supported.")

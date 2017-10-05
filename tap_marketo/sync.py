@@ -34,7 +34,7 @@ def format_value(value, schema):
 
     if value in [None, ""]:
         return None
-    elif schema.format == "date-time":
+    elif schema.get("format") == "date-time":
         return pendulum.parse(value).isoformat()
     elif "integer" in field_type:
         return int(value)
@@ -105,14 +105,12 @@ def stream_leads(client, state, stream):
 
         if not export_id:
             if client.use_corona:
-                query = {
-                    "updatedAt": {
-                        "startAt": start_pen.isoformat(),
-                        "endAt": end_pen.isoformat(),
-                    },
-                }
+                query_field = "updatedAt"
             else:
-                query = None
+                query_field = "createdAt"
+
+            query = {query_field: {"startAt": start_pen.isoformat(),
+                                   "endAt": end_pen.isoformat()}}
 
             export_id = client.create_export("leads", fields, query)
             state["bookmarks"][stream["stream"]]["export_id"] = export_id
@@ -189,6 +187,8 @@ def stream_programs(client, state, stream):  # pylint: disable=unused-argument
         for row in data["result"]:
             yield row
 
+        params["offset"] += params["maxReturn"]
+
 
 def stream_paginated(client, state, stream):  # pylint: disable=unused-argument
     params = {"batchSize": 300}
@@ -246,7 +246,7 @@ def sync(client, catalog, state):
         LOGGER.info("Starting sync")
 
     for stream in catalog["streams"]:
-        if not stream.get("selected"):
+        if not stream["schema"].get("selected"):
             LOGGER.info("%s: not selected", stream["stream"])
             continue
 

@@ -33,7 +33,7 @@ def validate_state(config, catalog, state):
         state["bookmarks"] = {}
 
     for stream in catalog["streams"]:
-        if not stream.get("selected"):
+        if not stream["schema"].get("selected"):
             # If a stream is deselected while it's the current stream, unset the
             # current stream.
             if stream["stream"] == state["current_stream"]:
