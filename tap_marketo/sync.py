@@ -91,17 +91,19 @@ def flatten_activity(stream, row):
 
 
 def stream_leads(client, state, stream):
+    
     fields = [f for f, s in stream["schema"]["properties"].items() if s.get("selected")]
-    export_id = state["bookmarks"][stream["stream"]].get("export_id")
+    export_id = state.get("leads_export_id")
 
-    started = pendulum.utcnow()
-    start_date = state["bookmarks"][stream["stream"]][stream["replication_key"]]
-    start_pen = pendulum.parse(start_date)
+    tap_job_start_time = pendulum.utcnow()
+    bookmark_date = state["bookmarks"]["leads"]
 
-    while start_pen < started:
-        end_pen = start_pen.add(days=MAX_EXPORT_DAYS)
-        if end_pen > started:
-            end_pen = started
+    bookmark_date = pendulum.parse(bookmark_date)
+
+    while bookmark_date < tap_job_start_time:
+        end_date = bookmark_date.add(days=MAX_EXPORT_DAYS)
+        if end_date > tap_job_start_time:
+            end_date = job_start_time
 
         if not export_id:
             if client.use_corona:
@@ -109,13 +111,18 @@ def stream_leads(client, state, stream):
             else:
                 query_field = "createdAt"
 
-            query = {query_field: {"startAt": start_pen.isoformat(),
-                                   "endAt": end_pen.isoformat()}}
+            query = {query_field: {"startAt": bookmark_date.isoformat(),
+                                   "endAt": end_date.isoformat()}}
 
             export_id = client.create_export("leads", fields, query)
-            state["bookmarks"][stream["stream"]]["export_id"] = export_id
+
+            state["leads_export_id"] = export_id
             singer.write_state(state)
 
+        ## full-table from Marketo (heavier use of export quota but still
+        ## within limits if they don't run more than once a day) but
+        ## filtered in-memory to reduce row count
+        ## handle failure case here.  Shrink export window?
         client.wait_for_export("leads", export_id)
         lines = client.stream_export("leads", export_id)
         headers = parse_csv_line(next(lines))
@@ -123,12 +130,12 @@ def stream_leads(client, state, stream):
             parsed_line = parse_csv_line(line)
             yield dict(zip(headers, parsed_line))
 
-        export_id = None
-        state["bookmarks"][stream["stream"]]["export_id"] = None
+        state["leads_export_id"] = None
+        if client.use_corona:
+          state["bookmarks"]["leads"] = end_date
         singer.write_state(state)
-        start_pen = end_pen
-
-
+        bookmark_date = end_date
+        
 def stream_activities(client, state, stream):
     _, activity_type_id = stream["stream"].split("_")
     export_id = state["bookmarks"][stream["stream"]].get("export_id")
@@ -222,7 +229,7 @@ def stream_activity_types(client, state, stream):  # pylint: disable=unused-argu
 
 def sync_stream(client, state, stream, stream_func):
     singer.write_schema(stream["stream"], stream["schema"], stream["key_properties"])
-    start_date = state["bookmarks"][stream["stream"]].get(stream["replication_key"])
+    start_date = state["bookmarks"][stream["stream"]]
     with singer.metrics.record_counter(stream["stream"]) as counter:
         for row in stream_func(client, state, stream):
             record = format_values(stream, row)
@@ -231,7 +238,7 @@ def sync_stream(client, state, stream, stream_func):
                 if replication_value >= start_date:
                     singer.write_record(stream["stream"], record)
                     counter.increment()
-                    state["bookmarks"][stream["stream"]][stream["replication_key"]] = replication_value
+                    state["bookmarks"][stream["stream"]] = replication_value
                     singer.write_state(state)
             else:
                 singer.write_record(stream["stream"], record)

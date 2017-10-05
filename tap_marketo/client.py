@@ -156,8 +156,9 @@ class Client:
         payload = {
             "format": "CSV",
             "fields": fields,
-            "filter": query,
+            "filter": query
         }
+        
         endpoint = self.get_bulk_endpoint(stream_type, "create")
         return self.request("POST", endpoint, json=payload)["result"][0]["exportId"]
 

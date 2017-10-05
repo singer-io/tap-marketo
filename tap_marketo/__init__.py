@@ -43,9 +43,7 @@ def validate_state(config, catalog, state):
         # If there's no bookmark for a stream (new integration, newly selected,
         # reset, etc) we need to use the default start date from the config.
         if stream["stream"] not in state["bookmarks"] and stream.get("replication_key"):
-            state["bookmarks"][stream["stream"]] = {
-                stream["replication_key"]: config["start_date"],
-            }
+            state["bookmarks"][stream["stream"]] = config["start_date"]
 
     return state
 
@@ -64,10 +62,11 @@ def _main(config, catalog, state, discover_mode=False):
 
 
 def main():
+    #TODO add Mike's logging exception logic
     args = singer.utils.parse_args(REQUIRED_CONFIG_KEYS)
 
     try:
-        _main(args.config, args.catalog, args.state, args.discover)
+        _main(args.config, args.properties, args.state, args.discover)
     except Exception as e:
         LOGGER.fatal(e)
         raise e
