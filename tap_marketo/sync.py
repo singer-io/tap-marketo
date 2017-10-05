@@ -89,7 +89,96 @@ def flatten_activity(stream, row):
 
     return rtn
 
+class Stream(object):
+    def __init__(self, tap_stream_id, pk_fields):
+        self.tap_stream_id=tap_stream_id
+        self.pk_fields = pk_fields
+        
+class Leads(Stream):
+    def __init__(self, **kwargs):
+        super().__init__(self, **kwargs)
+        self.use_corona = ctx.client.test_corona
+        
+        self.fields = [f for f, s in stream["schema"]["properties"].items() if s.get("selected")]
+        self.export_id = state.get("leads_export_id")
 
+        self.og_bookmark_value = pendulum.parse(state["bookmarks"]["leads"])
+        self.attempts = 0
+        self.tap_job_start_time = pendulum.utcnow()
+        self.bookmark_date = self.og_bookmark_value
+        if self.use_corona:
+            self.query_field = "updatedAt"
+        else:
+            self.query_field = "createdAt"
+
+    def schedule_or_resume_export_job(self, end_date):
+        if not self.export_id:                
+            query = {query_field: {"startAt": self.bookmark_date.isoformat(),
+                                   "endAt": end_date.isoformat()}}
+                        
+            self.export_id = client.create_export("leads", fields, query)
+                
+            state["leads_export_id"] = self.export_id
+            singer.write_state(state)
+
+    def calculate_end_date(self, days_to_add=MAX_EXPORT_DAYS):
+        end_date = self.bookmark_date.add(days=days_to_add)
+        if end_date > self.tap_job_start_time:
+            end_date = job_start_time
+            
+    def sync(self, ctx):
+        while self.bookmark_date < self.tap_job_start_time:
+            if self.attempts > 4:
+                #fail the job
+            
+            end_date = self.calculate_end_date(MAX_EXPORT_DAYS)
+            if end_date > self.tap_job_start_time:
+                end_date = job_start_time
+                
+            self.schedule_or_resume_export_job(self, end_date)
+
+            try:
+                client.wait_for_export("leads", self.export_id)
+            except ExportFailed as ex:
+                if ex.message() == "Timed out":
+                    #halve query window and try again
+
+                    self.attempts += 1
+                    end_date = calculate_end_date(self, 15)
+                    self.export_id = None
+                    self.schedule_or_resume_export_job(end_date)
+                else:
+                    #fail the job
+                        
+            lines = client.stream_export("leads", self.export_id)
+            headers = parse_csv_line(next(lines))
+
+            self.write_records(lines, headers)
+            
+            state["leads_export_id"] = None
+
+            if self.use_corona:
+                state["bookmarks"]["leads"] = end_date
+            singer.write_state(state)
+            self.bookmark_date = end_date
+
+        state["bookmarks"]["leads"] = self.tap_job_start_time
+        singer.write_state(state)
+
+
+    def write_records(self, lines, headers):
+        if self.use_corona:
+            for line in lines:
+                parsed_line = parse_csv_line(line)
+                yield dict(zip(headers, parsed_line)) #fix
+        else:
+            for line in lines:
+                parsed_line = parse_csv_line(line)
+
+                ##fix                
+                if parsed_line["updatedAt"] > self.og_bookmark_value:
+                    singer.write_record(self.tap_stream_id, dict(zip(headers, parsed_line)))
+        
 def stream_leads(client, state, stream):
     
     fields = [f for f, s in stream["schema"]["properties"].items() if s.get("selected")]
@@ -283,3 +372,8 @@ def sync(client, catalog, state):
         LOGGER.info("%s: finished sync", stream["stream"])
 
     LOGGER.info("Finished sync")
+
+
+streams_as_objects = [
+    Leads("leads", ["updatedAt"])
+]
