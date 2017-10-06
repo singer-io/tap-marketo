@@ -1,10 +1,10 @@
 import csv
 import io
 import json
-
 import pendulum
 import singer
 
+from singer import bookmarks
 
 LOGGER = singer.get_logger()
 
@@ -89,46 +89,87 @@ def flatten_activity(stream, row):
 
     return rtn
 
-
-def stream_leads(client, state, stream):
-    fields = [f for f, s in stream["schema"]["properties"].items() if s.get("selected")]
-    export_id = state["bookmarks"][stream["stream"]].get("export_id")
-
-    started = pendulum.utcnow()
-    start_date = state["bookmarks"][stream["stream"]][stream["replication_key"]]
-    start_pen = pendulum.parse(start_date)
-
-    while start_pen < started:
-        end_pen = start_pen.add(days=MAX_EXPORT_DAYS)
-        if end_pen > started:
-            end_pen = started
-
-        if not export_id:
-            if client.use_corona:
-                query_field = "updatedAt"
-            else:
-                query_field = "createdAt"
-
-            query = {query_field: {"startAt": start_pen.isoformat(),
-                                   "endAt": end_pen.isoformat()}}
-
-            export_id = client.create_export("leads", fields, query)
-            state["bookmarks"][stream["stream"]]["export_id"] = export_id
-            singer.write_state(state)
-
-        client.wait_for_export("leads", export_id)
-        lines = client.stream_export("leads", export_id)
-        headers = parse_csv_line(next(lines))
+def write_records(tap_stream_id, og_bookmark_value, lines, headers):
+    if self.use_corona:
         for line in lines:
             parsed_line = parse_csv_line(line)
-            yield dict(zip(headers, parsed_line))
+            singer.write_record(tap_stream_id, dict(zip(headers, parsed_line)))            
 
-        export_id = None
-        state["bookmarks"][stream["stream"]]["export_id"] = None
+    else:
+        for line in lines:
+            parsed_line = parse_csv_line(line)
+
+            if parsed_line["updatedAt"] > og_bookmark_value:
+                singer.write_record(tap_stream_id, dict(zip(headers, parsed_line)))
+
+
+def schedule_or_resume_export_job(state, tap_stream_id, export_id, export_end_date, bookmark_date, query_field, client, fields):
+    if export_id is None:                
+        query = {query_field: {"startAt": bookmark_date.isoformat(),
+                               "endAt": export_end_date.isoformat()}}                        
+        export_id = client.create_export("leads", fields, query)
+    else:
+        export_end_date = bookmarks.get_bookmark(state, tap_stream_id, "export_end_date")
+
+    bookmarks.write_bookmark(state, tap_stream_id, "export_id", export_id)
+    bookmarks.write_bookmark(state, tap_stream_id, "export_end_date", str(export_end_date))
+        
+    singer.write_state(state)
+    return export_end_date, export_id
+                    
+def stream_leads(client, state, stream):
+    use_corona = client.test_corona()
+
+    replication_key = stream.get("replication_key")
+    tap_stream_id = stream.get("tap_stream_id")
+    fields = [f for f, s in stream["schema"]["properties"].items() if s.get("selected")]
+    export_id = bookmarks.get_bookmark(state, tap_stream_id, "export_id")
+
+    og_bookmark_value = pendulum.parse(bookmarks.get_bookmark(state, tap_stream_id, replication_key))
+                                       
+    tap_job_start_time = pendulum.utcnow()
+    bookmark_date = og_bookmark_value
+    if use_corona:
+        query_field = "updatedAt"
+    else:
+        query_field = "createdAt"
+
+
+    while bookmark_date < tap_job_start_time:
+        export_end_date = bookmark_date.add(days=MAX_EXPORT_DAYS)
+        if export_end_date > tap_job_start_time:
+            export_end_date = tap_job_start_time
+
+        export_end_date, export_id = schedule_or_resume_export_job(state, tap_stream_id, export_id, export_end_date, bookmark_date, query_field, client, fields) 
+            
+        try:
+            client.wait_for_export("leads", export_id)
+        except ExportFailed as ex:
+            if ex.message() == "Timed out":
+                ##
+                LOGGER.critical("Export job " + export_id +" timed out")
+
+            else:
+                LOGGER.critical("Export job " + export_id + "failed")
+                ##fail the job
+                        
+        lines = client.stream_export("leads", export_id)
+        headers = parse_csv_line(next(lines))
+
+        write_records(tap_stream_id, og_bookmakr_value, lines, headers)
+            
+        bookmarks.write_bookmark(state, tap_stream_id, "export_id", None)
+        bookmarks.write_bookmark(state, tap_stream_id, "export_end_date", None)
+                                          
+        if use_corona:
+            bookmarks.write_bookmark(state, tap_stream_id, replication_key, export_end_date)
         singer.write_state(state)
-        start_pen = end_pen
+        bookmark_date = export_end_date
 
-
+    bookmarks.write_bookmark(state, tap_stream_id, replication_key, tap_job_start_time)
+    singer.write_state(state)
+    
+        
 def stream_activities(client, state, stream):
     _, activity_type_id = stream["stream"].split("_")
     export_id = state["bookmarks"][stream["stream"]].get("export_id")
@@ -231,7 +272,7 @@ def sync_stream(client, state, stream, stream_func):
                 if replication_value >= start_date:
                     singer.write_record(stream["stream"], record)
                     counter.increment()
-                    state["bookmarks"][stream["stream"]][stream["replication_key"]] = replication_value
+                    start_date = state["bookmarks"][stream["stream"]].get(stream["replication_key"])
                     singer.write_state(state)
             else:
                 singer.write_record(stream["stream"], record)
@@ -272,7 +313,11 @@ def sync(client, catalog, state):
         else:
             raise Exception("Not implemented")
 
-        sync_stream(client, state, stream, stream_func)
+        with singer.metrics.record_counter(stream["stream"]) as counter:
+            record_count = stream_func(client, state, stream)
+            counter.increment(record_count)
+
+            
         LOGGER.info("%s: finished sync", stream["stream"])
 
     LOGGER.info("Finished sync")
