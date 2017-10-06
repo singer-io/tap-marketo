@@ -2,10 +2,10 @@
   "tap_stream_id": "activity_types",
   "stream": "activity_types",
   "key_properties": ["id"],
-  "inclusion": "automatic",
   "schema": {
     "type": "object",
     "additionalProperties": false,
+    "inclusion": "automatic",
     "properties": {
       "id": {
         "type": "integer",

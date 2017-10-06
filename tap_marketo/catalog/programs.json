@@ -3,10 +3,10 @@
   "stream": "programs",
   "key_properties": ["id"],
   "replication_key": "updatedAt",
-  "inclusion": "available",
   "schema": {
     "type": "object",
     "additionalProperties": false,
+    "inclusion": "available",
     "properties": {
       "id": {
         "type": "integer",
