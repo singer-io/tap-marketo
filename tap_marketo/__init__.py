@@ -61,13 +61,12 @@ def _main(config, catalog, state, discover_mode=False):
 
 
 def main():
-    #TODO add Mike's logging exception logic
     args = singer.utils.parse_args(REQUIRED_CONFIG_KEYS)
 
     try:
         _main(args.config, args.properties, args.state, args.discover)
     except Exception as e:
-        LOGGER.fatal(e)
+        LOGGER.critical(e)
         raise e
 
 

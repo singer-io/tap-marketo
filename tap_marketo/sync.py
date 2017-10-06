@@ -103,19 +103,19 @@ def write_records(tap_stream_id, og_bookmark_value, lines, headers):
                 singer.write_record(tap_stream_id, dict(zip(headers, parsed_line)))
 
 
-def schedule_or_resume_export_job(state, tap_stream_id, export_id, end_date, bookmark_date, query_field, client, fields):
+def schedule_or_resume_export_job(state, tap_stream_id, export_id, export_end_date, bookmark_date, query_field, client, fields):
     if export_id is None:                
         query = {query_field: {"startAt": bookmark_date.isoformat(),
-                               "endAt": end_date.isoformat()}}                        
+                               "endAt": export_end_date.isoformat()}}                        
         export_id = client.create_export("leads", fields, query)
     else:
-        end_date = bookmarks.get_bookmark(state, tap_stream_id, "export_end_date")
+        export_end_date = bookmarks.get_bookmark(state, tap_stream_id, "export_end_date")
 
     bookmarks.write_bookmark(state, tap_stream_id, "export_id", export_id)
-    bookmarks.write_bookmark(state, tap_stream_id, "export_end_date", str(end_date))
+    bookmarks.write_bookmark(state, tap_stream_id, "export_end_date", str(export_end_date))
         
     singer.write_state(state)
-    return end_date, export_id
+    return export_end_date, export_id
                     
 def stream_leads(client, state, stream):
     use_corona = client.test_corona()
@@ -136,21 +136,21 @@ def stream_leads(client, state, stream):
 
 
     while bookmark_date < tap_job_start_time:
-        end_date = bookmark_date.add(days=MAX_EXPORT_DAYS)
-        if end_date > tap_job_start_time:
-            end_date = tap_job_start_time
+        export_end_date = bookmark_date.add(days=MAX_EXPORT_DAYS)
+        if export_end_date > tap_job_start_time:
+            export_end_date = tap_job_start_time
 
-        end_date, export_id = schedule_or_resume_export_job(state, tap_stream_id, export_id, end_date, bookmark_date, query_field, client, fields) 
+        export_end_date, export_id = schedule_or_resume_export_job(state, tap_stream_id, export_id, export_end_date, bookmark_date, query_field, client, fields) 
             
         try:
             client.wait_for_export("leads", export_id)
         except ExportFailed as ex:
             if ex.message() == "Timed out":
                 ##
-                LOGGER.critical("error")
+                LOGGER.critical("Export job " + export_id +" timed out")
 
             else:
-                LOGGER.critical("error")
+                LOGGER.critical("Export job " + export_id + "failed")
                 ##fail the job
                         
         lines = client.stream_export("leads", export_id)
@@ -162,9 +162,9 @@ def stream_leads(client, state, stream):
         bookmarks.write_bookmark(state, tap_stream_id, "export_end_date", None)
                                           
         if use_corona:
-            bookmarks.write_bookmark(state, tap_stream_id, replication_key, end_date)
+            bookmarks.write_bookmark(state, tap_stream_id, replication_key, export_end_date)
         singer.write_state(state)
-        bookmark_date = end_date
+        bookmark_date = export_end_date
 
     bookmarks.write_bookmark(state, tap_stream_id, replication_key, tap_job_start_time)
     singer.write_state(state)
@@ -263,7 +263,7 @@ def stream_activity_types(client, state, stream):  # pylint: disable=unused-argu
 
 def sync_stream(client, state, stream, stream_func):
     singer.write_schema(stream["stream"], stream["schema"], stream["key_properties"])
-    start_date = state["bookmarks"][stream["stream"]]
+    start_date = state["bookmarks"][stream["stream"]].get(stream["replication_key"])
     with singer.metrics.record_counter(stream["stream"]) as counter:
         for row in stream_func(client, state, stream):
             record = format_values(stream, row)
@@ -272,7 +272,7 @@ def sync_stream(client, state, stream, stream_func):
                 if replication_value >= start_date:
                     singer.write_record(stream["stream"], record)
                     counter.increment()
-                    state["bookmarks"][stream["stream"]] = replication_value
+                    start_date = state["bookmarks"][stream["stream"]].get(stream["replication_key"])
                     singer.write_state(state)
             else:
                 singer.write_record(stream["stream"], record)
