@@ -212,8 +212,9 @@ def stream_activities(client, state, stream):
             if record["createdAt"] >= start_date:
                 record_count += 1
                 singer.write_record(stream["stream"], record)
-                state["bookmarks"][stream["stream"]]["createdAt"] = record["createdAt"]
-                singer.write_state(state)
+                if record["createdAt"] >= state["bookmarks"][stream["stream"]]["createdAt"]:
+                    state["bookmarks"][stream["stream"]]["createdAt"] = record["createdAt"]
+                    singer.write_state(state)
 
         export_id = None
         state["bookmarks"][stream["stream"]]["export_id"] = None
@@ -224,7 +225,7 @@ def stream_activities(client, state, stream):
     return record_count
 
 
-def stream_programs(client, state, stream):  # pylint: disable=unused-argument
+def stream_programs(client, state, stream):
     start_date = state["bookmarks"]["programs"]["updatedAt"]
     end_date = pendulum.utcnow().isoformat()
     params = {
@@ -246,15 +247,16 @@ def stream_programs(client, state, stream):  # pylint: disable=unused-argument
             if record["updatedAt"] >= start_date:
                 record_count += 1
                 singer.write_record("programs", record)
-                state["bookmarks"]["programs"]["updatedAt"] = record["updatedAt"]
-                singer.write_state(state)
+                if record["updatedAt"] >= state["bookmarks"]["programs"]["updatedAt"]:
+                    state["bookmarks"]["programs"]["updatedAt"] = record["updatedAt"]
+                    singer.write_state(state)
 
         params["offset"] += params["maxReturn"]
 
     return record_count
 
 
-def stream_paginated(client, state, stream):  # pylint: disable=unused-argument
+def stream_paginated(client, state, stream):
     start_date = state["bookmarks"][stream["stream"]][stream["replication_key"]]
 
     params = {"batchSize": 300}
@@ -271,8 +273,9 @@ def stream_paginated(client, state, stream):  # pylint: disable=unused-argument
             if record[stream["replication_key"]] >= start_date:
                 record_count += 1
                 singer.write_record(stream["stream"], record)
-                state["bookmarks"][stream["stream"]][stream["replication_key"]] = record[stream["replication_key"]]
-                singer.write_state(state)
+                if record[stream["replication_key"]] >= state["bookmarks"][stream["stream"]][stream["replication_key"]]:
+                    state["bookmarks"][stream["stream"]][stream["replication_key"]] = record[stream["replication_key"]]
+                    singer.write_state(state)
 
         if "nextPageToken" not in data:
             break
