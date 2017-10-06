@@ -25,7 +25,6 @@ class ExportFailed(Exception):
     """Indicates an error occured while attempting a bulk export."""
     pass
 
-
 class Client:
     def __init__(self, domain, client_id, client_secret,
                  max_daily_calls=8000, user_agent="Singer.io/tap-marketo",
@@ -160,6 +159,7 @@ class Client:
         }
         
         endpoint = self.get_bulk_endpoint(stream_type, "create")
+        LOGGER.info('Scheduling export job with query %s' + str(query))
         return self.request("POST", endpoint, json=payload)["result"][0]["exportId"]
 
     def enqueue_export(self, stream_type, export_id):
