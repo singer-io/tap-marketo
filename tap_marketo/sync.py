@@ -183,18 +183,19 @@ def stream_leads(client, state, stream):
 
 def sync_activities(client, state, stream):
     _, activity_type_id = stream["stream"].split("_")
-    start_date = get_bookmark(state, stream["stream"], "createdAt")
+    start_date = get_bookmark(state, stream["stream"], stream["replication_key"])
     export_id = get_bookmark(state, stream["stream"], "export_id")
 
     start_pen = pendulum.parse(start_date)
 
-    started = pendulum.utcnow()
+    job_started = pendulum.utcnow()
+    job_started = pendulum.datetime(2016, 3, 31)
     record_count = 0
-    while start_pen < started:
+    while start_pen < job_started:
         if not export_id:
             end_pen = start_pen.add(days=MAX_EXPORT_DAYS)
-            if end_pen > started:
-                end_pen = started
+            if end_pen > job_started:
+                end_pen = job_started
 
             query = {
                 "createdAt": {
@@ -220,11 +221,11 @@ def sync_activities(client, state, stream):
             row = dict(zip(headers, parsed_line))
             row = flatten_activity(row, stream["schema"])
             record = format_values(stream, row)
-            if record["createdAt"] >= start_date:
+            if record[stream["replication_key"]] >= start_date:
                 record_count += 1
                 singer.write_record(stream["stream"], record)
-                if record["activityDate"] >= get_bookmark(state, stream["stream"], "createdAt"):
-                    state = write_bookmark(state, stream["stream"], "createdAt", record["activityDate"])
+                if record[stream["replication_key"]] >= get_bookmark(state, stream["stream"], stream["replication_key"]):
+                    state = write_bookmark(state, stream["stream"], stream["replication_key"], record[stream["replication_key"]])
                     singer.write_state(state)
 
         export_id = None
@@ -310,6 +311,8 @@ def sync_activity_types(client, state, stream):
         record_count += 1
         singer.write_record("activity_types", record)
 
+    return state, record_count
+
 
 def sync_stream(client, state, stream, stream_func):
     singer.write_schema(stream["stream"], stream["schema"], stream["key_properties"])
@@ -363,9 +366,9 @@ def sync(client, catalog, state):
         else:
             raise Exception("Not implemented")
 
-        with singer.metrics.record_counter(stream["stream"]) as counter:
-            state, record_count = sync_func(client, state, stream)
-            counter.increment(record_count)
+        state, record_count = sync_func(client, state, stream)
+        counter = singer.metrics.record_counter(stream["stream"])
+        counter.increment(record_count)
 
         state = set_currently_syncing(state, None)
         singer.write_state(state)

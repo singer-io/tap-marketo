@@ -39,7 +39,7 @@ def validate_state(config, catalog, state):
         # reset, etc) we need to use the default start date from the config.
         if bookmarks.get_bookmark(state, stream["tap_stream_id"], \
                                   stream.get("replication_key")) is None:
-            
+
             state = bookmarks.write_bookmark(state, stream["tap_stream_id"], \
                                      stream.get("replication_key"), config["start_date"])
 
@@ -64,7 +64,7 @@ def main():
     args = singer.utils.parse_args(REQUIRED_CONFIG_KEYS)
 
     try:
-        _main(args.config, args.properties, args.state, args.discover)
+        _main(args.config, args.catalog, args.state, args.discover)
     except Exception as e:
         LOGGER.critical(e)
         raise e
