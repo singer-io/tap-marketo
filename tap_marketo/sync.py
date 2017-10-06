@@ -62,19 +62,19 @@ def parse_csv_line(line):
     return next(reader)
 
 
-def get_primary_field(stream):
+def get_primary_field(schema):
     # The primary field is the only automatic field not in activity fields
-    for field, schema in stream["schema"]["properties"].items():
+    for field, schema in schema["properties"].items():
         if schema["inclusion"] == "automatic" and field not in ACTIVITY_FIELDS:
             return field
 
 
-def flatten_activity(stream, row):
+def flatten_activity(row, schema):
     # Start with the base fields
     rtn = {field: row[field] for field in BASE_ACTIVITY_FIELDS}
 
     # Move the primary attribute to the named column
-    primary_field = get_primary_field(stream)
+    primary_field = get_primary_field(schema)
     if primary_field:
         rtn[primary_field] = row["primaryAttributeValue"]
         rtn[primary_field + "_id"] = row["primaryAttributeValueId"]
@@ -84,7 +84,7 @@ def flatten_activity(stream, row):
         attrs = json.loads(row["attributes"])
         for key, value in attrs.items():
             key = key.lower().replace(" ", "_")
-            if stream["schema"]["properties"].get(key, {}).get("selected"):
+            if schema["properties"].get(key, {}).get("selected"):
                 rtn[key] = value
 
     return rtn
@@ -93,8 +93,7 @@ def write_records(tap_stream_id, og_bookmark_value, lines, headers):
     if self.use_corona:
         for line in lines:
             parsed_line = parse_csv_line(line)
-            singer.write_record(tap_stream_id, dict(zip(headers, parsed_line)))            
-
+            singer.write_record(tap_stream_id, dict(zip(headers, parsed_line)))
     else:
         for line in lines:
             parsed_line = parse_csv_line(line)
@@ -104,19 +103,20 @@ def write_records(tap_stream_id, og_bookmark_value, lines, headers):
 
 
 def schedule_or_resume_export_job(state, tap_stream_id, export_id, export_end_date, bookmark_date, query_field, client, fields):
-    if export_id is None:                
+    if export_id is None:
         query = {query_field: {"startAt": bookmark_date.isoformat(),
-                               "endAt": export_end_date.isoformat()}}                        
+                               "endAt": export_end_date.isoformat()}}
         export_id = client.create_export("leads", fields, query)
     else:
         export_end_date = bookmarks.get_bookmark(state, tap_stream_id, "export_end_date")
 
     bookmarks.write_bookmark(state, tap_stream_id, "export_id", export_id)
     bookmarks.write_bookmark(state, tap_stream_id, "export_end_date", str(export_end_date))
-        
+
     singer.write_state(state)
     return export_end_date, export_id
-                    
+
+
 def stream_leads(client, state, stream):
     use_corona = client.test_corona()
 
@@ -126,7 +126,7 @@ def stream_leads(client, state, stream):
     export_id = bookmarks.get_bookmark(state, tap_stream_id, "export_id")
 
     og_bookmark_value = pendulum.parse(bookmarks.get_bookmark(state, tap_stream_id, replication_key))
-                                       
+
     tap_job_start_time = pendulum.utcnow()
     bookmark_date = og_bookmark_value
     if use_corona:
@@ -140,8 +140,8 @@ def stream_leads(client, state, stream):
         if export_end_date > tap_job_start_time:
             export_end_date = tap_job_start_time
 
-        export_end_date, export_id = schedule_or_resume_export_job(state, tap_stream_id, export_id, export_end_date, bookmark_date, query_field, client, fields) 
-            
+        export_end_date, export_id = schedule_or_resume_export_job(state, tap_stream_id, export_id, export_end_date, bookmark_date, query_field, client, fields)
+
         try:
             client.wait_for_export("leads", export_id)
         except ExportFailed as ex:
@@ -152,15 +152,15 @@ def stream_leads(client, state, stream):
             else:
                 LOGGER.critical("Export job " + export_id + "failed")
                 ##fail the job
-                        
+
         lines = client.stream_export("leads", export_id)
         headers = parse_csv_line(next(lines))
 
         write_records(tap_stream_id, og_bookmakr_value, lines, headers)
-            
+
         bookmarks.write_bookmark(state, tap_stream_id, "export_id", None)
         bookmarks.write_bookmark(state, tap_stream_id, "export_end_date", None)
-                                          
+
         if use_corona:
             bookmarks.write_bookmark(state, tap_stream_id, replication_key, export_end_date)
         singer.write_state(state)
@@ -168,8 +168,8 @@ def stream_leads(client, state, stream):
 
     bookmarks.write_bookmark(state, tap_stream_id, replication_key, tap_job_start_time)
     singer.write_state(state)
-    
-        
+
+
 def stream_activities(client, state, stream):
     _, activity_type_id = stream["stream"].split("_")
     export_id = state["bookmarks"][stream["stream"]].get("export_id")
@@ -178,12 +178,13 @@ def stream_activities(client, state, stream):
     start_date = state["bookmarks"][stream["stream"]][stream["replication_key"]]
     start_pen = pendulum.parse(start_date)
 
+    record_count = 0
     while start_pen < started:
-        end_pen = start_pen.add(days=MAX_EXPORT_DAYS)
-        if end_pen > started:
-            end_pen = started
-
         if not export_id:
+            end_pen = start_pen.add(days=MAX_EXPORT_DAYS)
+            if end_pen > started:
+                end_pen = started
+
             query = {
                 "createdAt": {
                     "startAt": start_pen.isoformat(),
@@ -191,9 +192,14 @@ def stream_activities(client, state, stream):
                 },
                 "activityTypeIds": [activity_type_id],
             }
+            LOGGER.info("Creating %s export from %s to %s", stream["stream"], start_pen, end_pen)
             export_id = client.create_export("activities", ACTIVITY_FIELDS, query)
             state["bookmarks"][stream["stream"]]["export_id"] = export_id
+            state["bookmarks"][stream["stream"]]["export_end"] = end_pen.isoformat()
             singer.write_state(state)
+        else:
+            end_pen = pendulum.parse(state["bookmarks"][stream["stream"]]["export_end"])
+            LOGGER.info("Resuming %s export %s through %s", stream["stream"], export_id, end_pen)
 
         client.wait_for_export("activities", export_id)
         lines = client.stream_export("activities", export_id)
@@ -201,12 +207,21 @@ def stream_activities(client, state, stream):
         for line in lines:
             parsed_line = parse_csv_line(line)
             row = dict(zip(headers, parsed_line))
-            yield flatten_activity(stream, row)
+            row = flatten_activity(row, stream["schema"])
+            record = format_values(stream, row)
+            if record["createdAt"] >= start_date:
+                record_count += 1
+                singer.write_record(stream["stream"], record)
+                state["bookmarks"][stream["stream"]]["createdAt"] = record["createdAt"]
+                singer.write_state(state)
 
         export_id = None
         state["bookmarks"][stream["stream"]]["export_id"] = None
+        state["bookmarks"][stream["stream"]]["export_end"] = None
         singer.write_state(state)
         start_pen = end_pen
+
+    return record_count
 
 
 def stream_programs(client, state, stream):  # pylint: disable=unused-argument
@@ -220,18 +235,28 @@ def stream_programs(client, state, stream):  # pylint: disable=unused-argument
     }
     endpoint = "rest/asset/v1/programs.json"
 
+    record_count = 0
     while True:
         data = client.request("GET", endpoint, params=params)
         if NO_ASSET_MSG in data["warnings"]:
             break
 
         for row in data["result"]:
-            yield row
+            record = format_values(stream, row)
+            if record["updatedAt"] >= start_date:
+                record_count += 1
+                singer.write_record("programs", record)
+                state["bookmarks"]["programs"]["updatedAt"] = record["updatedAt"]
+                singer.write_state(state)
 
         params["offset"] += params["maxReturn"]
 
+    return record_count
+
 
 def stream_paginated(client, state, stream):  # pylint: disable=unused-argument
+    start_date = state["bookmarks"][stream["stream"]][stream["replication_key"]]
+
     params = {"batchSize": 300}
     endpoint = "rest/v1/{}.json".format(stream["stream"])
 
@@ -242,7 +267,12 @@ def stream_paginated(client, state, stream):  # pylint: disable=unused-argument
     while True:
         data = client.request("GET", endpoint, params=params)
         for row in data["result"]:
-            yield row
+            record = format_values(stream, record)
+            if record[stream["replication_key"]] >= start_date:
+                record_count += 1
+                singer.write_record(stream["stream"], record)
+                state["bookmarks"][stream["stream"]][stream["replication_key"]] = record[stream["replication_key"]]
+                singer.write_state(state)
 
         if "nextPageToken" not in data:
             break
@@ -252,13 +282,17 @@ def stream_paginated(client, state, stream):  # pylint: disable=unused-argument
 
     state["bookmarks"][stream["stream"]]["next_page_token"] = None
     singer.write_state(state)
+    return record_count
 
 
 def stream_activity_types(client, state, stream):  # pylint: disable=unused-argument
     endpoint = "rest/v1/activities/types.json"
     data = client.request("GET", endpoint)
+    record_count = 0
     for row in data["result"]:
-        yield row
+        record = format_values(stream, row)
+        record_count += 1
+        singer.write_record("activity_types", record)
 
 
 def sync_stream(client, state, stream, stream_func):
@@ -317,7 +351,6 @@ def sync(client, catalog, state):
             record_count = stream_func(client, state, stream)
             counter.increment(record_count)
 
-            
         LOGGER.info("%s: finished sync", stream["stream"])
 
     LOGGER.info("Finished sync")
