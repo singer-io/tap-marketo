@@ -3,6 +3,12 @@ import io
 import json
 import pendulum
 import singer
+from singer.bookmarks import (
+    get_bookmark,
+    write_bookmark,
+    get_currently_syncing,
+    set_currently_syncing,
+)
 
 from singer import bookmarks
 
@@ -24,6 +30,12 @@ ACTIVITY_FIELDS = BASE_ACTIVITY_FIELDS + [
 ]
 
 NO_ASSET_MSG = "No assets found for the given search criteria."
+NO_CORONA_WARNING = (
+    "Your account does not have Corona support enabled. Without Corona, each sync of "
+    "the Leads table requires a full export which can lead to lower data freshness. "
+    "Please contact <contact email> at Marketo to request Corona support be added to "
+    "your account."
+)
 
 
 def format_value(value, schema):
@@ -134,7 +146,6 @@ def stream_leads(client, state, stream):
     else:
         query_field = "createdAt"
 
-
     while bookmark_date < tap_job_start_time:
         export_end_date = bookmark_date.add(days=MAX_EXPORT_DAYS)
         if export_end_date > tap_job_start_time:
@@ -170,14 +181,14 @@ def stream_leads(client, state, stream):
     singer.write_state(state)
 
 
-def stream_activities(client, state, stream):
+def sync_activities(client, state, stream):
     _, activity_type_id = stream["stream"].split("_")
-    export_id = state["bookmarks"][stream["stream"]].get("export_id")
+    start_date = get_bookmark(state, stream["stream"], "createdAt")
+    export_id = get_bookmark(state, stream["stream"], "export_id")
 
-    started = pendulum.utcnow()
-    start_date = state["bookmarks"][stream["stream"]][stream["replication_key"]]
     start_pen = pendulum.parse(start_date)
 
+    started = pendulum.utcnow()
     record_count = 0
     while start_pen < started:
         if not export_id:
@@ -194,11 +205,11 @@ def stream_activities(client, state, stream):
             }
             LOGGER.info("Creating %s export from %s to %s", stream["stream"], start_pen, end_pen)
             export_id = client.create_export("activities", ACTIVITY_FIELDS, query)
-            state["bookmarks"][stream["stream"]]["export_id"] = export_id
-            state["bookmarks"][stream["stream"]]["export_end"] = end_pen.isoformat()
+            state = write_bookmark(state, stream["stream"], "export_id", export_id)
+            state = write_bookmark(state, stream["stream"], "export_end", end_pen.isoformat())
             singer.write_state(state)
         else:
-            end_pen = pendulum.parse(state["bookmarks"][stream["stream"]]["export_end"])
+            end_pen = pendulum.parse(get_bookmark(state, stream["stream"], "export_end"))
             LOGGER.info("Resuming %s export %s through %s", stream["stream"], export_id, end_pen)
 
         client.wait_for_export("activities", export_id)
@@ -212,21 +223,21 @@ def stream_activities(client, state, stream):
             if record["createdAt"] >= start_date:
                 record_count += 1
                 singer.write_record(stream["stream"], record)
-                if record["createdAt"] >= state["bookmarks"][stream["stream"]]["createdAt"]:
-                    state["bookmarks"][stream["stream"]]["createdAt"] = record["createdAt"]
+                if record["activityDate"] >= get_bookmark(state, stream["stream"], "createdAt"):
+                    state = write_bookmark(state, stream["stream"], "createdAt", record["activityDate"])
                     singer.write_state(state)
 
         export_id = None
-        state["bookmarks"][stream["stream"]]["export_id"] = None
-        state["bookmarks"][stream["stream"]]["export_end"] = None
+        state = write_bookmark(state, stream["stream"], "export_id", None)
+        state = write_bookmark(state, stream["stream"], "export_end", None)
         singer.write_state(state)
         start_pen = end_pen
 
-    return record_count
+    return state, record_count
 
 
-def stream_programs(client, state, stream):
-    start_date = state["bookmarks"]["programs"]["updatedAt"]
+def sync_programs(client, state, stream):
+    start_date = get_bookmark(state, "programs", "updatedAt")
     end_date = pendulum.utcnow().isoformat()
     params = {
         "maxReturn": 200,
@@ -247,48 +258,50 @@ def stream_programs(client, state, stream):
             if record["updatedAt"] >= start_date:
                 record_count += 1
                 singer.write_record("programs", record)
-                if record["updatedAt"] >= state["bookmarks"]["programs"]["updatedAt"]:
-                    state["bookmarks"]["programs"]["updatedAt"] = record["updatedAt"]
+                if record["updatedAt"] >= get_bookmark(state, "programs", "updatedAt"):
+                    state = write_bookmark(state, "programs", "updatedAt", record["updatedAt"])
                     singer.write_state(state)
 
         params["offset"] += params["maxReturn"]
 
-    return record_count
+    return state, record_count
 
 
-def stream_paginated(client, state, stream):
-    start_date = state["bookmarks"][stream["stream"]][stream["replication_key"]]
+def sync_paginated(client, state, stream):
+    start_date = get_bookmark(state, stream["stream"], stream["replication_key"])
 
     params = {"batchSize": 300}
     endpoint = "rest/v1/{}.json".format(stream["stream"])
 
-    next_page_token = state["bookmarks"][stream["stream"]].get("next_page_token")
+    next_page_token = get_bookmark(state, stream["stream"], "next_page_token")
     if next_page_token:
         params["nextPageToken"] = next_page_token
 
+    record_count = 0
     while True:
         data = client.request("GET", endpoint, params=params)
         for row in data["result"]:
-            record = format_values(stream, record)
+            record = format_values(stream, row)
             if record[stream["replication_key"]] >= start_date:
                 record_count += 1
                 singer.write_record(stream["stream"], record)
-                if record[stream["replication_key"]] >= state["bookmarks"][stream["stream"]][stream["replication_key"]]:
-                    state["bookmarks"][stream["stream"]][stream["replication_key"]] = record[stream["replication_key"]]
+                if record[stream["replication_key"]] >= get_bookmark(state, stream["stream"], stream["replication_key"]):
+                    state = write_bookmark(state, stream["stream"], stream["replication_key"], record[stream["replication_key"]])
                     singer.write_state(state)
 
         if "nextPageToken" not in data:
             break
 
-        state["bookmarks"][stream["stream"]]["next_page_token"] = data["nextPageToken"]
+
+        state = write_bookmark(state, stream["stream"], "next_page_token", data["nextPageToken"])
         singer.write_state(state)
 
-    state["bookmarks"][stream["stream"]]["next_page_token"] = None
+    state = write_bookmark(state, stream["stream"], "next_page_token", None)
     singer.write_state(state)
-    return record_count
+    return state, record_count
 
 
-def stream_activity_types(client, state, stream):  # pylint: disable=unused-argument
+def sync_activity_types(client, state, stream):
     endpoint = "rest/v1/activities/types.json"
     data = client.request("GET", endpoint)
     record_count = 0
@@ -317,7 +330,7 @@ def sync_stream(client, state, stream, stream_func):
 
 
 def sync(client, catalog, state):
-    starting_stream = state.get("current_stream")
+    starting_stream = get_currently_syncing(state)
     if starting_stream:
         LOGGER.info("Resuming sync from %s", starting_stream)
     else:
@@ -334,26 +347,30 @@ def sync(client, catalog, state):
 
         LOGGER.info("%s: starting sync", stream["stream"])
         starting_stream = None
-        state["current_stream"] = stream["stream"]
+        state = set_currently_syncing(state, stream["stream"])
         singer.write_state(state)
 
         if stream["stream"] == "leads":
-            stream_func = stream_leads
+            sync_func = sync_leads
         elif stream["stream"] == "activity_types":
-            stream_func = stream_activity_types
+            sync_func = sync_activity_types
         elif stream["stream"].startswith("activities_"):
-            stream_func = stream_activities
+            sync_func = sync_activities
         elif stream["stream"] in ["campaigns", "lists"]:
-            stream_func = stream_paginated
+            sync_func = sync_paginated
         elif stream["stream"] == "programs":
-            stream_func = stream_programs
+            sync_func = sync_programs
         else:
             raise Exception("Not implemented")
 
         with singer.metrics.record_counter(stream["stream"]) as counter:
-            record_count = stream_func(client, state, stream)
+            state, record_count = sync_func(client, state, stream)
             counter.increment(record_count)
 
+        state = set_currently_syncing(state, None)
+        singer.write_state(state)
         LOGGER.info("%s: finished sync", stream["stream"])
 
     LOGGER.info("Finished sync")
+    if not client.use_corona:
+        LOGGER.warning(NO_CORONA_WARNING)
