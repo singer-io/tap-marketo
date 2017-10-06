@@ -2,6 +2,7 @@
   "tap_stream_id": "campaigns",
   "stream": "campaigns",
   "replication_key": "updatedAt",
+  "replication_method": "INCREMENTAL",
   "key_properties": ["id"],
   "schema": {
     "type": "object",

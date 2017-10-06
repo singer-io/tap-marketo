@@ -54,7 +54,7 @@ class Client:
     @property
     def headers(self):
         if not self.token_expires or self.token_expires <= pendulum.utcnow():
-            raise Exception("Must refresh token first")
+            self.refresh_token()
 
         return {
             "Authorization": "Bearer {}".format(self.access_token),
@@ -127,9 +127,6 @@ class Client:
         LOGGER.info("Used %s of %s requests", self.calls_today, self.max_daily_calls)
 
     def request(self, method, url, **kwargs):
-        if not self.token_expires or self.token_expires <= pendulum.utcnow():
-            self.refresh_token()
-
         if self.calls_today % 250 == 0:
             self.update_calls_today()
 
@@ -157,9 +154,9 @@ class Client:
             "fields": fields,
             "filter": query
         }
-        
+
         endpoint = self.get_bulk_endpoint(stream_type, "create")
-        LOGGER.info('Scheduling export job with query %s' + str(query))
+        LOGGER.info('Scheduling export job with query %s', query)
         return self.request("POST", endpoint, json=payload)["result"][0]["exportId"]
 
     def enqueue_export(self, stream_type, export_id):
