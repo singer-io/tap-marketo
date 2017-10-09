@@ -94,13 +94,13 @@ def get_activity_type_stream(activity):
 
 def discover_activities(client):
     endpoint = "rest/v1/activities/types.json"
-    data = client.request("GET", endpoint)
+    data = client.request("GET", endpoint, endpoint_name="activity_types")
     return [get_activity_type_stream(row) for row in data["result"]]
 
 
 def discover_leads(client):
     endpoint = "rest/v1/leads/describe.json"
-    data = client.request("GET", endpoint)
+    data = client.request("GET", endpoint, endpoint_name="leads_discover")
     properties = {}
     for field in data["result"]:
         if "rest" not in field:

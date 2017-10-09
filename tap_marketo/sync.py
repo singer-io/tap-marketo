@@ -237,7 +237,7 @@ def sync_programs(client, state, stream):
     bookmark = start_date
     record_count = 0
     while True:
-        data = client.request("GET", endpoint, params=params)
+        data = client.request("GET", endpoint, endpoint_name="programs", params=params)
 
         # If the no asset message is in the warnings, we have exhausted
         # the search results and can end the sync.
@@ -289,7 +289,7 @@ def sync_paginated(client, state, stream):
     # Keep querying pages of data until no next page token.
     record_count = 0
     while True:
-        data = client.request("GET", endpoint, params=params)
+        data = client.request("GET", endpoint, endpoint_name=stream["stream"], params=params)
 
         # Each row just needs the values formatted. If the record is
         # newer than the original start date, stream the record. Finally,
@@ -334,7 +334,7 @@ def sync_activity_types(client, state, stream):
     # Activity types aren't even paginated. Grab all the results in one
     # request, format the values, and output them.
     endpoint = "rest/v1/activities/types.json"
-    data = client.request("GET", endpoint)
+    data = client.request("GET", endpoint, endpoint_name="activity_types")
     record_count = 0
     for row in data["result"]:
         record = format_values(stream, row)
@@ -345,7 +345,7 @@ def sync_activity_types(client, state, stream):
 
 
 def sync(client, catalog, state):
-    starting_stream = get_currently_syncing(state)
+    starting_stream = bookmarks.get_currently_syncing(state)
     if starting_stream:
         singer.log_info("Resuming sync from %s", starting_stream)
     else:
@@ -367,7 +367,7 @@ def sync(client, catalog, state):
         # Now that we've started, there's no more "starting stream". Set
         # the current stream to resume on next run.
         starting_stream = None
-        state = set_currently_syncing(state, stream["stream"])
+        state = bookmarks.set_currently_syncing(state, stream["stream"])
         singer.write_state(state)
 
         # Sync stream based on type.
@@ -388,7 +388,7 @@ def sync(client, catalog, state):
         counter._pop()
 
         # Unset current stream.
-        state = set_currently_syncing(state, None)
+        state = bookmarks.set_currently_syncing(state, None)
         singer.write_state(state)
         singer.log_info("%s: finished sync", stream["stream"])
 

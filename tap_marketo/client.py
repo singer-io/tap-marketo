@@ -116,13 +116,14 @@ class Client:
 
     @singer.utils.ratelimit(RATE_LIMIT_CALLS, RATE_LIMIT_SECONDS)
     @singer.utils.backoff((requests.exceptions.RequestException), singer.utils.exception_is_4xx)
-    def _request(self, method, url, stream=False, **kwargs):
+    def _request(self, method, url, endpoint_name=None, stream=False, **kwargs):
+        endpoint_name = endpoint_name or url
         url = self.get_url(url)
         headers = kwargs.pop("headers", {})
         headers.update(self.headers)
         req = requests.Request(method, url, headers=headers, **kwargs).prepare()
         singer.log_info("%s: %s", method, req.url)
-        with singer.metrics.http_request_timer(url):
+        with singer.metrics.http_request_timer(endpoint_name):
             resp = self._session.send(req, stream=stream)
 
         resp.raise_for_status()
@@ -136,7 +137,7 @@ class Client:
         self.calls_today = int(data["result"][0]["total"])
         singer.log_info("Used %s of %s requests", self.calls_today, self.max_daily_calls)
 
-    def request(self, method, url, **kwargs):
+    def request(self, method, url, endpoint_name=None, **kwargs):
         if self.calls_today % 250 == 0:
             self.update_calls_today()
 
@@ -144,7 +145,7 @@ class Client:
         if self.calls_today > self.max_daily_calls:
             raise ApiException("Exceeded daily quota of %s calls", self.max_daily_calls)
 
-        resp = self._request(method, url, **kwargs)
+        resp = self._request(method, url, endpoint_name, **kwargs)
         if "stream" not in kwargs:
             data = resp.json()
             if not data["success"]:
@@ -166,32 +167,38 @@ class Client:
         }
 
         endpoint = self.get_bulk_endpoint(stream_type, "create")
+        endpoint_name = "{}_create".format(stream_type)
         singer.log_info('Scheduling export job with query %s', query)
-        return self.request("POST", endpoint, json=payload)["result"][0]["exportId"]
+        data = self.request("POST", endpoint, endpoint_name=endpoint_name, json=payload)
+        return data["result"][0]["exportId"]
 
     def enqueue_export(self, stream_type, export_id):
         endpoint = self.get_bulk_endpoint(stream_type, "enqueue", export_id)
-        self.request("POST", endpoint)
+        endpoint_name = "{}_enqueue".format(stream_type)
+        self.request("POST", endpoint, endpoint_name=endpoint_name)
 
     def cancel_export(self, stream_type, export_id):
         endpoint = self.get_bulk_endpoint(stream_type, "cancel", export_id)
-        self.request("POST", endpoint)
+        endpoint_name = "{}_cancel".format(stream_type)
+        self.request("POST", endpoint, endpoint_name=endpoint_name)
 
     def poll_export(self, stream_type, export_id):
         endpoint = self.get_bulk_endpoint(stream_type, "status", export_id)
-        return self.request("GET", endpoint)["result"][0]["status"]
+        endpoint_name = "{}_poll".format(stream_type)
+        data = self.request("GET", endpoint, endpoint_name=endpoint_name)
+        return data["result"][0]["status"]
 
     def stream_export(self, stream_type, export_id):
         endpoint = self.get_bulk_endpoint(stream_type, "file", export_id)
-        return self.request("GET", endpoint, stream=True)
+        endpoint_name = "{}_stream".format(stream_type)
+        return self.request("GET", endpoint, endpoint_name=endpoint_name, stream=True)
 
     def wait_for_export(self, stream_type, export_id):
         # Poll the export status until it enters a finalized state or
         # exceeds the job timeout time.
         timeout_time = pendulum.utcnow().add(seconds=self.job_timeout)
         while pendulum.utcnow() < timeout_time:
-            endpoint = self.get_bulk_endpoint(stream_type, "status", export_id)
-            status = self.request("GET", endpoint)["result"][0]["status"]
+            status = self.poll_export(stream_type, export_id)
 
             if status == "Created":
                 # If the status is created, the export has been made but
@@ -229,7 +236,7 @@ class Client:
             },
         }
         endpoint = self.get_bulk_endpoint("leads", "create")
-        data = self._request("POST", endpoint, json=payload).json()
+        data = self._request("POST", endpoint, endpoint_name="leads_create", json=payload).json()
 
         # If the error code indicating no Corona support is present,
         # Corona is not supported. If we don't get that error code,
