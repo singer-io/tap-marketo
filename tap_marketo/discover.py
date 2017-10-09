@@ -4,7 +4,17 @@ import sys
 
 import singer
 
-LOGGER = singer.get_logger()
+
+STRING_TYPES = [
+    'string',
+    'email',
+    'reference',
+    'url',
+    'phone',
+    'textarea',
+    'text',
+    'lead_function',
+]
 
 
 def clean_string(string):
@@ -20,7 +30,7 @@ def get_schema_for_type(typ, null=False):
         rtn = {'type': 'number'}
     elif typ == 'boolean':
         rtn = {'type': 'boolean'}
-    elif typ in ['string', 'email', 'reference', 'url', 'phone', 'textarea', 'text', 'lead_function']:
+    elif typ in STRING_TYPES:
         rtn = {'type': 'string'}
     else:
         return None
@@ -35,6 +45,18 @@ def get_schema_for_type(typ, null=False):
 
 
 def get_activity_type_stream(activity):
+    # Activity streams have 6 attributes:
+    # - marketoGUID
+    # - leadId
+    # - activityDate
+    # - activityTypeId
+    # - primaryAttribute
+    # - attributes
+    #
+    # marketoGUID, leadId, activityDate, and activityTypeId are simple
+    # fields. primaryAttribute has a name and type which define an
+    # automatically included field on the record. Attributes is an array
+    # of attribute names and types that become available fields.
     properties = {
         "marketoGUID": {"type": "string", "inclusion": "automatic"},
         "leadId": {"type": "integer", "inclusion": "automatic"},
@@ -82,6 +104,8 @@ def discover_leads(client):
     properties = {}
     for field in data["result"]:
         if "rest" not in field:
+            singer.log_debug("Field leads.%s not supported via the REST API.",
+                             field["rest"]["name"])
             continue
 
         if field["rest"]["name"] == "id":
@@ -90,6 +114,8 @@ def discover_leads(client):
             field_schema = get_schema_for_type(field["dataType"], null=True)
 
         if not field_schema:
+            singer.log_debug("Marketo type %s unsupported for leads.%s",
+                             field["dataType"], field["rest"]["name"])
             continue
 
         properties[field["rest"]["name"]] = field_schema
@@ -108,6 +134,7 @@ def discover_leads(client):
         },
     }
 
+
 def discover_catalog(name):
     root = os.path.dirname(os.path.realpath(__file__))
     path = os.path.join(root, 'catalog/{}.json'.format(name))
@@ -116,8 +143,7 @@ def discover_catalog(name):
 
 
 def discover(client):
-    LOGGER.info("Starting discover")
-
+    singer.log_info("Starting discover")
     streams = []
     streams.append(discover_leads(client))
     streams.append(discover_catalog("activity_types"))
@@ -126,6 +152,4 @@ def discover(client):
     streams.append(discover_catalog("lists"))
     streams.append(discover_catalog("programs"))
     json.dump({"streams": streams}, sys.stdout, indent=2)
-
-    LOGGER.info("Finished discover")
-    return streams
+    singer.log_info("Finished discover")

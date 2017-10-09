@@ -13,7 +13,14 @@ POLL_INTERVAL = 60 * 5
 # http://developers.marketo.com/rest-api/bulk-extract/bulk-lead-extract/#filters
 NO_CORONA_CODE = "1035"
 
-LOGGER = singer.get_logger()
+# Marketo limits REST requests to 50000 per day with a rate limit of 100
+# calls per 20 seconds.
+# http://developers.marketo.com/rest-api/
+MAX_DAILY_CALLS = int(50000 * 0.8)
+RATE_LIMIT_CALLS = 100
+RATE_LIMIT_SECONDS = 20
+
+DEFAULT_USER_AGENT = "Singer.io/tap-marketo"
 
 
 class ApiException(Exception):
@@ -25,10 +32,13 @@ class ExportFailed(Exception):
     """Indicates an error occured while attempting a bulk export."""
     pass
 
+
 class Client:
     def __init__(self, domain, client_id, client_secret,
-                 max_daily_calls=8000, user_agent="Singer.io/tap-marketo",
-                 job_timeout=JOB_TIMEOUT, poll_interval=POLL_INTERVAL, **kwargs):
+                 max_daily_calls=MAX_DAILY_CALLS,
+                 user_agent=DEFAULT_USER_AGENT,
+                 job_timeout=JOB_TIMEOUT,
+                 poll_interval=POLL_INTERVAL, **kwargs):
 
         self.domain = domain
         self.client_id = client_id
@@ -78,7 +88,7 @@ class Client:
             "client_id": self.client_id,
             "client_secret": self.client_secret,
         }
-        LOGGER.info("Refreshing token")
+        singer.log_info("Refreshing token")
 
         try:
             url = self.get_url("identity/oauth/token")
@@ -102,16 +112,16 @@ class Client:
 
         self.access_token = data["access_token"]
         self.token_expires = resp_time.add(seconds=data["expires_in"] - 15)
-        LOGGER.info("Token valid until %s", self.token_expires)
+        singer.log_info("Token valid until %s", self.token_expires)
 
-    @singer.utils.ratelimit(100, 20)
+    @singer.utils.ratelimit(RATE_LIMIT_CALLS, RATE_LIMIT_SECONDS)
     @singer.utils.backoff((requests.exceptions.RequestException), singer.utils.exception_is_4xx)
     def _request(self, method, url, stream=False, **kwargs):
         url = self.get_url(url)
         headers = kwargs.pop("headers", {})
         headers.update(self.headers)
         req = requests.Request(method, url, headers=headers, **kwargs).prepare()
-        LOGGER.info("%s: %s", method, req.url)
+        singer.log_info("%s: %s", method, req.url)
         with singer.metrics.http_request_timer(url):
             resp = self._session.send(req, stream=stream)
 
@@ -124,7 +134,7 @@ class Client:
             raise ApiException(data)
 
         self.calls_today = int(data["result"][0]["total"])
-        LOGGER.info("Used %s of %s requests", self.calls_today, self.max_daily_calls)
+        singer.log_info("Used %s of %s requests", self.calls_today, self.max_daily_calls)
 
     def request(self, method, url, **kwargs):
         if self.calls_today % 250 == 0:
@@ -156,11 +166,15 @@ class Client:
         }
 
         endpoint = self.get_bulk_endpoint(stream_type, "create")
-        LOGGER.info('Scheduling export job with query %s', query)
+        singer.log_info('Scheduling export job with query %s', query)
         return self.request("POST", endpoint, json=payload)["result"][0]["exportId"]
 
     def enqueue_export(self, stream_type, export_id):
         endpoint = self.get_bulk_endpoint(stream_type, "enqueue", export_id)
+        self.request("POST", endpoint)
+
+    def cancel_export(self, stream_type, export_id):
+        endpoint = self.get_bulk_endpoint(stream_type, "cancel", export_id)
         self.request("POST", endpoint)
 
     def poll_export(self, stream_type, export_id):
@@ -172,15 +186,20 @@ class Client:
         return self.request("GET", endpoint, stream=True)
 
     def wait_for_export(self, stream_type, export_id):
+        # Poll the export status until it enters a finalized state or
+        # exceeds the job timeout time.
         timeout_time = pendulum.utcnow().add(seconds=self.job_timeout)
         while pendulum.utcnow() < timeout_time:
             endpoint = self.get_bulk_endpoint(stream_type, "status", export_id)
             status = self.request("GET", endpoint)["result"][0]["status"]
 
             if status == "Created":
+                # If the status is created, the export has been made but
+                # not started, so enqueue the export.
                 self.enqueue_export(stream_type, export_id)
 
             elif status in ["Cancelled", "Failed"]:
+                # Cacnelled and failed exports fail the current sync.
                 raise ExportFailed(status)
 
             elif status == "Completed":
@@ -191,10 +210,12 @@ class Client:
         raise ExportFailed("Timed out")
 
     def test_corona(self):
-        # Corona allows us to do bulk queries for Leads using updatedAt as a filter.
-        # Clients without Corona (should only be clients with < 50,000 Leads) must
-        # do a full Leads bulk export every sync.
-        LOGGER.info("Testing for Corona support")
+        # Corona allows us to do bulk queries for Leads using updatedAt
+        # as a filter. Clients without Corona (should only be clients
+        # with < 50,000 Leads) must do a full bulk export every sync.
+        # We test for Corona by requesting a one-second export of leads
+        # using the updatedAt filter.
+        singer.log_info("Testing for Corona support")
         start_pen = pendulum.utcnow().subtract(days=1).replace(microsecond=0)
         end_pen = start_pen.add(seconds=1)
         payload = {
@@ -209,12 +230,16 @@ class Client:
         }
         endpoint = self.get_bulk_endpoint("leads", "create")
         data = self._request("POST", endpoint, json=payload).json()
+
+        # If the error code indicating no Corona support is present,
+        # Corona is not supported. If we don't get that error code,
+        # Corona is supported and we need to clean up by cancelling the
+        # test export we requested.
         err_codes = set(err["code"] for err in data.get("errors", []))
         if NO_CORONA_CODE in err_codes:
-            LOGGER.info("Corona not supported.")
+            singer.log_info("Corona not supported.")
             return False
         else:
-            LOGGER.info("Corona is supported.")
-            endpoint = self.get_bulk_endpoint("leads", "cancel", data["exportId"])
-            self.request("POST", endpoint)
+            singer.log_info("Corona is supported.")
+            self.cancel_export(data["exportId"])
             return True

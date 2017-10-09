@@ -1,7 +1,7 @@
 import pendulum
 import singer
-
 from singer import bookmarks
+
 from tap_marketo.client import Client
 from tap_marketo.discover import discover
 from tap_marketo.sync import sync
@@ -23,8 +23,6 @@ REQUIRED_CONFIG_KEYS = [
     "client_secret",
 ]
 
-LOGGER = singer.get_logger()
-
 
 def validate_state(config, catalog, state):
     for stream in catalog["streams"]:
@@ -32,20 +30,25 @@ def validate_state(config, catalog, state):
             # If a stream is deselected while it's the current stream, unset the
             # current stream.
             if stream["tap_stream_id"] == bookmarks.get_currently_syncing(state):
-                bookmarks.set_currently_syncing(state, None)
+                state = bookmarks.set_currently_syncing(state, None)
+            continue
+
+        if not stream.get("replication_key"):
             continue
 
         # If there's no bookmark for a stream (new integration, newly selected,
         # reset, etc) we need to use the default start date from the config.
-        if bookmarks.get_bookmark(state, stream["tap_stream_id"], \
-                                  stream.get("replication_key")) is None:
-
-            state = bookmarks.write_bookmark(state, stream["tap_stream_id"], \
-                                     stream.get("replication_key"), config["start_date"])
+        bookmark = bookmarks.get_bookmark(state,
+                                          stream["tap_stream_id"],
+                                          stream["replication_key"])
+        if bookmark is None:
+            state = bookmarks.write_bookmark(state,
+                                             stream["tap_stream_id"],
+                                             stream["replication_key"],
+                                             config["start_date"])
 
     singer.write_state(state)
     return state
-
 
 def _main(config, catalog, state, discover_mode=False):
     client = Client(**config)
@@ -66,7 +69,7 @@ def main():
     try:
         _main(args.config, args.catalog, args.state, args.discover)
     except Exception as e:
-        LOGGER.critical(e)
+        singer.log_critical(e)
         raise e
 
 
