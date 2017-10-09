@@ -3,6 +3,7 @@ import io
 import json
 import pendulum
 import singer
+from tap_marketo.client import ExportFailed
 from singer.transform import transform
 from singer.bookmarks import (
     get_bookmark,
@@ -146,29 +147,22 @@ def stream_leads(client, state, stream):
             client.wait_for_export("leads", export_id)
         except ExportFailed as ex:
             if ex.message() == "Timed out":
-                ##
                 LOGGER.critical("Export job " + export_id +" timed out")
 
             else:
                 LOGGER.critical("Export job " + export_id + "failed")
-                ##fail the job
 
         lines = client.stream_export("leads", export_id)
         headers = parse_csv_line(next(lines))
-
-        if use_corona:
-            for line in lines:
-                parsed_line = parse_csv_line(line)
+        for line in lines:
+            parsed_line = parse_csv_line(line)
+            parsed_line = dict(zip(headers, parsed_line))
+            if not use_corona and parsed_line["updatedAt"] > og_bookmark_value:
                 record = format_values(stream, row)
                 singer.write_record(stream["tap_stream_id"], record)
-        else:
-            for line in lines:
-                parsed_line = parse_csv_line(line)
-
-                if parsed_line["updatedAt"] > og_bookmark_value:
-                    record = format_values(stream, row)
-                    singer.write_record(stream["tap_stream_id"], record)                
-
+            else:
+                record = format_values(stream, parsed_line)
+                singer.write_record(stream["tap_stream_id"], record)
 
         state = write_bookmark(state, tap_stream_id, "export_id", None)
         state = write_bookmark(state, tap_stream_id, "export_end_date", None)
