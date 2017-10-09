@@ -3,6 +3,7 @@ import io
 import json
 import pendulum
 import singer
+from singer.transform import transform
 from singer.bookmarks import (
     get_bookmark,
     write_bookmark,
@@ -44,7 +45,7 @@ def format_value(value, schema):
     else:
         field_type = schema["type"]
 
-    if value in [None, ""]:
+    if value in [None, "", 'null']:
         return None
     elif schema.get("format") == "date-time":
         return pendulum.parse(value).isoformat()
@@ -101,43 +102,31 @@ def flatten_activity(row, schema):
 
     return rtn
 
-def write_records(tap_stream_id, og_bookmark_value, lines, headers):
-    if self.use_corona:
-        for line in lines:
-            parsed_line = parse_csv_line(line)
-            singer.write_record(tap_stream_id, dict(zip(headers, parsed_line)))
-    else:
-        for line in lines:
-            parsed_line = parse_csv_line(line)
-
-            if parsed_line["updatedAt"] > og_bookmark_value:
-                singer.write_record(tap_stream_id, dict(zip(headers, parsed_line)))
-
-
 def schedule_or_resume_export_job(state, tap_stream_id, export_id, export_end_date, bookmark_date, query_field, client, fields):
     if export_id is None:
         query = {query_field: {"startAt": bookmark_date.isoformat(),
                                "endAt": export_end_date.isoformat()}}
         export_id = client.create_export("leads", fields, query)
     else:
-        export_end_date = bookmarks.get_bookmark(state, tap_stream_id, "export_end_date")
+        export_end_date = get_bookmark(state, tap_stream_id, "export_end_date")
 
-    bookmarks.write_bookmark(state, tap_stream_id, "export_id", export_id)
-    bookmarks.write_bookmark(state, tap_stream_id, "export_end_date", str(export_end_date))
+    write_bookmark(state, tap_stream_id, "export_id", export_id)
+    write_bookmark(state, tap_stream_id, "export_end_date", str(export_end_date))
 
     singer.write_state(state)
     return export_end_date, export_id
 
 
 def stream_leads(client, state, stream):
+    singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
     use_corona = client.test_corona()
-
+    schema = stream["schema"]
     replication_key = stream.get("replication_key")
     tap_stream_id = stream.get("tap_stream_id")
     fields = [f for f, s in stream["schema"]["properties"].items() if s.get("selected")]
-    export_id = bookmarks.get_bookmark(state, tap_stream_id, "export_id")
+    export_id = get_bookmark(state, tap_stream_id, "export_id")
 
-    og_bookmark_value = pendulum.parse(bookmarks.get_bookmark(state, tap_stream_id, replication_key))
+    og_bookmark_value = pendulum.parse(get_bookmark(state, tap_stream_id, replication_key))
 
     tap_job_start_time = pendulum.utcnow()
     bookmark_date = og_bookmark_value
@@ -167,19 +156,31 @@ def stream_leads(client, state, stream):
         lines = client.stream_export("leads", export_id)
         headers = parse_csv_line(next(lines))
 
-        write_records(tap_stream_id, og_bookmakr_value, lines, headers)
+        if use_corona:
+            for line in lines:
+                parsed_line = parse_csv_line(line)
+                record = format_values(stream, row)
+                singer.write_record(stream["tap_stream_id"], record)
+        else:
+            for line in lines:
+                parsed_line = parse_csv_line(line)
 
-        bookmarks.write_bookmark(state, tap_stream_id, "export_id", None)
-        bookmarks.write_bookmark(state, tap_stream_id, "export_end_date", None)
+                if parsed_line["updatedAt"] > og_bookmark_value:
+                    record = format_values(stream, row)
+                    singer.write_record(stream["tap_stream_id"], record)                
+
+
+        state = write_bookmark(state, tap_stream_id, "export_id", None)
+        state = write_bookmark(state, tap_stream_id, "export_end_date", None)
 
         if use_corona:
-            bookmarks.write_bookmark(state, tap_stream_id, replication_key, export_end_date)
+            state = write_bookmark(state, tap_stream_id, replication_key, str(export_end_date))
         singer.write_state(state)
         bookmark_date = export_end_date
 
-    bookmarks.write_bookmark(state, tap_stream_id, replication_key, tap_job_start_time)
+    state = write_bookmark(state, tap_stream_id, replication_key, str(tap_job_start_time))
     singer.write_state(state)
-
+    return state, 0
 
 def sync_activities(client, state, stream):
     _, activity_type_id = stream["stream"].split("_")
@@ -224,7 +225,7 @@ def sync_activities(client, state, stream):
                 record_count += 1
                 singer.write_record(stream["stream"], record)
                 if record["activityDate"] >= get_bookmark(state, stream["stream"], "createdAt"):
-                    state = write_bookmark(state, stream["stream"], "createdAt", record["activityDate"])
+                    state = write_bookmark(state, stream["stream"], "createdAt", str(record["activityDate"]))
                     singer.write_state(state)
 
         export_id = None
@@ -259,7 +260,7 @@ def sync_programs(client, state, stream):
                 record_count += 1
                 singer.write_record("programs", record)
                 if record["updatedAt"] >= get_bookmark(state, "programs", "updatedAt"):
-                    state = write_bookmark(state, "programs", "updatedAt", record["updatedAt"])
+                    state = write_bookmark(state, "programs", "updatedAt", str(record["updatedAt"]))
                     singer.write_state(state)
 
         params["offset"] += params["maxReturn"]
@@ -286,7 +287,7 @@ def sync_paginated(client, state, stream):
                 record_count += 1
                 singer.write_record(stream["stream"], record)
                 if record[stream["replication_key"]] >= get_bookmark(state, stream["stream"], stream["replication_key"]):
-                    state = write_bookmark(state, stream["stream"], stream["replication_key"], record[stream["replication_key"]])
+                    state = write_bookmark(state, stream["stream"], stream["replication_key"], str(record[stream["replication_key"]]))
                     singer.write_state(state)
 
         if "nextPageToken" not in data:
@@ -351,7 +352,7 @@ def sync(client, catalog, state):
         singer.write_state(state)
 
         if stream["stream"] == "leads":
-            sync_func = sync_leads
+            sync_func = stream_leads
         elif stream["stream"] == "activity_types":
             sync_func = sync_activity_types
         elif stream["stream"].startswith("activities_"):

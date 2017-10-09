@@ -218,6 +218,7 @@ class Client:
             return False
         else:
             LOGGER.info("Corona is supported.")
-            endpoint = self.get_bulk_endpoint("leads", "cancel", data["exportId"])
+            export_id = data["result"][0]["exportId"]
+            endpoint = self.get_bulk_endpoint("leads", "cancel", export_id)
             self.request("POST", endpoint)
             return True

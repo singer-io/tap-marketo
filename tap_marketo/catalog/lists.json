@@ -1,9 +1,9 @@
 {
     "tap_stream_id": "lists",
     "stream": "lists",
-    "replication_key": "updatedAt",
+  "replication_key": "updatedAt",
+    "replication_method": "INCREMENTAL",
     "key_properties": ["id"],
-    "inclusion": "available",
     "schema": {
         "type": "object",
         "additionalProperties": false,
