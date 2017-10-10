@@ -5,6 +5,7 @@ import pendulum
 import singer
 from tap_marketo.client import ExportFailed
 from singer.transform import transform
+from singer import bookmarks
 from singer.bookmarks import (
     get_bookmark,
     write_bookmark,
@@ -109,6 +110,7 @@ def schedule_or_resume_export_job(state, tap_stream_id, export_id, export_end_da
                                "endAt": export_end_date.isoformat()}}
         export_id = client.create_export("leads", fields, query)
     else:
+        singer.log_info("Resuming export from previous job.  Id is %s", export_id)
         export_end_date = get_bookmark(state, tap_stream_id, "export_end_date")
 
     write_bookmark(state, tap_stream_id, "export_id", export_id)
@@ -118,9 +120,9 @@ def schedule_or_resume_export_job(state, tap_stream_id, export_id, export_end_da
     return export_end_date, export_id
 
 
-def stream_leads(client, state, stream):
+def sync_leads(client, state, stream):
     singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
-    use_corona = client.test_corona()
+    record_count = 0
     schema = stream["schema"]
     replication_key = stream.get("replication_key")
     tap_stream_id = stream.get("tap_stream_id")
@@ -131,7 +133,7 @@ def stream_leads(client, state, stream):
 
     tap_job_start_time = pendulum.utcnow()
     bookmark_date = og_bookmark_value
-    if use_corona:
+    if client.use_corona:
         query_field = "updatedAt"
     else:
         query_field = "createdAt"
@@ -158,24 +160,27 @@ def stream_leads(client, state, stream):
         for line in lines:
             parsed_line = parse_csv_line(line)
             parsed_line = dict(zip(headers, parsed_line))
-            if not use_corona and parsed_line["updatedAt"] > og_bookmark_value:
+            if not client.use_corona and parsed_line["updatedAt"] > og_bookmark_value:
                 record = format_values(stream, row)
                 singer.write_record(stream["tap_stream_id"], record)
+                record_count += 1
             else:
                 record = format_values(stream, parsed_line)
                 singer.write_record(stream["tap_stream_id"], record)
+                record_count += 1
 
         state = write_bookmark(state, tap_stream_id, "export_id", None)
         state = write_bookmark(state, tap_stream_id, "export_end_date", None)
 
-        if use_corona:
+        if client.use_corona:
             state = write_bookmark(state, tap_stream_id, replication_key, str(export_end_date))
         singer.write_state(state)
         bookmark_date = export_end_date
 
     state = write_bookmark(state, tap_stream_id, replication_key, str(tap_job_start_time))
     singer.write_state(state)
-    return state, 0
+
+    return state, record_count
 
 def sync_activities(client, state, stream):
     # Stream names for activities are `activities_X` where X is the
@@ -455,7 +460,7 @@ def sync(client, catalog, state):
         if stream["stream"] == "activity_types":
             state, record_count = sync_activity_types(client, state, stream)
         elif stream["stream"] == "leads":
-            sync_func = stream_leads            
+            state, record_count = sync_leads(client, state, stream)            
         elif stream["stream"].startswith("activities_"):
             state, record_count = sync_activities(client, state, stream)
         elif stream["stream"] in ["campaigns", "lists"]:

@@ -199,7 +199,8 @@ class Client:
         timeout_time = pendulum.utcnow().add(seconds=self.job_timeout)
         while pendulum.utcnow() < timeout_time:
             status = self.poll_export(stream_type, export_id)
-
+            singer.log_info("export %s status is %s", export_id, status)
+            
             if status == "Created":
                 # If the status is created, the export has been made but
                 # not started, so enqueue the export.
@@ -248,5 +249,5 @@ class Client:
             return False
         else:
             singer.log_info("Corona is supported.")
-            self.cancel_export(data["result"][0]["exportId"])
+            self.cancel_export("leads", data["result"][0]["exportId"])
             return True
