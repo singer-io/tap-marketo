@@ -77,18 +77,16 @@ def flatten_activity(row, schema):
     # has a `field` and a `field_id` entry in the schema, is marked for
     # automatic inclusion, and isn't one of the base activity fields.
     # TODO: metadata this
-    for field, schema in schema["properties"].items():
-        if schema["inclusion"] == "automatic" and field not in ACTIVITY_FIELDS and not field.endswith("_id"):
+    for field, field_schema in schema["properties"].items():
+        if field_schema["inclusion"] == "automatic" and field not in ACTIVITY_FIELDS:
             rtn[field] = row["primaryAttributeValue"]
-            rtn[field + "_id"] = row["primaryAttributeValueId"]
 
     # Now flatten the attrs json to it's selected columns
     if "attributes" in row:
         attrs = json.loads(row["attributes"])
         for key, value in attrs.items():
             key = key.lower().replace(" ", "_")
-            if schema["properties"].get(key, {}).get("selected"):
-                rtn[key] = value
+            rtn[key] = value
 
     return rtn
 

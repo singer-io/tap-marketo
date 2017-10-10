@@ -106,7 +106,111 @@ class TestSyncPaginated(unittest.TestCase):
 
 
 class TestSyncActivities(unittest.TestCase):
-    # TODO: need to test the waiting for export stuff
-    # TODO: need to test flattening
-    # TODO: test get or create export
-    pass
+    def setUp(self):
+        self.client = Client("123-ABC-456", "id", "secret")
+        self.client.token_expires = pendulum.utcnow().add(days=1)
+        self.client.calls_today = 1
+        self.stream = {
+            "tap_stream_id": "activities_1",
+            "stream": "activities_1",
+            "key_properties": ["marketoGUID"],
+            "replication_key": "activityDate",
+            "replication_method": "INCREMENTAL",
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "inclusion": "available",
+                "selected": True,
+                "properties": {
+                    "marketoGUID": {
+                        "type": "string",
+                        "inclusion": "automatic",
+                        "selected": True,
+                    },
+                    "leadId": {
+                        "type": "integer",
+                        "inclusion": "automatic",
+                        "selected": True,
+                    },
+                    "activityDate": {
+                        "type": "string",
+                        "format": "date-time",
+                        "inclusion": "automatic",
+                        "selected": True,
+                    },
+                    "activityTypeId": {
+                        "type": "integer",
+                        "inclusion": "automatic",
+                        "selected": True,
+                    },
+                    "webpage_id": {
+                        "type": "integer",
+                        "inclusion": "automatic",
+                        "selected": True,
+                    },
+                    "client_ip_address": {
+                        "type": "string",
+                        "inclusion": "available",
+                        "selected": True,
+                    },
+                    "query_parameters": {
+                        "type": "string",
+                        "inclusion": "available",
+                        "selected": False,
+                    },
+                }
+            }
+        }
+
+    def test_format_values(self):
+        row = {
+            "marketoGUID": "abc123",
+            "leadId": "123",
+            "activityDate": "2017-01-01T00:00:00Z",
+            "activityTypeId": "1",
+            "webpage_id": "123",
+            "client_ip_address": "0.0.0.0",
+            "query_parameters": "",
+        }
+        expected = {
+            "marketoGUID": "abc123",
+            "leadId": 123,
+            "activityDate": "2017-01-01T00:00:00+00:00",
+            "activityTypeId": 1,
+            "webpage_id": 123,
+            "client_ip_address": "0.0.0.0",
+        }
+        self.assertDictEqual(expected, format_values(self.stream, row))
+
+    def test_flatten_activity(self):
+        row = {
+            "marketoGUID": "abc123",
+            "leadId": "123",
+            "activityDate": "2017-01-01T00:00:00Z",
+            "activityTypeId": "1",
+            "primaryAttributeValue": "123",
+            "primaryAttributeValueId": "",
+            "attributes": json.dumps({
+                "Client IP Address": "0.0.0.0",
+                "Query Parameters": "",
+            }),
+        }
+        expected = {
+            "marketoGUID": "abc123",
+            "leadId": "123",
+            "activityDate": "2017-01-01T00:00:00Z",
+            "activityTypeId": "1",
+            "webpage_id": "123",
+            "client_ip_address": "0.0.0.0",
+            "query_parameters": "",
+        }
+        self.assertDictEqual(expected, flatten_activity(row, self.stream["schema"]))
+
+    def test_get_or_create_export(self):
+        pass
+
+    def test_handle_activity_line(self):
+        pass
+
+    def test_sync_activites(self):
+        pass
