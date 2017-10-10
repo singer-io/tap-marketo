@@ -5,7 +5,12 @@ from singer import bookmarks
 from tap_marketo.client import Client
 from tap_marketo.discover import discover
 from tap_marketo.sync import sync
-
+from singer.bookmarks import (
+    get_bookmark,
+    write_bookmark,
+    get_currently_syncing,
+    set_currently_syncing,
+)
 
 REQUIRED_CONFIG_KEYS = [
     "start_date",
@@ -29,8 +34,8 @@ def validate_state(config, catalog, state):
         if not stream["schema"].get("selected"):
             # If a stream is deselected while it's the current stream, unset the
             # current stream.
-            if stream["tap_stream_id"] == bookmarks.get_currently_syncing(state):
-                state = bookmarks.set_currently_syncing(state, None)
+            if stream["tap_stream_id"] == get_currently_syncing(state):
+                set_currently_syncing(state, None)
             continue
 
         if not stream.get("replication_key"):
@@ -38,14 +43,14 @@ def validate_state(config, catalog, state):
 
         # If there's no bookmark for a stream (new integration, newly selected,
         # reset, etc) we need to use the default start date from the config.
-        bookmark = bookmarks.get_bookmark(state,
-                                          stream["tap_stream_id"],
-                                          stream["replication_key"])
+        bookmark = get_bookmark(state,
+                                stream["tap_stream_id"],
+                                stream["replication_key"])
         if bookmark is None:
-            state = bookmarks.write_bookmark(state,
-                                             stream["tap_stream_id"],
-                                             stream["replication_key"],
-                                             config["start_date"])
+            state = write_bookmark(state,
+                                   stream["tap_stream_id"],
+                                   stream["replication_key"],
+                                   config["start_date"])
 
     singer.write_state(state)
     return state
@@ -58,7 +63,7 @@ def _main(config, properties, state, discover_mode=False):
         state = validate_state(config, properties, state)
         sync(client, properties, state)
     else:
-        raise Exception("Must have catalog if syncing")
+        pass
 
 
 def main():
