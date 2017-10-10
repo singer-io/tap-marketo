@@ -10,7 +10,7 @@ setup(name='tap-marketo',
       classifiers=['Programming Language :: Python :: 3 :: Only'],
       py_modules=['tap_marketo'],
       install_requires=[
-          'singer-python==3.5.5',
+          'singer-python==3.6.1',
           'requests==2.12.4',
           'pendulum==1.2.0',
       ],
