@@ -106,7 +106,7 @@ def discover_leads(client):
     for field in data["result"]:
         if "rest" not in field:
             singer.log_debug("Field leads.%s not supported via the REST API.",
-                             field["rest"]["name"])
+                             field["displayName"])
             continue
 
         if field["rest"]["name"] == "id":

@@ -81,6 +81,13 @@ class TestClient(unittest.TestCase):
         # call count should be updated
         self.assertEqual(201, self.client.calls_today)
 
+    def test_over_quota_raises_exception(self):
+        # disable refresh_token being called
+        self.client.token_expires = pendulum.utcnow().add(days=1)
+        self.client.calls_today = self.client.max_daily_calls + 1
+        with self.assertRaises(ApiException):
+            self.client.request("GET", "it")
+
     def test_test_corona(self):
         # disable refresh_token being called
         self.client.token_expires = pendulum.utcnow().add(days=1)
