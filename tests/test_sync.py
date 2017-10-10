@@ -1,6 +1,6 @@
 import unittest
+import unittest.mock
 import urllib.parse
-from unittest import mock
 
 import pendulum
 import requests_mock
@@ -23,7 +23,7 @@ class TestSyncActivityTypes(unittest.TestCase):
         for schema in self.stream["schema"]["properties"].values():
             schema["selected"] = True
 
-    @mock.patch("singer.write_record")
+    @unittest.mock.patch("singer.write_record")
     def test_sync_activity_types(self, write_record):
         activity_type = {
             "id": 1,
@@ -57,28 +57,12 @@ class TestSyncActivityTypes(unittest.TestCase):
         write_record.assert_called_once_with("activity_types", activity_type)
 
 
-class MockResponses:
-    def __init__(self, responses):
-        self.responses = responses
-        self.idx = 0
-
-    def __call__(self, request, context):
-        if self.idx >= len(self.responses):
-            raise Exception("Out of responses!")
-
-        rtn = self.responses[self.idx]
-        self.idx += 1
-        return rtn
-
-
 class TestSyncPaginated(unittest.TestCase):
     def setUp(self):
         self.client = Client("123-ABC-456", "id", "secret")
         self.client.token_expires = pendulum.utcnow().add(days=1)
         self.client.calls_today = 1
         self.stream = discover_catalog("programs")
-        for schema in self.stream["schema"]["properties"].values():
-            schema["selected"] = True
 
     def test_sync_paginated(self):
         state = {"bookmarks": {"programs": {"updatedAt": "2017-01-01T00:00:00Z", "next_page_token": "abc"}}}
@@ -122,4 +106,7 @@ class TestSyncPaginated(unittest.TestCase):
 
 
 class TestSyncActivities(unittest.TestCase):
+    # TODO: need to test the waiting for export stuff
+    # TODO: need to test flattening
+    # TODO: test get or create export
     pass

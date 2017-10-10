@@ -1,5 +1,7 @@
+import itertools
 import logging
 import unittest
+import unittest.mock
 
 import freezegun
 import pendulum
@@ -110,3 +112,44 @@ class TestClient(unittest.TestCase):
             cancel = self.client.get_bulk_endpoint("leads", "cancel", "123")
             mock.register_uri("POST", self.client.get_url(create), json={"errors": [{"code": "1035"}]})
             self.assertFalse(self.client.use_corona)
+
+
+class TestExports(unittest.TestCase):
+    def setUp(self):
+        self.client = Client("123-ABC-456", "id", "secret")
+        self.client.token_expires = pendulum.utcnow().add(days=1)
+        self.client.calls_today = 1
+
+    def test_export_enqueued(self):
+        export_id = "123"
+        self.client.poll_interval = 0
+        self.client.poll_export = unittest.mock.MagicMock(side_effect=["Created", "Completed"])
+        self.client.enqueue_export = unittest.mock.MagicMock()
+
+        self.assertTrue(self.client.wait_for_export("test", export_id))
+        self.client.enqueue_export.assert_called_once_with("test", export_id)
+
+    def test_api_exception(self):
+        export_id = "123"
+        self.client.poll_interval = 0
+        self.client.poll_export = unittest.mock.MagicMock(side_effect=ApiException("Oh no!"))
+
+        with self.assertRaises(ApiException):
+            self.client.wait_for_export("test", export_id)
+
+    def test_export_timed_out(self):
+        export_id = "123"
+        self.client.poll_interval = 0
+        self.client.job_timeout = 0
+        self.client.poll_export = unittest.mock.MagicMock(side_effect=itertools.repeat("Queued"))
+
+        with self.assertRaises(ExportFailed):
+            self.client.wait_for_export("test", export_id)
+
+    def test_export_failed(self):
+        export_id = "123"
+        self.client.poll_interval = 0
+        self.client.poll_export = unittest.mock.MagicMock(side_effect=["Failed"])
+
+        with self.assertRaises(ExportFailed):
+            self.client.wait_for_export("test", export_id)
