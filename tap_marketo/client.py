@@ -147,6 +147,9 @@ class Client:
 
         resp = self._request(method, url, endpoint_name, **kwargs)
         if "stream" not in kwargs:
+            if resp.content == b'':
+                raise ApiException("Something went wrong and the API returned nothing.")
+
             data = resp.json()
             if not data["success"]:
                 err = ", ".join("{code}: {message}".format(**e) for e in data["errors"])
