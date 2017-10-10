@@ -69,22 +69,18 @@ def parse_csv_line(line):
     return next(reader)
 
 
-def get_primary_field(schema):
-    # The primary field is the only automatic field not in activity fields
-    for field, schema in schema["properties"].items():
-        if schema["inclusion"] == "automatic" and field not in ACTIVITY_FIELDS:
-            return field
-
-
 def flatten_activity(row, schema):
     # Start with the base fields
     rtn = {field: row[field] for field in BASE_ACTIVITY_FIELDS}
 
-    # Move the primary attribute to the named column
-    primary_field = get_primary_field(schema)
-    if primary_field:
-        rtn[primary_field] = row["primaryAttributeValue"]
-        rtn[primary_field + "_id"] = row["primaryAttributeValueId"]
+    # Move the primary attribute to the named column. Primary attribute
+    # has a `field` and a `field_id` entry in the schema, is marked for
+    # automatic inclusion, and isn't one of the base activity fields.
+    # TODO: metadata this
+    for field, schema in schema["properties"].items():
+        if schema["inclusion"] == "automatic" and field not in ACTIVITY_FIELDS and not field.endswith("_id"):
+            rtn[field] = row["primaryAttributeValue"]
+            rtn[field + "_id"] = row["primaryAttributeValueId"]
 
     # Now flatten the attrs json to it's selected columns
     if "attributes" in row:
@@ -97,121 +93,87 @@ def flatten_activity(row, schema):
     return rtn
 
 
-def sync_activities(client, state, stream):
-    # Stream names for activities are `activities_X` where X is the
-    # activity type id in Marketo. We need the activity type id to
-    # build the query.
-    _, activity_type_id = stream["stream"].split("_")
-
-    # Retreive stored state for the current activity stream.
-    start_date = bookmarks.get_bookmark(state, stream["stream"], stream["replication_key"])
+def get_or_create_export(client, state, stream):
     export_id = bookmarks.get_bookmark(state, stream["stream"], "export_id")
+    if not export_id:
+        # Stream names for activities are `activities_X` where X is the
+        # activity type id in Marketo. We need the activity type id to
+        # build the query.
+        _, activity_type_id = stream["stream"].split("_")
 
-    # Export from the existing bookmark start date until current.
+        # Activities must be queried by `createdAt` even though
+        # that is not a real field. `createdAt` proxies `activityDate`.
+        # The activity type id must also be included in the query. The
+        # largest date range that can be used for activities is 30 days.
+        start_date = bookmarks.get_bookmark(state, stream["stream"], stream["replication_key"])
+        end_pen = start_pen.add(days=MAX_EXPORT_DAYS)
+        if end_pen >= pendulum.utcnow():
+            end_pen = pendulum.utcnow()
+
+        end_date = end_pen.isoformat()
+        query = {"createdAt": {"startsAt": start_date, "endsAt": end_date},
+                 "activityTypeIds": [activity_type_id]}
+
+        # Create the new export and store the id and end date in state.
+        # Does not start the export (must POST to the "enqueue" endpoint).
+        export_id = client.create_export("activities", ACTIVITY_FIELDS, query)
+        update_activity_state(state, stream, export_id=export_id, export_end=end_date)
+
+    return export_id
+
+
+def update_activity_state(state, stream, bookmark=None, export_id=None, export_end=None):
+    state = bookmarks.write_bookmark(state, stream["stream"], "export_id", export_id)
+    state = bookmarks.write_bookmark(state, stream["stream"], "export_end", export_end)
+    if bookmark:
+        state = bookmarks.write_bookmark(state, stream["stream"], stream["replication_key"], bookmark)
+
+    singer.write_state(state)
+    return state
+
+
+def handle_activity_line(state, stream, headers, line):
+    parsed_line = parse_csv_line(line)
+    row = dict(zip(headers, parsed_line))
+    row = flatten_activity(row, stream["schema"])
+    record = format_values(stream, row)
+
+    start_date = bookmarks.get_bookmark(state, stream["stream"], stream["replication_key"])
+    if record[stream["replication_key"]] < start_date:
+        return 0
+
+    singer.write_record(stream["stream"], record)
+    return 1
+
+
+def sync_activities(client, state, stream):
+    start_date = bookmarks.get_bookmark(state, stream["stream"], stream["replication_key"])
     start_pen = pendulum.parse(start_date)
     job_started = pendulum.utcnow()
     record_count = 0
+
     while start_pen < job_started:
-        if not export_id:
-            # No export_id, so create a new export. Exports must have
-            # a date range or Marketo returns an error.
-            end_pen = start_pen.add(days=MAX_EXPORT_DAYS)
-            if end_pen > job_started:
-                end_pen = job_started
+        export_id = get_or_create_export(client, state, stream)
 
-            # Activities must be queried by `createdAt` even though
-            # that is not a real field. `createdAt` proxies `activityDate`.
-            # The activity type id must also be included in the query.
-            query = {
-                "createdAt": {
-                    "startAt": start_pen.isoformat(),
-                    "endAt": end_pen.isoformat(),
-                },
-                "activityTypeIds": [activity_type_id],
-            }
-
-            singer.log_info("Creating %s export with query: %s", stream["stream"], query)
-
-            # Create the export and store the id and end date in state.
-            export_id = client.create_export("activities", ACTIVITY_FIELDS, query)
-            state = bookmarks.write_bookmark(state,
-                                             stream["stream"],
-                                             "export_id",
-                                             export_id)
-            state = bookmarks.write_bookmark(state,
-                                             stream["stream"],
-                                             "export_end",
-                                             end_pen.isoformat())
-            singer.write_state(state)
-
-        else:
-            # If we have an export_id we are resuming an existing export.
-            # Retrieve the end data of the export from state so we don't
-            # re-request the same data again.
-            end_date = bookmarks.get_bookmark(state, stream["stream"], "export_end")
-            end_pen = pendulum.parse(end_date)
-            singer.log_info("Resuming %s export %s through %s",
-                            stream["stream"], export_id, end_pen)
-
-        # Wait until export is complete. If the export fails, clear the
-        # stored export id and end time before leaving.
+        # If the export fails while running, clear the export information
+        # from state so a new export can be run next sync.
         try:
             client.wait_for_export("activities", export_id)
         except ExportFailed:
-            state = bookmarks.write_bookmark(state,
-                                             stream["stream"],
-                                             "export_id",
-                                             None)
-            state - bookmarks.write_bookmark(state,
-                                             stream["stream"],
-                                             "export_end",
-                                             None)
-            singer.write_state()
+            update_activity_state(state, stream)
             raise
 
+        # Stream the rows keeping count of the accepted rows.
         lines = client.stream_export("activities", export_id)
         headers = parse_csv_line(next(lines))
-
-        # Each activity must be translated from a tuple of values into
-        # a map of field: value. Then the `attributes` json blob is
-        # denested into fields. Finally the fields are formatted
-        # according to their type.
-        #
-        # If the record is newer than the original bookmark (this should
-        # always be the case due to our query, but just in case), we
-        # update the bookmark and output the record. Finally, we updated
-        # the stored bookmark is the record is newer.
         for line in lines:
-            parsed_line = parse_csv_line(line)
-            row = dict(zip(headers, parsed_line))
-            row = flatten_activity(row, stream["schema"])
-            record = format_values(stream, row)
-            if record[stream["replication_key"]] >= start_date:
-                record_count += 1
-                singer.write_record(stream["stream"], record)
-                bookmark = bookmarks.get_bookmark(state,
-                                                  stream["stream"],
-                                                  stream["replication_key"])
-                if record[stream["replication_key"]] >= bookmark:
-                    state = bookmarks.write_bookmark(state,
-                                                     stream["stream"],
-                                                     stream["replication_key"],
-                                                     record[stream["replication_key"]])
-                    singer.write_state(state)
+            record_count += handle_activity_line(state, stream, headers, line)
 
-        # After the export is complete, unset the export bookmarks,
-        # advance the start date of the next query, and continue.
-        export_id = None
-        state = bookmarks.write_bookmark(state,
-                                         stream["stream"],
-                                         "export_id",
-                                         None)
-        state = bookmarks.write_bookmark(state,
-                                         stream["stream"],
-                                         "export_end",
-                                         None)
-        singer.write_state(state)
-        start_pen = end_pen
+        # The new start date is the end of the previous export. Update
+        # the bookmark to the end date and continue with the next export.
+        start_date = bookmarks.get_bookmark(state, stream["stream"], "export_end")
+        update_activity_state(state, stream, bookmark=start_date)
+        start_pen = pendulum.parse(start_date)
 
     return state, record_count
 
@@ -220,6 +182,7 @@ def sync_programs(client, state, stream):
     # Programs are queryable via their updatedAt time but require and
     # end date as well. As there is no max time range for the query,
     # query from the bookmark value until current.
+    #
     # The Programs endpoint uses offsets with a return limit of 200
     # per page. If requesting past the final program, an error message
     # is returned to indicate that the endpoint has been fully synced.
@@ -233,8 +196,6 @@ def sync_programs(client, state, stream):
     }
     endpoint = "rest/asset/v1/programs.json"
 
-    # Keep querying pages of data until exhausted.
-    bookmark = start_date
     record_count = 0
     while True:
         data = client.request("GET", endpoint, endpoint_name="programs", params=params)
@@ -245,25 +206,20 @@ def sync_programs(client, state, stream):
             break
 
         # Each row just needs the values formatted. If the record is
-        # newer than the original start date, stream the record. Track
-        # the max updatedAt value that we see since we can't be sure
-        # that the data is in chronological order.
+        # newer than the original start date, stream the record.
         for row in data["result"]:
             record = format_values(stream, row)
             if record["updatedAt"] >= start_date:
                 record_count += 1
                 singer.write_record("programs", record)
-                if record["updatedAt"] >= bookmark:
-                    bookmark = record["updatedAt"]
 
         # Increment the offset by the return limit for the next query.
         params["offset"] += params["maxReturn"]
 
     # Now that we've finished every page we can update the bookmark to
-    # the most recent value.
-    state = bookmarks.write_bookmark(state, "programs", "updatedAt", bookmark)
+    # the end of the query.
+    state = bookmarks.write_bookmark(state, "programs", "updatedAt", end_date)
     singer.write_state(state)
-
     return state, record_count
 
 
@@ -271,23 +227,20 @@ def sync_paginated(client, state, stream):
     # Campaigns and Static Lists are paginated with a max return of 300
     # items per page. There are no filters that can be used to only
     # return updated records.
-    start_date = bookmarks.get_bookmark(state,
-                                        stream["stream"],
-                                        stream["replication_key"])
+    start_date = bookmarks.get_bookmark(state, stream["stream"], stream["replication_key"])
     params = {"batchSize": 300}
     endpoint = "rest/v1/{}.json".format(stream["stream"])
 
     # Paginated requests use paging tokens for retrieving the next page
     # of results. These tokens are stored in the state for resuming
     # syncs. If a paging token exists in state, use it.
-    next_page_token = bookmarks.get_bookmark(state,
-                                             stream["stream"],
-                                             "next_page_token")
+    next_page_token = bookmarks.get_bookmark(state, stream["stream"], "next_page_token")
     if next_page_token:
         params["nextPageToken"] = next_page_token
 
     # Keep querying pages of data until no next page token.
     record_count = 0
+    max_bookmark = start_date
     while True:
         data = client.request("GET", endpoint, endpoint_name=stream["stream"], params=params)
 
@@ -299,33 +252,22 @@ def sync_paginated(client, state, stream):
             if record[stream["replication_key"]] >= start_date:
                 record_count += 1
                 singer.write_record(stream["stream"], record)
-                bookmark = bookmarks.get_bookmark(state,
-                                                  stream["stream"],
-                                                  stream["replication_key"])
-                if record[stream["replication_key"]] >= bookmark:
-                    state = bookmarks.write_bookmark(state,
-                                                     stream["stream"],
-                                                     stream["replication_key"],
-                                                     record[stream["replication_key"]])
-                    singer.write_state(state)
+                bookmark = bookmarks.get_bookmark(state, stream["stream"], stream["replication_key"])
+                if bookmark > max_bookmark:
+                    max_bookmark = bookmark
 
         # No next page, results are exhausted.
         if "nextPageToken" not in data:
             break
 
         # Store the next page token in state and continue.
-        state = bookmarks.write_bookmark(state,
-                                         stream["stream"],
-                                         "next_page_token",
-                                         data["nextPageToken"])
+        state = bookmarks.write_bookmark(state, stream["stream"], "next_page_token", data["nextPageToken"])
         singer.write_state(state)
 
     # Once all results are exhausted, unset the next page token bookmark
     # so the subsequent sync starts from the beginning.
-    state = bookmarks.write_bookmark(state,
-                                     stream["stream"],
-                                     "next_page_token",
-                                     None)
+    state = bookmarks.write_bookmark(state, stream["stream"], "next_page_token", None)
+    state = bookmarks.write_bookmark(state, stream["stream"], stream["replication_key"], max_bookmark)
     singer.write_state(state)
     return state, record_count
 

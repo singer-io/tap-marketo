@@ -68,6 +68,7 @@ def get_activity_type_stream(activity):
         primary = clean_string(activity["primaryAttribute"]["name"])
         properties[primary] = get_schema_for_type(activity["primaryAttribute"]["dataType"], null=False)
         properties[primary + "_id"] = get_schema_for_type("integer", null=False)
+        # TODO: metadata this
 
     if "attributes" in activity:
         for attr in activity["attributes"]:
