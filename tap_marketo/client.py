@@ -1,3 +1,4 @@
+import re
 import time
 
 import pendulum
@@ -21,6 +22,14 @@ RATE_LIMIT_CALLS = 100
 RATE_LIMIT_SECONDS = 20
 
 DEFAULT_USER_AGENT = "Singer.io/tap-marketo"
+DOMAIN_RE = r"([\d]{3}-[\w]{3}-[\d]{3})"
+
+
+def extract_domain(url):
+    result = re.search(DOMAIN_RE, url)
+    if not result:
+        raise ValueError("%s is not a valid Marketo URL" % url)
+    return result.group()
 
 
 class ApiException(Exception):
@@ -34,13 +43,13 @@ class ExportFailed(Exception):
 
 
 class Client:
-    def __init__(self, domain, client_id, client_secret,
+    def __init__(self, endpoint, client_id, client_secret,
                  max_daily_calls=MAX_DAILY_CALLS,
                  user_agent=DEFAULT_USER_AGENT,
                  job_timeout=JOB_TIMEOUT,
                  poll_interval=POLL_INTERVAL, **kwargs):
 
-        self.domain = domain
+        self.domain = extract_domain(endpoint)
         self.client_id = client_id
         self.client_secret = client_secret
         self.max_daily_calls = int(max_daily_calls)
