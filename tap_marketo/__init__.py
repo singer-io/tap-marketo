@@ -50,15 +50,13 @@ def validate_state(config, catalog, state):
     singer.write_state(state)
     return state
 
-def _main(config, catalog, state, discover_mode=False):
+def _main(config, properties, state, discover_mode=False):
     client = Client(**config)
     if discover_mode:
         discover(client)
-    elif catalog:
-        if isinstance(catalog, singer.catalog.Catalog):
-            catalog = catalog.to_dict()
-        state = validate_state(config, catalog, state)
-        sync(client, catalog, state)
+    elif properties:
+        state = validate_state(config, properties, state)
+        sync(client, properties, state)
     else:
         raise Exception("Must have catalog if syncing")
 
@@ -67,7 +65,7 @@ def main():
     args = singer.utils.parse_args(REQUIRED_CONFIG_KEYS)
 
     try:
-        _main(args.config, args.catalog, args.state, args.discover)
+        _main(args.config, args.properties, args.state, args.discover)
     except Exception as e:
         singer.log_critical(e)
         raise e
