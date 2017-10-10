@@ -261,6 +261,7 @@ def sync_paginated(client, state, stream):
             break
 
         # Store the next page token in state and continue.
+        params["nextPageToken"] = data["nextPageToken"]
         state = bookmarks.write_bookmark(state, stream["stream"], "next_page_token", data["nextPageToken"])
         singer.write_state(state)
 
@@ -279,9 +280,6 @@ def sync_activity_types(client, state, stream):
     data = client.request("GET", endpoint, endpoint_name="activity_types")
     record_count = 0
     for row in data["result"]:
-        primary_attr = row.pop("primaryAttribute", {})
-        row["primaryAttributeName"] = primary_attr.pop("name")
-        row["primaryAttributeType"] = primary_attr.pop("dataType")
         record = format_values(stream, row)
         record_count += 1
         singer.write_record("activity_types", record)
