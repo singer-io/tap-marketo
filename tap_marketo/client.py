@@ -62,7 +62,6 @@ class Client:
         self.calls_today = 0
 
         self._session = requests.Session()
-        self.refresh_token()
 
     @property
     def use_corona(self):
@@ -260,5 +259,5 @@ class Client:
             return False
         else:
             singer.log_info("Corona is supported.")
-            self.cancel_export(data["exportId"])
+            self.cancel_export("leads", data["exportId"])
             return True
