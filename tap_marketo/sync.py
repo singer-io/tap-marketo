@@ -147,6 +147,14 @@ def handle_record(state, stream, record):
     return 1
 
 
+def wait_for_activity_export(client, state, stream, export_id):
+    try:
+        client.wait_for_export("activities", export_id)
+    except ExportFailed:
+        update_activity_state(state, stream)
+        raise
+
+
 def sync_activities(client, state, stream):
     start_date = bookmarks.get_bookmark(state, stream["stream"], stream["replication_key"])
     start_pen = pendulum.parse(start_date)
@@ -158,11 +166,7 @@ def sync_activities(client, state, stream):
 
         # If the export fails while running, clear the export information
         # from state so a new export can be run next sync.
-        try:
-            client.wait_for_export("activities", export_id)
-        except ExportFailed:
-            update_activity_state(state, stream)
-            raise
+        wait_for_activity_export(client, state, stream, export_id)
 
         # Stream the rows keeping count of the accepted rows.
         lines = client.stream_export("activities", export_id)

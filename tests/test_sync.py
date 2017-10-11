@@ -245,5 +245,57 @@ class TestSyncActivities(unittest.TestCase):
         self.assertEqual(0, handle_record(state, self.stream, record))
         write_record.assert_not_called()
 
-    def test_sync_activites(self):
-        pass
+    def test_wait_for_activity_export(self):
+        state = {"bookmarks": {"activities_1": {"activityDate": "2017-01-01T00:00:00+00:00",
+                                                "export_id": "123",
+                                                "export_end": "2017-01-31:00:00+00:00"}}}
+        self.client.wait_for_export = unittest.mock.MagicMock(side_effect=ExportFailed())
+
+        with self.assertRaises(ExportFailed):
+            wait_for_activity_export(self.client, state, self.stream, "123")
+
+        expected_state = {"bookmarks": {"activities_1": {"activityDate": "2017-01-01T00:00:00+00:00",
+                                                         "export_id": None,
+                                                         "export_end": None}}}
+        self.assertDictEqual(expected_state, state)
+
+    @unittest.mock.patch("singer.write_record")
+    @freezegun.freeze_time("2017-01-15")
+    def test_sync_activities(self, write_record):
+        state = {"bookmarks": {"activities_1": {"activityDate": "2017-01-01T00:00:00+00:00",
+                                                "export_id": "123",
+                                                "export_end": "2017-01-15T00:00:00+00:00"}}}
+        lines = [
+            b'marketoGUID,leadId,activityDate,activityTypeId,primaryAttributeValue,attributes',
+            b'1,1,2016-12-31T00:00:00+00:00,1,1,{"Client IP Address":"0.0.0.0"}',
+            b'2,2,2017-01-01T00:00:00+00:00,1,1,{"Client IP Address":"0.0.0.0"}',
+            b'3,3,2017-01-02T00:00:00+00:00,1,1,{"Client IP Address":"0.0.0.0"}',
+            b'4,4,2017-01-03T00:00:00+00:00,1,1,{"Client IP Address":"0.0.0.0"}',
+        ]
+
+        self.client.wait_for_export = unittest.mock.MagicMock(return_value=True)
+        self.client.stream_export = unittest.mock.MagicMock(return_value=(l for l in lines))
+
+        state, record_count = sync_activities(self.client, state, self.stream)
+
+        # one record was too old, so we should have 3
+        self.assertEqual(3, record_count)
+
+        # export_end was the 15th, so the activityDate should be updated and no export
+        expected_state = {"bookmarks": {"activities_1": {"activityDate": "2017-01-15T00:00:00+00:00",
+                                                         "export_id": None,
+                                                         "export_end": None}}}
+        self.assertDictEqual(expected_state, state)
+
+        expected_calls = [
+            unittest.mock.call("activities_1",
+                               {"marketoGUID": "2", "leadId": 2, "activityDate": "2017-01-01T00:00:00+00:00",
+                                "activityTypeId": 1, "webpage_id": 1, "client_ip_address": "0.0.0.0"}),
+            unittest.mock.call("activities_1",
+                               {"marketoGUID": "3", "leadId": 3, "activityDate": "2017-01-02T00:00:00+00:00",
+                                "activityTypeId": 1, "webpage_id": 1, "client_ip_address": "0.0.0.0"}),
+            unittest.mock.call("activities_1",
+                               {"marketoGUID": "4", "leadId": 4, "activityDate": "2017-01-03T00:00:00+00:00",
+                                "activityTypeId": 1, "webpage_id": 1, "client_ip_address": "0.0.0.0"}),
+        ]
+        write_record.assert_has_calls(expected_calls)
