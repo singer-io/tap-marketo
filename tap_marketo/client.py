@@ -259,5 +259,5 @@ class Client:
             return False
         else:
             singer.log_info("Corona is supported.")
-            self.cancel_export("leads", data["exportId"])
+            self.cancel_export("leads", data["result"][0]["exportId"])
             return True
