@@ -59,7 +59,7 @@ def _main(config, properties, state, discover_mode=False):
         state = validate_state(config, properties, state)
         sync(client, properties, state)
     else:
-        LOGGER.info("Check mode is a silly thing")
+        singer.log_info("Check mode is a silly thing")
 
 
 def main():
