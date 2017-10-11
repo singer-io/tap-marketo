@@ -20,13 +20,16 @@
         "type": "string",
         "inclusion": "available"
       },
-      "primaryAttributeName": {
-        "type": "string",
-        "inclusion": "automatic"
-      },
-      "primaryAttributeType": {
-        "type": "string",
-        "inclusion": "automatic"
+      "primaryAttribute": {
+        "type": ["object", "null"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "dataType": {
+            "type": "string"
+          }
+        }
       },
       "attributes": {
         "type": "array",

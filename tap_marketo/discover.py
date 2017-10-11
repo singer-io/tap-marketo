@@ -67,7 +67,7 @@ def get_activity_type_stream(activity):
     if "primaryAttribute" in activity:
         primary = clean_string(activity["primaryAttribute"]["name"])
         properties[primary] = get_schema_for_type(activity["primaryAttribute"]["dataType"], null=False)
-        properties[primary + "_id"] = get_schema_for_type("integer", null=False)
+        # TODO: metadata this
 
     if "attributes" in activity:
         for attr in activity["attributes"]:
@@ -105,7 +105,7 @@ def discover_leads(client):
     for field in data["result"]:
         if "rest" not in field:
             singer.log_debug("Field leads.%s not supported via the REST API.",
-                             field["rest"]["name"])
+                             field["displayName"])
             continue
 
         if field["rest"]["name"] == "id":
