@@ -104,12 +104,13 @@ def get_or_create_export(client, state, stream):
         # The activity type id must also be included in the query. The
         # largest date range that can be used for activities is 30 days.
         start_date = bookmarks.get_bookmark(state, stream["stream"], stream["replication_key"])
+        start_pen = pendulum.parse(start_date)
         end_pen = start_pen.add(days=MAX_EXPORT_DAYS)
         if end_pen >= pendulum.utcnow():
             end_pen = pendulum.utcnow()
 
         end_date = end_pen.isoformat()
-        query = {"createdAt": {"startsAt": start_date, "endsAt": end_date},
+        query = {"createdAt": {"startAt": start_date, "endAt": end_date},
                  "activityTypeIds": [activity_type_id]}
 
         # Create the new export and store the id and end date in state.
@@ -130,12 +131,14 @@ def update_activity_state(state, stream, bookmark=None, export_id=None, export_e
     return state
 
 
-def handle_activity_line(state, stream, headers, line):
+def convert_line(stream, headers, line):
     parsed_line = parse_csv_line(line)
     row = dict(zip(headers, parsed_line))
     row = flatten_activity(row, stream["schema"])
-    record = format_values(stream, row)
+    return format_values(stream, row)
 
+
+def handle_record(state, stream, record):
     start_date = bookmarks.get_bookmark(state, stream["stream"], stream["replication_key"])
     if record[stream["replication_key"]] < start_date:
         return 0
@@ -165,7 +168,8 @@ def sync_activities(client, state, stream):
         lines = client.stream_export("activities", export_id)
         headers = parse_csv_line(next(lines))
         for line in lines:
-            record_count += handle_activity_line(state, stream, headers, line)
+            record = convert_line(stream, headers, line)
+            record_count += handle_record(state, stream, record)
 
         # The new start date is the end of the previous export. Update
         # the bookmark to the end date and continue with the next export.

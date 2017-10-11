@@ -2,6 +2,7 @@ import unittest
 import unittest.mock
 import urllib.parse
 
+import freezegun
 import pendulum
 import requests_mock
 
@@ -206,11 +207,43 @@ class TestSyncActivities(unittest.TestCase):
         }
         self.assertDictEqual(expected, flatten_activity(row, self.stream["schema"]))
 
-    def test_get_or_create_export(self):
-        pass
+    def test_get_or_create_export_get_export_id(self):
+        state = {"bookmarks": {"activities_1": {"export_id": "123", "export_end": "2017-01-01T00:00:00Z"}}}
+        self.assertEqual("123", get_or_create_export(self.client, state, self.stream))
 
-    def test_handle_activity_line(self):
-        pass
+    @freezegun.freeze_time("2017-01-15")
+    def test_get_or_create_export_create_export(self):
+        state = {"bookmarks": {"activities_1": {"activityDate": "2017-01-01T00:00:00+00:00"}}}
+        self.client.create_export = unittest.mock.MagicMock(return_value="123")
+
+        # Ensure we got the right export id back
+        self.assertEqual("123", get_or_create_export(self.client, state, self.stream))
+
+        # Ensure that we called create export with the correct args
+        expected_query = {"createdAt": {"startAt": "2017-01-01T00:00:00+00:00",
+                                        "endAt": "2017-01-15T00:00:00+00:00"},
+                          "activityTypeIds": ["1"]}
+        self.client.create_export.assert_called_once_with("activities", ACTIVITY_FIELDS, expected_query)
+
+        # Ensure state was updated
+        expected_state = {"bookmarks": {"activities_1": {"activityDate": "2017-01-01T00:00:00+00:00",
+                                                         "export_id": "123",
+                                                         "export_end": "2017-01-15T00:00:00+00:00"}}}
+        self.assertDictEqual(expected_state, state)
+
+    @unittest.mock.patch("singer.write_record")
+    def test_handle_record(self, write_record):
+        state = {"bookmarks": {"activities_1": {"activityDate": "2017-01-01T00:00:00Z"}}}
+        record = {"activityDate": "2017-01-02T00:00:00+00:00"}
+        self.assertEqual(1, handle_record(state, self.stream, record))
+        write_record.assert_called_once_with("activities_1", record)
+
+    @unittest.mock.patch("singer.write_record")
+    def test_handle_record_rejected(self, write_record):
+        state = {"bookmarks": {"activities_1": {"activityDate": "2017-01-01T00:00:00Z"}}}
+        record = {"activityDate": "2016-01-01T00:00:00+00:00"}
+        self.assertEqual(0, handle_record(state, self.stream, record))
+        write_record.assert_not_called()
 
     def test_sync_activites(self):
         pass

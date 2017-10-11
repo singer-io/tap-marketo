@@ -98,7 +98,7 @@ class TestClient(unittest.TestCase):
         with requests_mock.Mocker(real_http=True) as mock:
             create = self.client.get_bulk_endpoint("leads", "create")
             cancel = self.client.get_bulk_endpoint("leads", "cancel", "123")
-            mock.register_uri("POST", self.client.get_url(create), json={"success": True, "exportId": "123"})
+            mock.register_uri("POST", self.client.get_url(create), json={"success": True, "result": [{"exportId": "123"}]})
             mock.register_uri("POST", self.client.get_url(cancel), json={"success": True})
             self.assertTrue(self.client.use_corona)
 
