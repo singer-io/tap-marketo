@@ -183,6 +183,8 @@ def sync_leads(client, state, stream):
     return state, record_count
 
 def sync_activities(client, state, stream):
+    singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
+
     # Stream names for activities are `activities_X` where X is the
     # activity type id in Marketo. We need the activity type id to
     # build the query.
@@ -247,7 +249,7 @@ def sync_activities(client, state, stream):
                                              stream["stream"],
                                              "export_id",
                                              None)
-            state - bookmarks.write_bookmark(state,
+            state = bookmarks.write_bookmark(state,
                                              stream["stream"],
                                              "export_end",
                                              None)
@@ -273,7 +275,7 @@ def sync_activities(client, state, stream):
             record = format_values(stream, row)
             if record[stream["replication_key"]] >= start_date:
                 record_count += 1
-                singer.write_record(stream["stream"], record)
+                singer.write_record(stream["tap_stream_id"], record)
                 bookmark = get_bookmark(state,
                                         stream["stream"],
                                         stream["replication_key"])
