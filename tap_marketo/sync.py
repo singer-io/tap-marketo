@@ -192,6 +192,7 @@ def sync_programs(client, state, stream):
     # The Programs endpoint uses offsets with a return limit of 200
     # per page. If requesting past the final program, an error message
     # is returned to indicate that the endpoint has been fully synced.
+    singer.write_schema("programs", stream["schema"])
     start_date = bookmarks.get_bookmark(state, "programs", "updatedAt")
     end_date = pendulum.utcnow().isoformat()
     params = {
@@ -233,6 +234,7 @@ def sync_paginated(client, state, stream):
     # Campaigns and Static Lists are paginated with a max return of 300
     # items per page. There are no filters that can be used to only
     # return updated records.
+    singer.write_schema(stream["stream"], stream["schema"])
     start_date = bookmarks.get_bookmark(state, stream["stream"], stream["replication_key"])
     params = {"batchSize": 300}
     endpoint = "rest/v1/{}.json".format(stream["stream"])
@@ -282,6 +284,7 @@ def sync_paginated(client, state, stream):
 def sync_activity_types(client, state, stream):
     # Activity types aren't even paginated. Grab all the results in one
     # request, format the values, and output them.
+    singer.write_schema("activity_types", stream["schema"])
     endpoint = "rest/v1/activities/types.json"
     data = client.request("GET", endpoint, endpoint_name="activity_types")
     record_count = 0
