@@ -36,8 +36,7 @@ NO_ASSET_MSG = "No assets found for the given search criteria."
 NO_CORONA_WARNING = (
     "Your account does not have Corona support enabled. Without Corona, each sync of "
     "the Leads table requires a full export which can lead to lower data freshness. "
-    "Please contact <contact email> at Marketo to request Corona support be added to "
-    "your account."
+    "Please contact Marketo to request Corona support be added to your account."
 )
 
 
@@ -115,6 +114,7 @@ def schedule_or_resume_export_job(state, tap_stream_id, export_id, export_end_da
 
 
 def sync_leads(client, state, stream):
+    # http://developers.marketo.com/rest-api/bulk-extract/bulk-lead-extract/
     singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
     record_count = 0
     schema = stream["schema"]
@@ -240,6 +240,7 @@ def wait_for_activity_export(client, state, stream, export_id):
 
 
 def sync_activities(client, state, stream):
+    # http://developers.marketo.com/rest-api/bulk-extract/bulk-activity-extract/
     singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
     start_date = bookmarks.get_bookmark(state, stream["tap_stream_id"], stream["replication_key"])
     start_pen = pendulum.parse(start_date)
@@ -270,6 +271,8 @@ def sync_activities(client, state, stream):
 
 
 def sync_programs(client, state, stream):
+    # http://developers.marketo.com/rest-api/assets/programs/#by_date_range
+    #
     # Programs are queryable via their updatedAt time but require and
     # end date as well. As there is no max time range for the query,
     # query from the bookmark value until current.
@@ -316,6 +319,9 @@ def sync_programs(client, state, stream):
 
 
 def sync_paginated(client, state, stream):
+    # http://developers.marketo.com/rest-api/endpoint-reference/lead-database-endpoint-reference/#!/Campaigns/getCampaignsUsingGET
+    # http://developers.marketo.com/rest-api/endpoint-reference/lead-database-endpoint-reference/#!/Static_Lists/getListsUsingGET
+    #
     # Campaigns and Static Lists are paginated with a max return of 300
     # items per page. There are no filters that can be used to only
     # return updated records.
@@ -364,6 +370,8 @@ def sync_paginated(client, state, stream):
 
 
 def sync_activity_types(client, state, stream):
+    # http://developers.marketo.com/rest-api/lead-database/activities/#describe
+    #
     # Activity types aren't even paginated. Grab all the results in one
     # request, format the values, and output them.
     singer.write_schema("activity_types", stream["schema"], stream["key_properties"])

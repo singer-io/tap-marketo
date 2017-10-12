@@ -1,3 +1,7 @@
+#!/usr/bin/env python3
+
+# Marketo Docs are located at http://developers.marketo.com/rest-api/
+
 import pendulum
 import singer
 from singer import bookmarks

@@ -71,6 +71,7 @@ class Client:
 
     @property
     def headers(self):
+        # http://developers.marketo.com/rest-api/authentication/#using_an_access_token
         if not self.token_expires or self.token_expires <= pendulum.utcnow():
             self.refresh_token()
 
@@ -91,6 +92,7 @@ class Client:
 
     @singer.utils.backoff((requests.exceptions.RequestException), singer.utils.exception_is_4xx)
     def refresh_token(self):
+        # http://developers.marketo.com/rest-api/authentication/#creating_an_access_token
         params = {
             "grant_type": "client_credentials",
             "client_id": self.client_id,
@@ -138,6 +140,7 @@ class Client:
         return resp
 
     def update_calls_today(self):
+        # http://developers.marketo.com/rest-api/endpoint-reference/lead-database-endpoint-reference/#!/Usage/getDailyUsageUsingGET
         data = self._request("GET", "rest/v1/stats/usage.json").json()
         if "result" not in data:
             raise ApiException(data)
@@ -171,6 +174,7 @@ class Client:
             return resp.iter_lines()
 
     def create_export(self, stream_type, fields, query):
+        # http://developers.marketo.com/rest-api/bulk-extract/#creating_a_job
         payload = {
             "format": "CSV",
             "fields": fields,
@@ -184,22 +188,26 @@ class Client:
         return data["result"][0]["exportId"]
 
     def enqueue_export(self, stream_type, export_id):
+        # http://developers.marketo.com/rest-api/bulk-extract/#starting_a_job
         endpoint = self.get_bulk_endpoint(stream_type, "enqueue", export_id)
         endpoint_name = "{}_enqueue".format(stream_type)
         self.request("POST", endpoint, endpoint_name=endpoint_name)
 
     def cancel_export(self, stream_type, export_id):
+        # http://developers.marketo.com/rest-api/bulk-extract/#cancelling_a_job
         endpoint = self.get_bulk_endpoint(stream_type, "cancel", export_id)
         endpoint_name = "{}_cancel".format(stream_type)
         self.request("POST", endpoint, endpoint_name=endpoint_name)
 
     def poll_export(self, stream_type, export_id):
+        # http://developers.marketo.com/rest-api/bulk-extract/#polling_job_status
         endpoint = self.get_bulk_endpoint(stream_type, "status", export_id)
         endpoint_name = "{}_poll".format(stream_type)
         data = self.request("GET", endpoint, endpoint_name=endpoint_name)
         return data["result"][0]["status"]
 
     def stream_export(self, stream_type, export_id):
+        # http://developers.marketo.com/rest-api/bulk-extract/#retrieving_your_data
         endpoint = self.get_bulk_endpoint(stream_type, "file", export_id)
         endpoint_name = "{}_stream".format(stream_type)
         return self.request("GET", endpoint, endpoint_name=endpoint_name, stream=True)
@@ -211,7 +219,7 @@ class Client:
         while pendulum.utcnow() < timeout_time:
             status = self.poll_export(stream_type, export_id)
             singer.log_info("export %s status is %s", export_id, status)
-            
+
             if status == "Created":
                 # If the status is created, the export has been made but
                 # not started, so enqueue the export.
@@ -229,6 +237,7 @@ class Client:
         raise ExportFailed("Timed out")
 
     def test_corona(self):
+        # http://developers.marketo.com/rest-api/bulk-extract/#limits
         # Corona allows us to do bulk queries for Leads using updatedAt
         # as a filter. Clients without Corona (should only be clients
         # with < 50,000 Leads) must do a full bulk export every sync.
