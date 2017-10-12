@@ -13,6 +13,8 @@ setup(name='tap-marketo',
           'singer-python==3.6.1',
           'requests==2.12.4',
           'pendulum==1.2.0',
+          'freezegun>=0.3.9',
+          'requests_mock>=1.3.0'
       ],
       entry_points='''
           [console_scripts]
