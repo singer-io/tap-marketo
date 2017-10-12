@@ -66,7 +66,7 @@ def format_value(value, schema):
 def format_values(stream, row):
     rtn = {}
     for field, schema in stream["schema"]["properties"].items():
-        if not schema.get("selected"):
+        if not schema.get("selected") and not (schema.get("inclusion") == "automatic"):
             continue
         rtn[field] = format_value(row.get(field), schema)
     return rtn
@@ -101,6 +101,7 @@ def flatten_activity(row, schema):
 def get_or_create_export_for_leads(client, state, stream, fields):
     export_id = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_id")
     export_end = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_end")
+    export_end = pendulum.parse(export_end)
 
     if client.use_corona:
         query_field = "updatedAt"
@@ -115,7 +116,6 @@ def get_or_create_export_for_leads(client, state, stream, fields):
             end_pen = pendulum.utcnow()
 
         export_end = end_pen.isoformat()
-        print(export_end)
 
         query = {query_field: {"startAt": start_date, "endAt": export_end}}
 
@@ -132,10 +132,10 @@ def write_leads_records(client, state, stream, lines, og_bookmark_value, record_
     for line in lines:
         parsed_line = parse_csv_line(line)
         parsed_line = dict(zip(headers, parsed_line))
-        print(parsed_line["updatedAt"])
-
+        line_updated_at = pendulum.parse(parsed_line["updatedAt"])
         #accounts without corona need to have a manual filter on records
-        if client.use_corona or parsed_line["updatedAt"] > og_bookmark_value:
+        if client.use_corona or (line_updated_at >= og_bookmark_value):
+
             record = format_values(stream, parsed_line)
             singer.write_record(stream["tap_stream_id"], record)
             record_count += 1
@@ -171,7 +171,7 @@ def sync_leads(client, state, stream):
         record_count = write_leads_records(client, state, stream, lines, og_bookmark_value, record_count)
 
         if client.use_corona:
-            state = update_state_with_export_info(state, stream, bookmark=str(export_end), \
+            state = update_state_with_export_info(state, stream, bookmark=export_end.isoformat(), \
                                           export_id=None, export_end=None)
         else:
             state = update_state_with_export_info(state, stream, \
@@ -179,9 +179,10 @@ def sync_leads(client, state, stream):
 
         bookmark_date = export_end
 
-    state = update_state_with_export_info(state, stream, bookmark=str(tap_job_start_time), \
+    state = update_state_with_export_info(state, stream, bookmark=tap_job_start_time.isoformat(), \
                                           export_id=None, export_end=None)
 
+    
     return state, record_count
 
 def get_or_create_export_for_activities(client, state, stream):

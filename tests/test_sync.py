@@ -59,7 +59,6 @@ class TestSyncActivityTypes(unittest.TestCase):
 
 class TestSyncLeads(unittest.TestCase):
     def mocked_client_create_export(self, stream_name, fields, query):
-        print(query)
         return 1234
 
     def setUp(self):
@@ -70,8 +69,29 @@ class TestSyncLeads(unittest.TestCase):
         self.stream = {"tap_stream_id": "leads",
                        "key_properties": ["marketoGUID"],
                        "replication_key": "updatedAt",
-                       "schema": {"properties": {"a": {},
-                                                 "b": {}}}}        
+                       "schema": {"properties": {
+                           "marketoGUID": {
+                               "type": "string",
+                               "inclusion": "automatic",
+                               "selected": True,
+                           },
+                           "leadId": {
+                               "type": "integer",
+                               "inclusion": "automatic",
+                               "selected": False,
+                           },
+                           "updatedAt": {
+                               "type": "string",
+                               "format": "date-time",
+                               "inclusion": "automatic",
+                               "selected": False,
+                           },
+                           "attributes": {
+                               "type": "integer",
+                               "inclusion": "available",
+                               "selected": False,
+                           }}}}
+
         self.client.create_export = self.mocked_client_create_export
         
     @freezegun.freeze_time("2017-01-15")
@@ -88,7 +108,7 @@ class TestSyncLeads(unittest.TestCase):
         export_info = get_or_create_export_for_leads(self.client, mock_state, \
                                                    self.stream, \
                                                    fields)
-        self.assertEqual(export_info, (5678, '2017-02-14T00:00:00-05:00'))
+        self.assertEqual(export_info, (5678, pendulum.parse('2017-02-14T00:00:00-05:00')))
 
     @freezegun.freeze_time("2017-01-15")
     @unittest.mock.patch("singer.write_record")
@@ -102,13 +122,53 @@ class TestSyncLeads(unittest.TestCase):
         mock_lines = [b'a,b,updatedAt', b'1,2,2017-01-16', b'1,2,2017-01-01']
         mock_lines = (a for a in mock_lines)
 
-        mock_og_value = pendulum.now().isoformat()
+        mock_og_value = pendulum.now()
         mock_record_count = 0
         record_count = write_leads_records(self.client, mock_state, self.stream, \
                                            mock_lines, mock_og_value, mock_record_count)
 
         self.assertEqual(record_count, 1)
 
+    @unittest.mock.patch("singer.write_record")
+    @freezegun.freeze_time("2017-01-15")
+    def test_sync_leads(self, write_record):
+        self.client._use_corona = False
+        state = {"bookmarks": {"leads": {"updatedAt": "2017-01-01T00:00:00+00:00",
+                                         "export_id": "123",
+                                         "export_end": "2017-01-15T00:00:00+00:00"}}}
+        lines = [
+            b'marketoGUID,leadId,updatedAt,attributes',
+            b'1,1,2016-12-31T00:00:00+00:00,1',
+            b'2,2,2017-01-01T00:00:00+00:00,1',
+            b'3,3,2017-01-02T00:00:00+00:00,1',
+            b'4,4,2017-01-03T00:00:00+00:00,1'
+        ]
+
+        self.client.wait_for_export = unittest.mock.MagicMock(return_value=True)
+        self.client.stream_export = unittest.mock.MagicMock(return_value=(l for l in lines))
+
+        state, record_count = sync_leads(self.client, state, self.stream)
+
+        # one record was too old, so we should have 3
+        self.assertEqual(3, record_count)
+
+        # export_end was the 15th, so the updatedAt date should be updated and no export
+        expected_state = {"bookmarks": {"leads": {"updatedAt": "2017-01-15T00:00:00+00:00",
+                                                  "export_id": None,
+                                                  "export_end": None}}}
+        self.assertDictEqual(expected_state, state)
+
+        expected_calls = [
+            unittest.mock.call("leads",
+                               {"marketoGUID": "2", "leadId": 2, "updatedAt": "2017-01-01T00:00:00+00:00"}),
+            unittest.mock.call("leads",
+                               {"marketoGUID": "3", "leadId": 3, "updatedAt": "2017-01-02T00:00:00+00:00"}),
+            unittest.mock.call("leads",
+                               {"marketoGUID": "4", "leadId": 4, "updatedAt": "2017-01-03T00:00:00+00:00"})
+        ]
+        write_record.assert_has_calls(expected_calls)
+        
+        
 class TestSyncPaginated(unittest.TestCase):
     def setUp(self):
         self.client = Client("123-ABC-456", "id", "secret")
