@@ -3,7 +3,15 @@ import io
 import json
 import pendulum
 import singer
+from tap_marketo.client import ExportFailed
+from singer.transform import transform
 from singer import bookmarks
+from singer.bookmarks import (
+    get_bookmark,
+    write_bookmark,
+    get_currently_syncing,
+    set_currently_syncing,
+)
 
 from tap_marketo.client import ExportFailed
 
@@ -39,7 +47,7 @@ def format_value(value, schema):
     else:
         field_type = schema["type"]
 
-    if value in [None, ""]:
+    if value in [None, "", 'null']:
         return None
     elif schema.get("format") == "date-time":
         return pendulum.parse(value).isoformat()
@@ -90,6 +98,83 @@ def flatten_activity(row, schema):
 
     return rtn
 
+def schedule_or_resume_export_job(state, tap_stream_id, export_id, export_end_date, bookmark_date, query_field, client, fields):
+    if export_id is None:
+        query = {query_field: {"startAt": bookmark_date.isoformat(),
+                               "endAt": export_end_date.isoformat()}}
+        export_id = client.create_export("leads", fields, query)
+    else:
+        singer.log_info("Resuming export from previous job.  Id is %s", export_id)
+        export_end_date = get_bookmark(state, tap_stream_id, "export_end_date")
+
+    write_bookmark(state, tap_stream_id, "export_id", export_id)
+    write_bookmark(state, tap_stream_id, "export_end_date", str(export_end_date))
+
+    singer.write_state(state)
+    return export_end_date, export_id
+
+
+def sync_leads(client, state, stream):
+    singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
+    record_count = 0
+    schema = stream["schema"]
+    replication_key = stream.get("replication_key")
+    tap_stream_id = stream.get("tap_stream_id")
+    fields = [f for f, s in stream["schema"]["properties"].items() if s.get("selected")]
+    export_id = get_bookmark(state, tap_stream_id, "export_id")
+
+    og_bookmark_value = pendulum.parse(get_bookmark(state, tap_stream_id, replication_key))
+
+    tap_job_start_time = pendulum.utcnow()
+    bookmark_date = og_bookmark_value
+    if client.use_corona:
+        query_field = "updatedAt"
+    else:
+        query_field = "createdAt"
+
+    while bookmark_date < tap_job_start_time:
+        export_end_date = bookmark_date.add(days=MAX_EXPORT_DAYS)
+        if export_end_date > tap_job_start_time:
+            export_end_date = tap_job_start_time
+
+        #TODO add kwargs
+        export_end_date, export_id = schedule_or_resume_export_job(state, tap_stream_id, export_id, export_end_date, bookmark_date, query_field, client, fields)
+
+        try:
+            client.wait_for_export("leads", export_id)
+        except ExportFailed as ex:
+            if ex.message() == "Timed out":
+                LOGGER.critical("Export job " + export_id +" timed out")
+
+            else:
+                LOGGER.critical("Export job " + export_id + "failed")
+
+        lines = client.stream_export("leads", export_id)
+        headers = parse_csv_line(next(lines))
+        for line in lines:
+            parsed_line = parse_csv_line(line)
+            parsed_line = dict(zip(headers, parsed_line))
+            if not client.use_corona and parsed_line["updatedAt"] > og_bookmark_value:
+                record = format_values(stream, row)
+                singer.write_record(stream["tap_stream_id"], record)
+                record_count += 1
+            else:
+                record = format_values(stream, parsed_line)
+                singer.write_record(stream["tap_stream_id"], record)
+                record_count += 1
+
+        state = write_bookmark(state, tap_stream_id, "export_id", None)
+        state = write_bookmark(state, tap_stream_id, "export_end_date", None)
+
+        if client.use_corona:
+            state = write_bookmark(state, tap_stream_id, replication_key, str(export_end_date))
+        singer.write_state(state)
+        bookmark_date = export_end_date
+
+    state = write_bookmark(state, tap_stream_id, replication_key, str(tap_job_start_time))
+    singer.write_state(state)
+
+    return state, record_count
 
 def get_or_create_export(client, state, stream):
     export_id = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_id")
@@ -129,7 +214,6 @@ def update_activity_state(state, stream, bookmark=None, export_id=None, export_e
 
     singer.write_state(state)
     return state
-
 
 def convert_line(stream, headers, line):
     parsed_line = parse_csv_line(line)
@@ -323,6 +407,8 @@ def sync(client, catalog, state):
         # Sync stream based on type.
         if stream["tap_stream_id"] == "activity_types":
             state, record_count = sync_activity_types(client, state, stream)
+        elif stream["tap_stream_id"] == "leads":
+            state, record_count = sync_leads(client, state, stream)
         elif stream["tap_stream_id"].startswith("activities_"):
             state, record_count = sync_activities(client, state, stream)
         elif stream["tap_stream_id"] in ["campaigns", "lists"]:

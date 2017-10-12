@@ -137,7 +137,7 @@ def discover_leads(client):
 
 def discover_catalog(name):
     root = os.path.dirname(os.path.realpath(__file__))
-    path = os.path.join(root, 'catalog/{}.json'.format(name))
+    path = os.path.join(root, 'schemas/{}.json'.format(name))
     with open(path, "r") as f:
         return json.load(f)
 
