@@ -36,7 +36,7 @@
         "inclusion": "available"
       },
       "programId": {
-        "type": ["string", "null"],
+        "type": ["integer", "null"],
         "inclusion": "available"
       },
       "programName": {

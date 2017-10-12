@@ -1,3 +1,7 @@
+#!/usr/bin/env python3
+
+# Marketo Docs are located at http://developers.marketo.com/rest-api/
+
 import pendulum
 import singer
 from singer import bookmarks
@@ -17,7 +21,7 @@ REQUIRED_CONFIG_KEYS = [
 
     # Log in to Marketo
     # Go to Admin, select Integration->Web Services
-    # Endpoint url matches https://123-ABC-456.mktorest.com/
+    # Endpoint url matches https://123-ABC-456.mktorest.com/rest
     "endpoint",
 
     # Log in to Marketo
@@ -61,15 +65,13 @@ def _main(config, properties, state, discover_mode=False):
     elif properties:
         state = validate_state(config, properties, state)
         sync(client, properties, state)
-    else:
-        pass
 
 
 def main():
     args = singer.utils.parse_args(REQUIRED_CONFIG_KEYS)
 
     try:
-        _main(args.config, args.properties, args.state, args.discover)
+        _main(args.config, args.properties or args.catalog, args.state, args.discover)
     except Exception as e:
         singer.log_critical(e)
         raise e

@@ -22,6 +22,7 @@ def clean_string(string):
 
 
 def get_schema_for_type(typ, null=False):
+    # http://developers.marketo.com/rest-api/lead-database/fields/field-types/
     if typ in ['datetime', 'date']:
         rtn = {"type": "string", "format": "date-time"}
     elif typ in ['integer', 'percent', 'score']:
@@ -93,12 +94,14 @@ def get_activity_type_stream(activity):
 
 
 def discover_activities(client):
+    # http://developers.marketo.com/rest-api/lead-database/activities/#describe
     endpoint = "rest/v1/activities/types.json"
     data = client.request("GET", endpoint, endpoint_name="activity_types")
     return [get_activity_type_stream(row) for row in data["result"]]
 
 
 def discover_leads(client):
+    # http://developers.marketo.com/rest-api/lead-database/leads/#describe
     endpoint = "rest/v1/leads/describe.json"
     data = client.request("GET", endpoint, endpoint_name="leads_discover")
     properties = {}

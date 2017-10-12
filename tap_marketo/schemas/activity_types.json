@@ -17,7 +17,7 @@
         "inclusion": "automatic"
       },
       "description": {
-        "type": "string",
+        "type": ["string", "null"],
         "inclusion": "available"
       },
       "primaryAttribute": {
@@ -32,7 +32,7 @@
         }
       },
       "attributes": {
-        "type": "array",
+        "type": ["array", "null"],
         "items": {
           "type": "object",
           "properties": {
