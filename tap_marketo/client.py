@@ -47,7 +47,7 @@ class Client:
                  max_daily_calls=MAX_DAILY_CALLS,
                  user_agent=DEFAULT_USER_AGENT,
                  job_timeout=JOB_TIMEOUT,
-                 poll_interval=POLL_INTERVAL):
+                 poll_interval=POLL_INTERVAL, **kwargs):
 
         self.domain = extract_domain(endpoint)
         self.client_id = client_id
@@ -157,7 +157,7 @@ class Client:
             raise ApiException("Exceeded daily quota of %s calls", self.max_daily_calls)
 
         resp = self._request(method, url, endpoint_name, **kwargs)
-        if "tap_stream_id" not in kwargs:
+        if "stream" not in kwargs:
             if resp.content == b'':
                 raise ApiException("Something went wrong and the API returned nothing.")
 

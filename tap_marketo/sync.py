@@ -90,7 +90,6 @@ def flatten_activity(row, schema):
 def get_or_create_export_for_leads(client, state, stream, fields):
     export_id = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_id")
     export_end = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_end")
-    export_end = pendulum.parse(export_end)
 
     if client.use_corona:
         query_field = "updatedAt"
@@ -113,6 +112,7 @@ def get_or_create_export_for_leads(client, state, stream, fields):
         export_id = client.create_export("leads", fields, query)
         update_state_with_export_info(state, stream, export_id=export_id, export_end=export_end)
 
+    export_end = pendulum.parse(export_end)      
     return export_id, export_end
 
 def write_leads_records(client, stream, lines, og_bookmark_value, record_count):
@@ -260,7 +260,7 @@ def sync_activities(client, state, stream):
         # The new start date is the end of the previous export. Update
         # the bookmark to the end date and continue with the next export.
 
-        start_date = bookmarks.get_bookmark(state, stream["stream"], "export_end")
+        start_date = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_end")
         update_state_with_export_info(state, stream, bookmark=start_date)
         start_pen = pendulum.parse(start_date)
 
