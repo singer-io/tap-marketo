@@ -15,7 +15,6 @@ REQUIRED_CONFIG_KEYS = [
     # Endpoint url matches https://123-ABC-456.mktorest.com/rest
     # Domain is the 9 character alpha numeric part of the url
     "endpoint",
-    "identity",
 
     # Log in to Marketo
     # Go to Admin, select Integration->Launch Point
