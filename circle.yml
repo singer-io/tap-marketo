@@ -7,5 +7,7 @@ dependencies:
     - pip install pylint
 
 test:
+  override:
+    - python -m unittest
   post:
     - pylint tap_marketo -d C,R

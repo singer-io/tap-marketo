@@ -4,17 +4,7 @@ import json
 import pendulum
 import singer
 from tap_marketo.client import ExportFailed
-from singer.transform import transform
 from singer import bookmarks
-from singer.bookmarks import (
-    get_bookmark,
-    write_bookmark,
-    get_currently_syncing,
-    set_currently_syncing,
-)
-
-from tap_marketo.client import ExportFailed
-
 
 # We can request up to 30 days worth of activities per export.
 MAX_EXPORT_DAYS = 30
@@ -65,7 +55,7 @@ def format_value(value, schema):
 def format_values(stream, row):
     rtn = {}
     for field, schema in stream["schema"]["properties"].items():
-        if not schema.get("selected"):
+        if not schema.get("selected") and not (schema.get("inclusion") == "automatic"):
             continue
         rtn[field] = format_value(row.get(field), schema)
     return rtn
@@ -97,87 +87,93 @@ def flatten_activity(row, schema):
 
     return rtn
 
-def schedule_or_resume_export_job(state, tap_stream_id, export_id, export_end_date, bookmark_date, query_field, client, fields):
-    if export_id is None:
-        query = {query_field: {"startAt": bookmark_date.isoformat(),
-                               "endAt": export_end_date.isoformat()}}
-        export_id = client.create_export("leads", fields, query)
+def get_or_create_export_for_leads(client, state, stream, fields):
+    export_id = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_id")
+    export_end = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_end")
+    export_end = pendulum.parse(export_end)
+
+    if client.use_corona:
+        query_field = "updatedAt"
     else:
-        singer.log_info("Resuming export from previous job.  Id is %s", export_id)
-        export_end_date = get_bookmark(state, tap_stream_id, "export_end_date")
+        query_field = "createdAt"
+        
+    if export_id is None:
+        start_date = bookmarks.get_bookmark(state, stream["tap_stream_id"], "updatedAt")
+        start_pen = pendulum.parse(start_date)
+        end_pen = start_pen.add(days=MAX_EXPORT_DAYS)
+        if end_pen >= pendulum.utcnow():
+            end_pen = pendulum.utcnow()
 
-    write_bookmark(state, tap_stream_id, "export_id", export_id)
-    write_bookmark(state, tap_stream_id, "export_end_date", str(export_end_date))
+        export_end = end_pen.isoformat()
 
-    singer.write_state(state)
-    return export_end_date, export_id
+        query = {query_field: {"startAt": start_date, "endAt": export_end}}
 
+        # Create the new export and store the id and end date in state.
+        # Does not start the export (must POST to the "enqueue" endpoint).
+        export_id = client.create_export("leads", fields, query)
+        update_state_with_export_info(state, stream, export_id=export_id, export_end=export_end)
+
+    return export_id, export_end
+
+def write_leads_records(client, stream, lines, og_bookmark_value, record_count):
+    headers = parse_csv_line(next(lines))
+
+    for line in lines:
+        parsed_line = parse_csv_line(line)
+        parsed_line = dict(zip(headers, parsed_line))
+        line_updated_at = pendulum.parse(parsed_line["updatedAt"])
+        #accounts without corona need to have a manual filter on records
+        if client.use_corona or (line_updated_at >= og_bookmark_value):
+
+            record = format_values(stream, parsed_line)
+            singer.write_record(stream["tap_stream_id"], record)
+            record_count += 1
+
+    return record_count
 
 def sync_leads(client, state, stream):
     # http://developers.marketo.com/rest-api/bulk-extract/bulk-lead-extract/
     singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
     record_count = 0
-    schema = stream["schema"]
     replication_key = stream.get("replication_key")
     tap_stream_id = stream.get("tap_stream_id")
-    fields = [f for f, s in stream["schema"]["properties"].items() if s.get("selected")]
-    export_id = get_bookmark(state, tap_stream_id, "export_id")
-
-    og_bookmark_value = pendulum.parse(get_bookmark(state, tap_stream_id, replication_key))
-
     tap_job_start_time = pendulum.utcnow()
+    fields = [f for f, s in stream["schema"]["properties"].items() if s.get("selected")]
+
+    og_bookmark_value = pendulum.parse(bookmarks.get_bookmark(state, tap_stream_id, replication_key))
     bookmark_date = og_bookmark_value
-    if client.use_corona:
-        query_field = "updatedAt"
-    else:
-        query_field = "createdAt"
 
     while bookmark_date < tap_job_start_time:
-        export_end_date = bookmark_date.add(days=MAX_EXPORT_DAYS)
-        if export_end_date > tap_job_start_time:
-            export_end_date = tap_job_start_time
-
-        #TODO add kwargs
-        export_end_date, export_id = schedule_or_resume_export_job(state, tap_stream_id, export_id, export_end_date, bookmark_date, query_field, client, fields)
-
+        export_id, export_end = get_or_create_export_for_leads(client, state, stream, fields)
+        
         try:
             client.wait_for_export("leads", export_id)
         except ExportFailed as ex:
-            if ex.message() == "Timed out":
-                LOGGER.critical("Export job " + export_id +" timed out")
-
-            else:
-                LOGGER.critical("Export job " + export_id + "failed")
+            update_state_with_export_info(state, stream)
+            singer.log_critical("Export job failure.  Status was" + ex)
 
         lines = client.stream_export("leads", export_id)
-        headers = parse_csv_line(next(lines))
-        for line in lines:
-            parsed_line = parse_csv_line(line)
-            parsed_line = dict(zip(headers, parsed_line))
-            if not client.use_corona and parsed_line["updatedAt"] > og_bookmark_value:
-                record = format_values(stream, row)
-                singer.write_record(stream["tap_stream_id"], record)
-                record_count += 1
-            else:
-                record = format_values(stream, parsed_line)
-                singer.write_record(stream["tap_stream_id"], record)
-                record_count += 1
-
-        state = write_bookmark(state, tap_stream_id, "export_id", None)
-        state = write_bookmark(state, tap_stream_id, "export_end_date", None)
+        
+        record_count = write_leads_records(client, stream, lines, og_bookmark_value, record_count)
 
         if client.use_corona:
-            state = write_bookmark(state, tap_stream_id, replication_key, str(export_end_date))
-        singer.write_state(state)
-        bookmark_date = export_end_date
+            state = update_state_with_export_info(state, stream, bookmark=export_end.isoformat(), \
+                                          export_id=None, export_end=None)
+        else:
+            state = update_state_with_export_info(state, stream, \
+                                          export_id=None, export_end=None)
 
-    state = write_bookmark(state, tap_stream_id, replication_key, str(tap_job_start_time))
-    singer.write_state(state)
+        bookmark_date = export_end
 
+    state = update_state_with_export_info(state, stream, bookmark=tap_job_start_time.isoformat(), \
+                                          export_id=None, export_end=None)
+
+    
     return state, record_count
 
-def get_or_create_export(client, state, stream):
+def get_or_create_export_for_activities(client, state, stream):
     export_id = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_id")
+
     if not export_id:
         # Stream names for activities are `activities_X` where X is the
         # activity type id in Marketo. We need the activity type id to
@@ -201,12 +197,12 @@ def get_or_create_export(client, state, stream):
         # Create the new export and store the id and end date in state.
         # Does not start the export (must POST to the "enqueue" endpoint).
         export_id = client.create_export("activities", ACTIVITY_FIELDS, query)
-        update_activity_state(state, stream, export_id=export_id, export_end=end_date)
+        update_state_with_export_info(state, stream, export_id=export_id, export_end=end_date)
 
     return export_id
 
 
-def update_activity_state(state, stream, bookmark=None, export_id=None, export_end=None):
+def update_state_with_export_info(state, stream, bookmark=None, export_id=None, export_end=None):
     state = bookmarks.write_bookmark(state, stream["tap_stream_id"], "export_id", export_id)
     state = bookmarks.write_bookmark(state, stream["tap_stream_id"], "export_end", export_end)
     if bookmark:
@@ -235,7 +231,7 @@ def wait_for_activity_export(client, state, stream, export_id):
     try:
         client.wait_for_export("activities", export_id)
     except ExportFailed:
-        update_activity_state(state, stream)
+        update_state_with_export_info(state, stream)
         raise
 
 
@@ -248,7 +244,7 @@ def sync_activities(client, state, stream):
     record_count = 0
 
     while start_pen < job_started:
-        export_id = get_or_create_export(client, state, stream)
+        export_id = get_or_create_export_for_activities(client, state, stream)
 
         # If the export fails while running, clear the export information
         # from state so a new export can be run next sync.
@@ -263,8 +259,9 @@ def sync_activities(client, state, stream):
 
         # The new start date is the end of the previous export. Update
         # the bookmark to the end date and continue with the next export.
-        start_date = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_end")
-        update_activity_state(state, stream, bookmark=start_date)
+
+        start_date = bookmarks.get_bookmark(state, stream["stream"], "export_end")
+        update_state_with_export_info(state, stream, bookmark=start_date)
         start_pen = pendulum.parse(start_date)
 
     return state, record_count

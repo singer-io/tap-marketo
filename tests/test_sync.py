@@ -57,7 +57,118 @@ class TestSyncActivityTypes(unittest.TestCase):
 
         write_record.assert_called_once_with("activity_types", activity_type)
 
+class TestSyncLeads(unittest.TestCase):
+    def mocked_client_create_export(self, stream_name, fields, query):
+        return 1234
 
+    def setUp(self):
+        self.client = Client("123-ABC-456", "id", "secret")
+        self.client.token_expires = pendulum.utcnow().add(days=1)
+        self.client.calls_today = 1
+        self.client._use_corona = True
+        self.stream = {"tap_stream_id": "leads",
+                       "key_properties": ["marketoGUID"],
+                       "replication_key": "updatedAt",
+                       "schema": {"properties": {
+                           "marketoGUID": {
+                               "type": "string",
+                               "inclusion": "automatic",
+                               "selected": True,
+                           },
+                           "leadId": {
+                               "type": "integer",
+                               "inclusion": "automatic",
+                               "selected": False,
+                           },
+                           "updatedAt": {
+                               "type": "string",
+                               "format": "date-time",
+                               "inclusion": "automatic",
+                               "selected": False,
+                           },
+                           "attributes": {
+                               "type": "integer",
+                               "inclusion": "available",
+                               "selected": False,
+                           }}}}
+
+        self.client.create_export = self.mocked_client_create_export
+        
+    @freezegun.freeze_time("2017-01-15")
+    def test_get_or_create_export_resume(self):
+        export_end = pendulum.now().add(days=30).isoformat()
+        mock_state = {"bookmarks":
+                      {"leads":
+                       {"updatedAt": pendulum.now().isoformat(),
+                        "export_id": 5678,
+                        "export_end": export_end}}}
+
+        fields = self.stream["schema"]["properties"].values()
+        query = {"updatedAt": {"startAt": pendulum.now().isoformat(), "endAt": pendulum.now().add(days=30).isoformat()}}
+        export_info = get_or_create_export_for_leads(self.client, mock_state, \
+                                                   self.stream, \
+                                                   fields)
+        self.assertEqual(export_info, (5678, pendulum.parse(export_end)))
+
+    @freezegun.freeze_time("2017-01-15")
+    @unittest.mock.patch("singer.write_record")
+    def test_write_leads_records_no_corona(self, write_record):
+        self.client._use_corona = False
+        mock_state = {"bookmarks":
+                      {"leads":
+                       {"updatedAt": "2017-01-01"}}}
+
+
+        mock_lines = [b'a,b,updatedAt', b'1,2,2017-01-16', b'1,2,2017-01-01']
+        mock_lines = (a for a in mock_lines)
+
+        mock_og_value = pendulum.now()
+        mock_record_count = 0
+        record_count = write_leads_records(self.client, self.stream, \
+                                           mock_lines, mock_og_value, mock_record_count)
+
+        self.assertEqual(record_count, 1)
+
+    @unittest.mock.patch("singer.write_record")
+    @freezegun.freeze_time("2017-01-15")
+    def test_sync_leads(self, write_record):
+        self.client._use_corona = False
+        state = {"bookmarks": {"leads": {"updatedAt": "2017-01-01T00:00:00+00:00",
+                                         "export_id": "123",
+                                         "export_end": "2017-01-15T00:00:00+00:00"}}}
+        lines = [
+            b'marketoGUID,leadId,updatedAt,attributes',
+            b'1,1,2016-12-31T00:00:00+00:00,1',
+            b'2,2,2017-01-01T00:00:00+00:00,1',
+            b'3,3,2017-01-02T00:00:00+00:00,1',
+            b'4,4,2017-01-03T00:00:00+00:00,1'
+        ]
+
+        self.client.wait_for_export = unittest.mock.MagicMock(return_value=True)
+        self.client.stream_export = unittest.mock.MagicMock(return_value=(l for l in lines))
+
+        state, record_count = sync_leads(self.client, state, self.stream)
+
+        # one record was too old, so we should have 3
+        self.assertEqual(3, record_count)
+
+        # export_end was the 15th, so the updatedAt date should be updated and no export
+        expected_state = {"bookmarks": {"leads": {"updatedAt": "2017-01-15T00:00:00+00:00",
+                                                  "export_id": None,
+                                                  "export_end": None}}}
+        self.assertDictEqual(expected_state, state)
+
+        expected_calls = [
+            unittest.mock.call("leads",
+                               {"marketoGUID": "2", "leadId": 2, "updatedAt": "2017-01-01T00:00:00+00:00"}),
+            unittest.mock.call("leads",
+                               {"marketoGUID": "3", "leadId": 3, "updatedAt": "2017-01-02T00:00:00+00:00"}),
+            unittest.mock.call("leads",
+                               {"marketoGUID": "4", "leadId": 4, "updatedAt": "2017-01-03T00:00:00+00:00"})
+        ]
+        write_record.assert_has_calls(expected_calls)
+        
+        
 class TestSyncPaginated(unittest.TestCase):
     def setUp(self):
         self.client = Client("123-ABC-456", "id", "secret")
@@ -209,7 +320,7 @@ class TestSyncActivities(unittest.TestCase):
 
     def test_get_or_create_export_get_export_id(self):
         state = {"bookmarks": {"activities_1": {"export_id": "123", "export_end": "2017-01-01T00:00:00Z"}}}
-        self.assertEqual("123", get_or_create_export(self.client, state, self.stream))
+        self.assertEqual("123", get_or_create_export_for_activities(self.client, state, self.stream))
 
     @freezegun.freeze_time("2017-01-15")
     def test_get_or_create_export_create_export(self):
@@ -217,7 +328,7 @@ class TestSyncActivities(unittest.TestCase):
         self.client.create_export = unittest.mock.MagicMock(return_value="123")
 
         # Ensure we got the right export id back
-        self.assertEqual("123", get_or_create_export(self.client, state, self.stream))
+        self.assertEqual("123", get_or_create_export_for_activities(self.client, state, self.stream))
 
         # Ensure that we called create export with the correct args
         expected_query = {"createdAt": {"startAt": "2017-01-01T00:00:00+00:00",
