@@ -96,19 +96,19 @@ class TestSyncLeads(unittest.TestCase):
         
     @freezegun.freeze_time("2017-01-15")
     def test_get_or_create_export_resume(self):
-
+        export_end = pendulum.now().add(days=30).isoformat()
         mock_state = {"bookmarks":
                       {"leads":
                        {"updatedAt": pendulum.now().isoformat(),
                         "export_id": 5678,
-                        "export_end": pendulum.now().add(days=30).isoformat()}}}
+                        "export_end": export_end}}}
 
         fields = self.stream["schema"]["properties"].values()
         query = {"updatedAt": {"startAt": pendulum.now().isoformat(), "endAt": pendulum.now().add(days=30).isoformat()}}
         export_info = get_or_create_export_for_leads(self.client, mock_state, \
                                                    self.stream, \
                                                    fields)
-        self.assertEqual(export_info, (5678, pendulum.parse('2017-02-14T00:00:00-05:00')))
+        self.assertEqual(export_info, (5678, pendulum.parse(export_end)))
 
     @freezegun.freeze_time("2017-01-15")
     @unittest.mock.patch("singer.write_record")
