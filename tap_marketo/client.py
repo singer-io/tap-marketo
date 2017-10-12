@@ -154,7 +154,7 @@ class Client:
             raise ApiException("Exceeded daily quota of %s calls", self.max_daily_calls)
 
         resp = self._request(method, url, endpoint_name, **kwargs)
-        if "stream" not in kwargs:
+        if "tap_stream_id" not in kwargs:
             if resp.content == b'':
                 raise ApiException("Something went wrong and the API returned nothing.")
 
