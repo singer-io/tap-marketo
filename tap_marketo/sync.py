@@ -249,7 +249,7 @@ def sync_paginated(client, state, stream):
 
     # Keep querying pages of data until no next page token.
     record_count = 0
-    max_bookmark = start_date
+    job_started = pendulum.utcnow().isoformat()
     while True:
         data = client.request("GET", endpoint, endpoint_name=stream["tap_stream_id"], params=params)
 
@@ -261,9 +261,6 @@ def sync_paginated(client, state, stream):
             if record[stream["replication_key"]] >= start_date:
                 record_count += 1
                 singer.write_record(stream["tap_stream_id"], record)
-                bookmark = bookmarks.get_bookmark(state, stream["tap_stream_id"], stream["replication_key"])
-                if bookmark > max_bookmark:
-                    max_bookmark = bookmark
 
         # No next page, results are exhausted.
         if "nextPageToken" not in data:
@@ -277,7 +274,7 @@ def sync_paginated(client, state, stream):
     # Once all results are exhausted, unset the next page token bookmark
     # so the subsequent sync starts from the beginning.
     state = bookmarks.write_bookmark(state, stream["tap_stream_id"], "next_page_token", None)
-    state = bookmarks.write_bookmark(state, stream["tap_stream_id"], stream["replication_key"], max_bookmark)
+    state = bookmarks.write_bookmark(state, stream["tap_stream_id"], stream["replication_key"], job_started)
     singer.write_state(state)
     return state, record_count
 
