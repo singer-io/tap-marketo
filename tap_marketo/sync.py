@@ -4,17 +4,7 @@ import json
 import pendulum
 import singer
 from tap_marketo.client import ExportFailed
-from singer.transform import transform
 from singer import bookmarks
-from singer.bookmarks import (
-    get_bookmark,
-    write_bookmark,
-    get_currently_syncing,
-    set_currently_syncing,
-)
-
-from tap_marketo.client import ExportFailed
-
 
 # We can request up to 30 days worth of activities per export.
 MAX_EXPORT_DAYS = 30
@@ -125,7 +115,7 @@ def get_or_create_export_for_leads(client, state, stream, fields):
 
     return export_id, export_end
 
-def write_leads_records(client, state, stream, lines, og_bookmark_value, record_count):
+def write_leads_records(client, stream, lines, og_bookmark_value, record_count):
     headers = parse_csv_line(next(lines))
 
     for line in lines:
@@ -145,13 +135,12 @@ def sync_leads(client, state, stream):
     # http://developers.marketo.com/rest-api/bulk-extract/bulk-lead-extract/
     singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
     record_count = 0
-    schema = stream["schema"]
     replication_key = stream.get("replication_key")
     tap_stream_id = stream.get("tap_stream_id")
     tap_job_start_time = pendulum.utcnow()
     fields = [f for f, s in stream["schema"]["properties"].items() if s.get("selected")]
 
-    og_bookmark_value = pendulum.parse(get_bookmark(state, tap_stream_id, replication_key))
+    og_bookmark_value = pendulum.parse(bookmarks.get_bookmark(state, tap_stream_id, replication_key))
     bookmark_date = og_bookmark_value
 
     while bookmark_date < tap_job_start_time:
@@ -161,14 +150,11 @@ def sync_leads(client, state, stream):
             client.wait_for_export("leads", export_id)
         except ExportFailed as ex:
             update_state_with_export_info(state, stream)
-            if ex.message() == "Timed out":
-                LOGGER.critical("Export job " + export_id +" timed out")
-            else:
-                LOGGER.critical("Export job " + export_id + "failed")
+            singer.log_critical("Export job failure.  Status was" + ex)
 
         lines = client.stream_export("leads", export_id)
         
-        record_count = write_leads_records(client, state, stream, lines, og_bookmark_value, record_count)
+        record_count = write_leads_records(client, stream, lines, og_bookmark_value, record_count)
 
         if client.use_corona:
             state = update_state_with_export_info(state, stream, bookmark=export_end.isoformat(), \

@@ -47,7 +47,7 @@ class Client:
                  max_daily_calls=MAX_DAILY_CALLS,
                  user_agent=DEFAULT_USER_AGENT,
                  job_timeout=JOB_TIMEOUT,
-                 poll_interval=POLL_INTERVAL, **kwargs):
+                 poll_interval=POLL_INTERVAL):
 
         self.domain = extract_domain(endpoint)
         self.client_id = client_id
@@ -226,7 +226,7 @@ class Client:
                 self.enqueue_export(stream_type, export_id)
 
             elif status in ["Cancelled", "Failed"]:
-                # Cacnelled and failed exports fail the current sync.
+                # Cancelled and failed exports fail the current sync.
                 raise ExportFailed(status)
 
             elif status == "Completed":

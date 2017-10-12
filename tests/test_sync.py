@@ -124,7 +124,7 @@ class TestSyncLeads(unittest.TestCase):
 
         mock_og_value = pendulum.now()
         mock_record_count = 0
-        record_count = write_leads_records(self.client, mock_state, self.stream, \
+        record_count = write_leads_records(self.client, self.stream, \
                                            mock_lines, mock_og_value, mock_record_count)
 
         self.assertEqual(record_count, 1)
