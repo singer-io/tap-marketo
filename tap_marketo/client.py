@@ -66,7 +66,7 @@ class Client:
 
     @property
     def use_corona(self):
-        if getattr(self, "_use_corona", None):
+        if getattr(self, "_use_corona", None) is None:
             self._use_corona = self.test_corona()
         return self._use_corona
 
