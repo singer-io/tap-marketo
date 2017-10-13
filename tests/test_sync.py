@@ -107,7 +107,8 @@ class TestSyncLeads(unittest.TestCase):
         query = {"updatedAt": {"startAt": pendulum.now().isoformat(), "endAt": pendulum.now().add(days=30).isoformat()}}
         export_info = get_or_create_export_for_leads(self.client, mock_state, \
                                                    self.stream, \
-                                                   fields)
+                                                     fields,
+                                                     pendulum.now())
         self.assertEqual(export_info, (5678, pendulum.parse(export_end)))
 
     @freezegun.freeze_time("2017-01-15")
