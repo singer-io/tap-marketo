@@ -41,8 +41,8 @@ class ExportFailed(Exception):
     """Indicates an error occured while attempting a bulk export."""
     pass
 
-
 class Client:
+    # pylint: disable=unused-argument
     def __init__(self, endpoint, client_id, client_secret,
                  max_daily_calls=MAX_DAILY_CALLS,
                  user_agent=DEFAULT_USER_AGENT,
@@ -62,10 +62,11 @@ class Client:
         self.calls_today = 0
 
         self._session = requests.Session()
+        self._use_corona = None
 
     @property
     def use_corona(self):
-        if not hasattr(self, "_use_corona"):
+        if getattr(self, "_use_corona", None):
             self._use_corona = self.test_corona()
         return self._use_corona
 

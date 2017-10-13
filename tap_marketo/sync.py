@@ -73,7 +73,6 @@ def flatten_activity(row, schema):
     # Move the primary attribute to the named column. Primary attribute
     # has a `field` and a `field_id` entry in the schema, is marked for
     # automatic inclusion, and isn't one of the base activity fields.
-    # TODO: metadata this
     for field, field_schema in schema["properties"].items():
         if field_schema["inclusion"] == "automatic" and field not in ACTIVITY_FIELDS:
             rtn[field] = row["primaryAttributeValue"]
@@ -95,7 +94,7 @@ def get_or_create_export_for_leads(client, state, stream, fields):
         query_field = "updatedAt"
     else:
         query_field = "createdAt"
-        
+
     if export_id is None:
         start_date = bookmarks.get_bookmark(state, stream["tap_stream_id"], "updatedAt")
         start_pen = pendulum.parse(start_date)
@@ -112,7 +111,7 @@ def get_or_create_export_for_leads(client, state, stream, fields):
         export_id = client.create_export("leads", fields, query)
         update_state_with_export_info(state, stream, export_id=export_id, export_end=export_end)
 
-    export_end = pendulum.parse(export_end)      
+    export_end = pendulum.parse(export_end)
     return export_id, export_end
 
 def write_leads_records(client, stream, lines, og_bookmark_value, record_count):
@@ -145,7 +144,7 @@ def sync_leads(client, state, stream):
 
     while bookmark_date < tap_job_start_time:
         export_id, export_end = get_or_create_export_for_leads(client, state, stream, fields)
-        
+
         try:
             client.wait_for_export("leads", export_id)
         except ExportFailed as ex:
@@ -153,7 +152,7 @@ def sync_leads(client, state, stream):
             singer.log_critical("Export job failure.  Status was" + ex)
 
         lines = client.stream_export("leads", export_id)
-        
+
         record_count = write_leads_records(client, stream, lines, og_bookmark_value, record_count)
 
         if client.use_corona:
@@ -168,7 +167,7 @@ def sync_leads(client, state, stream):
     state = update_state_with_export_info(state, stream, bookmark=tap_job_start_time.isoformat(), \
                                           export_id=None, export_end=None)
 
-    
+
     return state, record_count
 
 def get_or_create_export_for_activities(client, state, stream):
@@ -426,7 +425,7 @@ def sync(client, catalog, state):
         # Emit metric for record count.
         counter = singer.metrics.record_counter(stream["tap_stream_id"])
         counter.value = record_count
-        counter._pop()
+        counter._pop()  # pylint: disable=protected-access
 
         # Unset current stream.
         state = bookmarks.set_currently_syncing(state, None)
