@@ -30,11 +30,13 @@ class TestDiscover(unittest.TestCase):
         }
 
         stream = {
-            "tap_stream_id": "activities_1",
-            "stream": "activities_1",
+            "tap_stream_id": "activities_visit_webpage",
+            "stream": "activities_visit_webpage",
             "key_properties": ["marketoGUID"],
             "replication_key": "activityDate",
             "replication_method": "INCREMENTAL",
+            "metadata": [{'breadcrumb': (),
+                          'metadata': {'activity_id': 1}}],
             "schema": {
                 "type": "object",
                 "additionalProperties": False,
