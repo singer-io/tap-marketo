@@ -3,7 +3,7 @@ import os
 import sys
 
 import singer
-
+from singer import metadata
 
 STRING_TYPES = [
     'string',
@@ -76,13 +76,17 @@ def get_activity_type_stream(activity):
             if field_schema:
                 properties[attr_name] = field_schema
 
-    tap_stream_id = "activities_{}".format(activity["id"])
+    activity_type_camel = clean_string(activity["name"])
+    mdata = metadata.write({}, (), 'activity_id', activity["id"])
+    tap_stream_id = "activities_{}".format(activity_type_camel)
+    
     return {
         "tap_stream_id": tap_stream_id,
         "stream": tap_stream_id,
         "key_properties": ["marketoGUID"],
         "replication_key": "activityDate",
         "replication_method": "INCREMENTAL",
+        "metadata": metadata.to_list(mdata),
         "schema": {
             "type": "object",
             "additionalProperties": False,
