@@ -3,6 +3,7 @@ import io
 import json
 import pendulum
 import singer
+from singer import metadata
 from tap_marketo.client import ExportFailed
 from singer import bookmarks
 
@@ -172,11 +173,13 @@ def get_or_create_export_for_activities(client, state, stream):
     export_id = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_id")
 
     if not export_id:
-        # Stream names for activities are `activities_X` where X is the
-        # activity type id in Marketo. We need the activity type id to
-        # build the query.
-        _, activity_type_id = stream["tap_stream_id"].split("_")
-
+        # The activity id is in the top-most breadcrumb of the metatdata
+        # Activity ids correspond to activity type id in Marketo.
+        # We need the activity type id to build the query.
+        activity_metadata = metadata.to_map(stream["metadata"])
+        activity_type_id = metadata.get(activity_metadata, (), 'activity_id')
+        singer.log_info("activity id for stream %s is %d", stream["tap_stream_id"], activity_type_id)
+        
         # Activities must be queried by `createdAt` even though
         # that is not a real field. `createdAt` proxies `activityDate`.
         # The activity type id must also be included in the query. The
