@@ -67,16 +67,15 @@ def parse_csv_line(line):
     return next(reader)
 
 
-def flatten_activity(row, schema):
+def flatten_activity(row, stream):
+    schema = stream['schema']
     # Start with the base fields
     rtn = {field: row[field] for field in BASE_ACTIVITY_FIELDS}
 
-    # Move the primary attribute to the named column. Primary attribute
-    # has a `field` and a `field_id` entry in the schema, is marked for
-    # automatic inclusion, and isn't one of the base activity fields.
-    for field, field_schema in schema["properties"].items():
-        if field_schema["inclusion"] == "automatic" and field not in ACTIVITY_FIELDS:
-            rtn[field] = row["primaryAttributeValue"]
+    # Move the primary attribute to the named column
+    mdata = metadata.to_map(stream['metadata'])
+    field = metadata.get(mdata, (), 'primary_attribute_name')
+    rtn[field] = row["primaryAttributeValue"]
 
     # Now flatten the attrs json to it's selected columns
     if "attributes" in row:
@@ -214,7 +213,7 @@ def update_state_with_export_info(state, stream, bookmark=None, export_id=None, 
 def convert_line(stream, headers, line):
     parsed_line = parse_csv_line(line)
     row = dict(zip(headers, parsed_line))
-    row = flatten_activity(row, stream["schema"])
+    row = flatten_activity(row, stream)
     return format_values(stream, row)
 
 

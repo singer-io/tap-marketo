@@ -230,7 +230,8 @@ class TestSyncActivities(unittest.TestCase):
             "replication_key": "activityDate",
             "replication_method": "INCREMENTAL",
             "metadata": [{'breadcrumb': (),
-                          'metadata': {'activity_id': 1}}],
+                          'metadata': {'activity_id': 1,
+                                       'primary_attribute_name': 'webpage_id'}}],
             "schema": {
                 "type": "object",
                 "additionalProperties": False,
@@ -319,7 +320,7 @@ class TestSyncActivities(unittest.TestCase):
             "client_ip_address": "0.0.0.0",
             "query_parameters": "",
         }
-        self.assertDictEqual(expected, flatten_activity(row, self.stream["schema"]))
+        self.assertDictEqual(expected, flatten_activity(row, self.stream))
 
     def test_get_or_create_export_get_export_id(self):
         state = {"bookmarks": {"activities_activity_name": {"export_id": "123", "export_end": "2017-01-01T00:00:00Z"}}}
