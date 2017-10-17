@@ -65,8 +65,11 @@ def get_activity_type_stream(activity):
         "activityTypeId": {"type": "integer", "inclusion": "automatic"},
     }
 
+    mdata = metadata.new()
+    
     if "primaryAttribute" in activity:
         primary = clean_string(activity["primaryAttribute"]["name"])
+        mdata = metadata.write(mdata, (), 'primary_attribute_name', primary)
         properties[primary] = get_schema_for_type(activity["primaryAttribute"]["dataType"], null=False)
 
     if "attributes" in activity:
@@ -77,7 +80,8 @@ def get_activity_type_stream(activity):
                 properties[attr_name] = field_schema
 
     activity_type_camel = clean_string(activity["name"])
-    mdata = metadata.write({}, (), 'activity_id', activity["id"])
+    mdata = metadata.write(mdata, (), 'activity_id', activity["id"])
+
     tap_stream_id = "activities_{}".format(activity_type_camel)
     
     return {
