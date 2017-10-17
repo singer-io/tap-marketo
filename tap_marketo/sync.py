@@ -86,32 +86,30 @@ def flatten_activity(row, schema):
 
     return rtn
 
-def get_or_create_export_for_leads(client, state, stream, fields):
+def get_or_create_export_for_leads(client, state, stream, fields, start_date):
     export_id = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_id")
     export_end = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_end")
 
-    if client.use_corona:
-        query_field = "updatedAt"
-    else:
-        query_field = "createdAt"
-
     if export_id is None:
-        start_date = bookmarks.get_bookmark(state, stream["tap_stream_id"], "updatedAt")
-        start_pen = pendulum.parse(start_date)
-        end_pen = start_pen.add(days=MAX_EXPORT_DAYS)
-        if end_pen >= pendulum.utcnow():
-            end_pen = pendulum.utcnow()
+        if client.use_corona:
+            query_field = "updatedAt"
+        else:
+            query_field = "createdAt"
+        
+        export_end = start_date.add(days=MAX_EXPORT_DAYS)
+        if export_end >= pendulum.utcnow():
+            export_end = pendulum.utcnow()
 
-        export_end = end_pen.isoformat()
-
-        query = {query_field: {"startAt": start_date, "endAt": export_end}}
+        query = {query_field: {"startAt": start_date.isoformat(), "endAt": export_end.isoformat()}}
 
         # Create the new export and store the id and end date in state.
         # Does not start the export (must POST to the "enqueue" endpoint).
         export_id = client.create_export("leads", fields, query)
-        update_state_with_export_info(state, stream, export_id=export_id, export_end=export_end)
+        update_state_with_export_info(state, stream, export_id=export_id, export_end=export_end.isoformat())
 
-    export_end = pendulum.parse(export_end)
+    else:
+        export_end = pendulum.parse(export_end)    
+
     return export_id, export_end
 
 def write_leads_records(client, stream, lines, og_bookmark_value, record_count):
@@ -143,7 +141,7 @@ def sync_leads(client, state, stream):
     bookmark_date = og_bookmark_value
 
     while bookmark_date < tap_job_start_time:
-        export_id, export_end = get_or_create_export_for_leads(client, state, stream, fields)
+        export_id, export_end = get_or_create_export_for_leads(client, state, stream, fields, bookmark_date)
 
         try:
             client.wait_for_export("leads", export_id)
@@ -164,7 +162,7 @@ def sync_leads(client, state, stream):
 
         bookmark_date = export_end
 
-    state = update_state_with_export_info(state, stream, bookmark=tap_job_start_time.isoformat(), \
+    state = update_state_with_export_info(state, stream, bookmark=bookmark_date.isoformat(), \
                                           export_id=None, export_end=None)
 
 
