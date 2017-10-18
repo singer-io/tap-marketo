@@ -70,7 +70,6 @@ def parse_csv_line(line):
 
 
 def flatten_activity(row, stream):
-    schema = stream['schema']
     # Start with the base fields
     rtn = {field: row[field] for field in BASE_ACTIVITY_FIELDS}
 
