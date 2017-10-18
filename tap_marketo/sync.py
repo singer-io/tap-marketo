@@ -43,6 +43,8 @@ def format_value(value, schema):
         return pendulum.parse(value).isoformat()
     elif "integer" in field_type:
         return int(value)
+    elif "string" in field_type:
+        return str(value)
     elif "number" in field_type:
         return float(value)
     elif "boolean" in field_type:
