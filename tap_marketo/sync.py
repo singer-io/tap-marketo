@@ -75,6 +75,8 @@ def flatten_activity(row, stream):
     rtn = {field: row[field] for field in BASE_ACTIVITY_FIELDS}
 
     # Add the primary attribute name
+    # This name is the human readable name/description of the
+    # pimaryAttribute
     mdata = metadata.to_map(stream['metadata'])
     pan_field = metadata.get(mdata, (), 'primary_attribute_name')
     if pan_field:

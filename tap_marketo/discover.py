@@ -58,6 +58,10 @@ def get_activity_type_stream(activity):
     # fields. primaryAttribute has a name and type which define an
     # automatically included field on the record. Attributes is an array
     # of attribute names and types that become available fields.
+
+    # Regarding pimaryAttribute fields: On this side of things, Marketo will
+    # describe the field in an activity that is considered the primary attribute
+    # On the sync side, we will have to present that information in a flattened record
     properties = {
         "marketoGUID": {"type": "string", "inclusion": "automatic"},
         "leadId": {"type": "integer", "inclusion": "automatic"},
