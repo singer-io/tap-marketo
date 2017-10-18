@@ -243,6 +243,18 @@ class TestSyncActivities(unittest.TestCase):
                         "inclusion": "automatic",
                         "selected": True,
                     },
+                    "primaryAttributeName": {
+                        "type": "string",
+                        "inclusion": "automatic",
+                    },                    
+                    "primaryAttributeValueId": {
+                        "type": "string",
+                        "inclusion": "automatic",
+                    },                    
+                    "primaryAttributeValue": {
+                        "type": "string",
+                        "inclusion": "automatic",
+                    },                    
                     "leadId": {
                         "type": "integer",
                         "inclusion": "automatic",
@@ -255,11 +267,6 @@ class TestSyncActivities(unittest.TestCase):
                         "selected": True,
                     },
                     "activityTypeId": {
-                        "type": "integer",
-                        "inclusion": "automatic",
-                        "selected": True,
-                    },
-                    "webpage_id": {
                         "type": "integer",
                         "inclusion": "automatic",
                         "selected": True,
@@ -285,6 +292,9 @@ class TestSyncActivities(unittest.TestCase):
             "activityDate": "2017-01-01T00:00:00Z",
             "activityTypeId": "1",
             "webpage_id": "123",
+            "primaryAttributeName": "Webpage Id",
+            "primaryAttributeValue": "123",
+            "primaryAttributeValueId": None,
             "client_ip_address": "0.0.0.0",
             "query_parameters": "",
         }
@@ -293,7 +303,9 @@ class TestSyncActivities(unittest.TestCase):
             "leadId": 123,
             "activityDate": "2017-01-01T00:00:00+00:00",
             "activityTypeId": 1,
-            "webpage_id": 123,
+            "primaryAttributeName": "Webpage Id",
+            "primaryAttributeValue": "123",
+            "primaryAttributeValueId": None,
             "client_ip_address": "0.0.0.0",
         }
         self.assertDictEqual(expected, format_values(self.stream, row))
@@ -316,9 +328,11 @@ class TestSyncActivities(unittest.TestCase):
             "leadId": "123",
             "activityDate": "2017-01-01T00:00:00Z",
             "activityTypeId": "1",
-            "webpage_id": "123",
             "client_ip_address": "0.0.0.0",
             "query_parameters": "",
+            "primaryAttributeName": 'webpage_id',
+            "primaryAttributeValue": "123",
+            "primaryAttributeValueId": ""
         }
         self.assertDictEqual(expected, flatten_activity(row, self.stream))
 
@@ -381,11 +395,11 @@ class TestSyncActivities(unittest.TestCase):
                                                 "export_id": "123",
                                                 "export_end": "2017-01-15T00:00:00+00:00"}}}
         lines = [
-            b'marketoGUID,leadId,activityDate,activityTypeId,primaryAttributeValue,attributes',
-            b'1,1,2016-12-31T00:00:00+00:00,1,1,{"Client IP Address":"0.0.0.0"}',
-            b'2,2,2017-01-01T00:00:00+00:00,1,1,{"Client IP Address":"0.0.0.0"}',
-            b'3,3,2017-01-02T00:00:00+00:00,1,1,{"Client IP Address":"0.0.0.0"}',
-            b'4,4,2017-01-03T00:00:00+00:00,1,1,{"Client IP Address":"0.0.0.0"}',
+            b'marketoGUID,leadId,activityDate,activityTypeId,primaryAttributeValue,primaryAttributeValueId,attributes',
+            b'1,1,2016-12-31T00:00:00+00:00,1,1,,{"Client IP Address":"0.0.0.0"}',
+            b'2,2,2017-01-01T00:00:00+00:00,1,1,,{"Client IP Address":"0.0.0.0"}',
+            b'3,3,2017-01-02T00:00:00+00:00,1,1,,{"Client IP Address":"0.0.0.0"}',
+            b'4,4,2017-01-03T00:00:00+00:00,1,1,,{"Client IP Address":"0.0.0.0"}',
         ]
 
         self.client.wait_for_export = unittest.mock.MagicMock(return_value=True)
@@ -405,12 +419,12 @@ class TestSyncActivities(unittest.TestCase):
         expected_calls = [
             unittest.mock.call("activities_activity_name",
                                {"marketoGUID": "2", "leadId": 2, "activityDate": "2017-01-01T00:00:00+00:00",
-                                "activityTypeId": 1, "webpage_id": 1, "client_ip_address": "0.0.0.0"}),
+                                "activityTypeId": 1, "primaryAttributeValueId": None, "primaryAttributeName": "webpage_id", "primaryAttributeValue": '1', "client_ip_address": "0.0.0.0"}),
             unittest.mock.call("activities_activity_name",
                                {"marketoGUID": "3", "leadId": 3, "activityDate": "2017-01-02T00:00:00+00:00",
-                                "activityTypeId": 1, "webpage_id": 1, "client_ip_address": "0.0.0.0"}),
+                                "activityTypeId": 1, "primaryAttributeValueId": None, "primaryAttributeName": "webpage_id", "primaryAttributeValue": '1', "client_ip_address": "0.0.0.0"}),
             unittest.mock.call("activities_activity_name",
                                {"marketoGUID": "4", "leadId": 4, "activityDate": "2017-01-03T00:00:00+00:00",
-                                "activityTypeId": 1, "webpage_id": 1, "client_ip_address": "0.0.0.0"}),
+                                "activityTypeId": 1, "primaryAttributeValueId": None, "primaryAttributeName": "webpage_id", "primaryAttributeValue": '1', "client_ip_address": "0.0.0.0"}),
         ]
         write_record.assert_has_calls(expected_calls)

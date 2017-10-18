@@ -60,10 +60,18 @@ class TestDiscover(unittest.TestCase):
                         "type": "integer",
                         "inclusion": "automatic",
                     },
-                    "webpage_id": {
-                        "type": "integer",
+                    "primaryAttributeName": {
+                        "type": "string",
                         "inclusion": "automatic",
-                    },
+                    },                    
+                    "primaryAttributeValueId": {
+                        "type": "string",
+                        "inclusion": "automatic",
+                    },                    
+                    "primaryAttributeValue": {
+                        "type": "string",
+                        "inclusion": "automatic",
+                    },                                        
                     "client_ip_address": {
                         "type": ["string", "null"],
                         "inclusion": "available",

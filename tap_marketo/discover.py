@@ -63,6 +63,9 @@ def get_activity_type_stream(activity):
         "leadId": {"type": "integer", "inclusion": "automatic"},
         "activityDate": {"type": "string", "format": "date-time", "inclusion": "automatic"},
         "activityTypeId": {"type": "integer", "inclusion": "automatic"},
+        "primaryAttributeValue": {"type": "string", "inclusion": "automatic"},
+        "primaryAttributeName": {"type": "string", "inclusion": "automatic"},
+        "primaryAttributeValueId": {"type": "string", "inclusion": "automatic"},    
     }
 
     mdata = metadata.new()
@@ -70,7 +73,6 @@ def get_activity_type_stream(activity):
     if "primaryAttribute" in activity:
         primary = clean_string(activity["primaryAttribute"]["name"])
         mdata = metadata.write(mdata, (), 'primary_attribute_name', primary)
-        properties[primary] = get_schema_for_type(activity["primaryAttribute"]["dataType"], null=False)
 
     if "attributes" in activity:
         for attr in activity["attributes"]:
