@@ -30,11 +30,14 @@ class TestDiscover(unittest.TestCase):
         }
 
         stream = {
-            "tap_stream_id": "activities_1",
-            "stream": "activities_1",
+            "tap_stream_id": "activities_visit_webpage",
+            "stream": "activities_visit_webpage",
             "key_properties": ["marketoGUID"],
             "replication_key": "activityDate",
             "replication_method": "INCREMENTAL",
+            "metadata": [{'breadcrumb': (),
+                          'metadata': {'activity_id': 1,
+                                       'primary_attribute_name': 'webpage_id'}}],
             "schema": {
                 "type": "object",
                 "additionalProperties": False,
@@ -57,10 +60,18 @@ class TestDiscover(unittest.TestCase):
                         "type": "integer",
                         "inclusion": "automatic",
                     },
-                    "webpage_id": {
-                        "type": "integer",
+                    "primaryAttributeName": {
+                        "type": "string",
                         "inclusion": "automatic",
-                    },
+                    },                    
+                    "primaryAttributeValueId": {
+                        "type": "string",
+                        "inclusion": "automatic",
+                    },                    
+                    "primaryAttributeValue": {
+                        "type": "string",
+                        "inclusion": "automatic",
+                    },                                        
                     "client_ip_address": {
                         "type": ["string", "null"],
                         "inclusion": "available",

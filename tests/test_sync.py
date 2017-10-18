@@ -224,11 +224,14 @@ class TestSyncActivities(unittest.TestCase):
         self.client.token_expires = pendulum.utcnow().add(days=1)
         self.client.calls_today = 1
         self.stream = {
-            "tap_stream_id": "activities_1",
-            "stream": "activities_1",
+            "tap_stream_id": "activities_activity_name",
+            "stream": "activities_activity_name",
             "key_properties": ["marketoGUID"],
             "replication_key": "activityDate",
             "replication_method": "INCREMENTAL",
+            "metadata": [{'breadcrumb': (),
+                          'metadata': {'activity_id': 1,
+                                       'primary_attribute_name': 'webpage_id'}}],
             "schema": {
                 "type": "object",
                 "additionalProperties": False,
@@ -240,6 +243,18 @@ class TestSyncActivities(unittest.TestCase):
                         "inclusion": "automatic",
                         "selected": True,
                     },
+                    "primaryAttributeName": {
+                        "type": "string",
+                        "inclusion": "automatic",
+                    },                    
+                    "primaryAttributeValueId": {
+                        "type": "string",
+                        "inclusion": "automatic",
+                    },                    
+                    "primaryAttributeValue": {
+                        "type": "string",
+                        "inclusion": "automatic",
+                    },                    
                     "leadId": {
                         "type": "integer",
                         "inclusion": "automatic",
@@ -252,11 +267,6 @@ class TestSyncActivities(unittest.TestCase):
                         "selected": True,
                     },
                     "activityTypeId": {
-                        "type": "integer",
-                        "inclusion": "automatic",
-                        "selected": True,
-                    },
-                    "webpage_id": {
                         "type": "integer",
                         "inclusion": "automatic",
                         "selected": True,
@@ -282,6 +292,9 @@ class TestSyncActivities(unittest.TestCase):
             "activityDate": "2017-01-01T00:00:00Z",
             "activityTypeId": "1",
             "webpage_id": "123",
+            "primaryAttributeName": "Webpage Id",
+            "primaryAttributeValue": "123",
+            "primaryAttributeValueId": None,
             "client_ip_address": "0.0.0.0",
             "query_parameters": "",
         }
@@ -290,7 +303,9 @@ class TestSyncActivities(unittest.TestCase):
             "leadId": 123,
             "activityDate": "2017-01-01T00:00:00+00:00",
             "activityTypeId": 1,
-            "webpage_id": 123,
+            "primaryAttributeName": "Webpage Id",
+            "primaryAttributeValue": "123",
+            "primaryAttributeValueId": None,
             "client_ip_address": "0.0.0.0",
         }
         self.assertDictEqual(expected, format_values(self.stream, row))
@@ -313,19 +328,21 @@ class TestSyncActivities(unittest.TestCase):
             "leadId": "123",
             "activityDate": "2017-01-01T00:00:00Z",
             "activityTypeId": "1",
-            "webpage_id": "123",
             "client_ip_address": "0.0.0.0",
             "query_parameters": "",
+            "primaryAttributeName": 'webpage_id',
+            "primaryAttributeValue": "123",
+            "primaryAttributeValueId": ""
         }
-        self.assertDictEqual(expected, flatten_activity(row, self.stream["schema"]))
+        self.assertDictEqual(expected, flatten_activity(row, self.stream))
 
     def test_get_or_create_export_get_export_id(self):
-        state = {"bookmarks": {"activities_1": {"export_id": "123", "export_end": "2017-01-01T00:00:00Z"}}}
+        state = {"bookmarks": {"activities_activity_name": {"export_id": "123", "export_end": "2017-01-01T00:00:00Z"}}}
         self.assertEqual("123", get_or_create_export_for_activities(self.client, state, self.stream))
 
     @freezegun.freeze_time("2017-01-15")
     def test_get_or_create_export_create_export(self):
-        state = {"bookmarks": {"activities_1": {"activityDate": "2017-01-01T00:00:00+00:00"}}}
+        state = {"bookmarks": {"activities_activity_name": {"activityDate": "2017-01-01T00:00:00+00:00"}}}
         self.client.create_export = unittest.mock.MagicMock(return_value="123")
 
         # Ensure we got the right export id back
@@ -334,31 +351,31 @@ class TestSyncActivities(unittest.TestCase):
         # Ensure that we called create export with the correct args
         expected_query = {"createdAt": {"startAt": "2017-01-01T00:00:00+00:00",
                                         "endAt": "2017-01-15T00:00:00+00:00"},
-                          "activityTypeIds": ["1"]}
+                          "activityTypeIds": [1]}
         self.client.create_export.assert_called_once_with("activities", ACTIVITY_FIELDS, expected_query)
 
         # Ensure state was updated
-        expected_state = {"bookmarks": {"activities_1": {"activityDate": "2017-01-01T00:00:00+00:00",
+        expected_state = {"bookmarks": {"activities_activity_name": {"activityDate": "2017-01-01T00:00:00+00:00",
                                                          "export_id": "123",
                                                          "export_end": "2017-01-15T00:00:00+00:00"}}}
         self.assertDictEqual(expected_state, state)
 
     @unittest.mock.patch("singer.write_record")
     def test_handle_record(self, write_record):
-        state = {"bookmarks": {"activities_1": {"activityDate": "2017-01-01T00:00:00Z"}}}
+        state = {"bookmarks": {"activities_activity_name": {"activityDate": "2017-01-01T00:00:00Z"}}}
         record = {"activityDate": "2017-01-02T00:00:00+00:00"}
         self.assertEqual(1, handle_record(state, self.stream, record))
-        write_record.assert_called_once_with("activities_1", record)
+        write_record.assert_called_once_with("activities_activity_name", record)
 
     @unittest.mock.patch("singer.write_record")
     def test_handle_record_rejected(self, write_record):
-        state = {"bookmarks": {"activities_1": {"activityDate": "2017-01-01T00:00:00Z"}}}
+        state = {"bookmarks": {"activities_activity_name": {"activityDate": "2017-01-01T00:00:00Z"}}}
         record = {"activityDate": "2016-01-01T00:00:00+00:00"}
         self.assertEqual(0, handle_record(state, self.stream, record))
         write_record.assert_not_called()
 
     def test_wait_for_activity_export(self):
-        state = {"bookmarks": {"activities_1": {"activityDate": "2017-01-01T00:00:00+00:00",
+        state = {"bookmarks": {"activities_activity_name": {"activityDate": "2017-01-01T00:00:00+00:00",
                                                 "export_id": "123",
                                                 "export_end": "2017-01-31:00:00+00:00"}}}
         self.client.wait_for_export = unittest.mock.MagicMock(side_effect=ExportFailed())
@@ -366,7 +383,7 @@ class TestSyncActivities(unittest.TestCase):
         with self.assertRaises(ExportFailed):
             wait_for_activity_export(self.client, state, self.stream, "123")
 
-        expected_state = {"bookmarks": {"activities_1": {"activityDate": "2017-01-01T00:00:00+00:00",
+        expected_state = {"bookmarks": {"activities_activity_name": {"activityDate": "2017-01-01T00:00:00+00:00",
                                                          "export_id": None,
                                                          "export_end": None}}}
         self.assertDictEqual(expected_state, state)
@@ -374,15 +391,15 @@ class TestSyncActivities(unittest.TestCase):
     @unittest.mock.patch("singer.write_record")
     @freezegun.freeze_time("2017-01-15")
     def test_sync_activities(self, write_record):
-        state = {"bookmarks": {"activities_1": {"activityDate": "2017-01-01T00:00:00+00:00",
+        state = {"bookmarks": {"activities_activity_name": {"activityDate": "2017-01-01T00:00:00+00:00",
                                                 "export_id": "123",
                                                 "export_end": "2017-01-15T00:00:00+00:00"}}}
         lines = [
-            b'marketoGUID,leadId,activityDate,activityTypeId,primaryAttributeValue,attributes',
-            b'1,1,2016-12-31T00:00:00+00:00,1,1,{"Client IP Address":"0.0.0.0"}',
-            b'2,2,2017-01-01T00:00:00+00:00,1,1,{"Client IP Address":"0.0.0.0"}',
-            b'3,3,2017-01-02T00:00:00+00:00,1,1,{"Client IP Address":"0.0.0.0"}',
-            b'4,4,2017-01-03T00:00:00+00:00,1,1,{"Client IP Address":"0.0.0.0"}',
+            b'marketoGUID,leadId,activityDate,activityTypeId,primaryAttributeValue,primaryAttributeValueId,attributes',
+            b'1,1,2016-12-31T00:00:00+00:00,1,1,,{"Client IP Address":"0.0.0.0"}',
+            b'2,2,2017-01-01T00:00:00+00:00,1,1,,{"Client IP Address":"0.0.0.0"}',
+            b'3,3,2017-01-02T00:00:00+00:00,1,1,,{"Client IP Address":"0.0.0.0"}',
+            b'4,4,2017-01-03T00:00:00+00:00,1,1,,{"Client IP Address":"0.0.0.0"}',
         ]
 
         self.client.wait_for_export = unittest.mock.MagicMock(return_value=True)
@@ -394,20 +411,20 @@ class TestSyncActivities(unittest.TestCase):
         self.assertEqual(3, record_count)
 
         # export_end was the 15th, so the activityDate should be updated and no export
-        expected_state = {"bookmarks": {"activities_1": {"activityDate": "2017-01-15T00:00:00+00:00",
+        expected_state = {"bookmarks": {"activities_activity_name": {"activityDate": "2017-01-15T00:00:00+00:00",
                                                          "export_id": None,
                                                          "export_end": None}}}
         self.assertDictEqual(expected_state, state)
 
         expected_calls = [
-            unittest.mock.call("activities_1",
+            unittest.mock.call("activities_activity_name",
                                {"marketoGUID": "2", "leadId": 2, "activityDate": "2017-01-01T00:00:00+00:00",
-                                "activityTypeId": 1, "webpage_id": 1, "client_ip_address": "0.0.0.0"}),
-            unittest.mock.call("activities_1",
+                                "activityTypeId": 1, "primaryAttributeValueId": None, "primaryAttributeName": "webpage_id", "primaryAttributeValue": '1', "client_ip_address": "0.0.0.0"}),
+            unittest.mock.call("activities_activity_name",
                                {"marketoGUID": "3", "leadId": 3, "activityDate": "2017-01-02T00:00:00+00:00",
-                                "activityTypeId": 1, "webpage_id": 1, "client_ip_address": "0.0.0.0"}),
-            unittest.mock.call("activities_1",
+                                "activityTypeId": 1, "primaryAttributeValueId": None, "primaryAttributeName": "webpage_id", "primaryAttributeValue": '1', "client_ip_address": "0.0.0.0"}),
+            unittest.mock.call("activities_activity_name",
                                {"marketoGUID": "4", "leadId": 4, "activityDate": "2017-01-03T00:00:00+00:00",
-                                "activityTypeId": 1, "webpage_id": 1, "client_ip_address": "0.0.0.0"}),
+                                "activityTypeId": 1, "primaryAttributeValueId": None, "primaryAttributeName": "webpage_id", "primaryAttributeValue": '1', "client_ip_address": "0.0.0.0"}),
         ]
         write_record.assert_has_calls(expected_calls)

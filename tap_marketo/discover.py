@@ -3,7 +3,7 @@ import os
 import sys
 
 import singer
-
+from singer import metadata
 
 STRING_TYPES = [
     'string',
@@ -58,16 +58,25 @@ def get_activity_type_stream(activity):
     # fields. primaryAttribute has a name and type which define an
     # automatically included field on the record. Attributes is an array
     # of attribute names and types that become available fields.
+
+    # Regarding pimaryAttribute fields: On this side of things, Marketo will
+    # describe the field in an activity that is considered the primary attribute
+    # On the sync side, we will have to present that information in a flattened record
     properties = {
         "marketoGUID": {"type": "string", "inclusion": "automatic"},
         "leadId": {"type": "integer", "inclusion": "automatic"},
         "activityDate": {"type": "string", "format": "date-time", "inclusion": "automatic"},
         "activityTypeId": {"type": "integer", "inclusion": "automatic"},
+        "primaryAttributeValue": {"type": "string", "inclusion": "automatic"},
+        "primaryAttributeName": {"type": "string", "inclusion": "automatic"},
+        "primaryAttributeValueId": {"type": "string", "inclusion": "automatic"},    
     }
 
+    mdata = metadata.new()
+    
     if "primaryAttribute" in activity:
         primary = clean_string(activity["primaryAttribute"]["name"])
-        properties[primary] = get_schema_for_type(activity["primaryAttribute"]["dataType"], null=False)
+        mdata = metadata.write(mdata, (), 'primary_attribute_name', primary)
 
     if "attributes" in activity:
         for attr in activity["attributes"]:
@@ -76,13 +85,18 @@ def get_activity_type_stream(activity):
             if field_schema:
                 properties[attr_name] = field_schema
 
-    tap_stream_id = "activities_{}".format(activity["id"])
+    activity_type_camel = clean_string(activity["name"])
+    mdata = metadata.write(mdata, (), 'activity_id', activity["id"])
+
+    tap_stream_id = "activities_{}".format(activity_type_camel)
+    
     return {
         "tap_stream_id": tap_stream_id,
         "stream": tap_stream_id,
         "key_properties": ["marketoGUID"],
         "replication_key": "activityDate",
         "replication_method": "INCREMENTAL",
+        "metadata": metadata.to_list(mdata),
         "schema": {
             "type": "object",
             "additionalProperties": False,

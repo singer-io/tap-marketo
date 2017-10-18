@@ -3,6 +3,7 @@ import io
 import json
 import pendulum
 import singer
+from singer import metadata
 from tap_marketo.client import ExportFailed
 from singer import bookmarks
 
@@ -42,6 +43,8 @@ def format_value(value, schema):
         return pendulum.parse(value).isoformat()
     elif "integer" in field_type:
         return int(value)
+    elif "string" in field_type:
+        return str(value)
     elif "number" in field_type:
         return float(value)
     elif "boolean" in field_type:
@@ -66,16 +69,20 @@ def parse_csv_line(line):
     return next(reader)
 
 
-def flatten_activity(row, schema):
+def flatten_activity(row, stream):
     # Start with the base fields
     rtn = {field: row[field] for field in BASE_ACTIVITY_FIELDS}
 
-    # Move the primary attribute to the named column. Primary attribute
-    # has a `field` and a `field_id` entry in the schema, is marked for
-    # automatic inclusion, and isn't one of the base activity fields.
-    for field, field_schema in schema["properties"].items():
-        if field_schema["inclusion"] == "automatic" and field not in ACTIVITY_FIELDS:
-            rtn[field] = row["primaryAttributeValue"]
+    # Add the primary attribute name
+    # This name is the human readable name/description of the
+    # pimaryAttribute
+    mdata = metadata.to_map(stream['metadata'])
+    pan_field = metadata.get(mdata, (), 'primary_attribute_name')
+    if pan_field:
+        singer.log_info("primary attribute name is \" %s \" for stream %s", pan_field, stream['tap_stream_id'])
+        rtn['primaryAttributeName'] = pan_field
+        rtn['primaryAttributeValue'] = row['primaryAttributeValue']
+        rtn['primaryAttributeValueId'] = row['primaryAttributeValueId']
 
     # Now flatten the attrs json to it's selected columns
     if "attributes" in row:
@@ -172,11 +179,13 @@ def get_or_create_export_for_activities(client, state, stream):
     export_id = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_id")
 
     if not export_id:
-        # Stream names for activities are `activities_X` where X is the
-        # activity type id in Marketo. We need the activity type id to
-        # build the query.
-        _, activity_type_id = stream["tap_stream_id"].split("_")
-
+        # The activity id is in the top-most breadcrumb of the metatdata
+        # Activity ids correspond to activity type id in Marketo.
+        # We need the activity type id to build the query.
+        activity_metadata = metadata.to_map(stream["metadata"])
+        activity_type_id = metadata.get(activity_metadata, (), 'activity_id')
+        singer.log_info("activity id for stream %s is %d", stream["tap_stream_id"], activity_type_id)
+        
         # Activities must be queried by `createdAt` even though
         # that is not a real field. `createdAt` proxies `activityDate`.
         # The activity type id must also be included in the query. The
@@ -211,7 +220,7 @@ def update_state_with_export_info(state, stream, bookmark=None, export_id=None, 
 def convert_line(stream, headers, line):
     parsed_line = parse_csv_line(line)
     row = dict(zip(headers, parsed_line))
-    row = flatten_activity(row, stream["schema"])
+    row = flatten_activity(row, stream)
     return format_values(stream, row)
 
 
