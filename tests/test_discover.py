@@ -35,9 +35,6 @@ class TestDiscover(unittest.TestCase):
             "key_properties": ["marketoGUID"],
             "replication_key": "activityDate",
             "replication_method": "INCREMENTAL",
-            "metadata": [{'breadcrumb': (),
-                          'metadata': {'activity_id': 1,
-                                       'primary_attribute_name': 'webpage_id'}}],
             "schema": {
                 "type": "object",
                 "additionalProperties": False,
@@ -60,15 +57,15 @@ class TestDiscover(unittest.TestCase):
                         "type": "integer",
                         "inclusion": "automatic",
                     },
-                    "primaryAttributeName": {
+                    "primary_attribute_name": {
                         "type": "string",
                         "inclusion": "automatic",
                     },                    
-                    "primaryAttributeValueId": {
+                    "primary_attribute_value_id": {
                         "type": "string",
                         "inclusion": "automatic",
                     },                    
-                    "primaryAttributeValue": {
+                    "primary_attribute_value": {
                         "type": "string",
                         "inclusion": "automatic",
                     },                                        
@@ -83,8 +80,15 @@ class TestDiscover(unittest.TestCase):
                 },
             },
         }
-
-        self.assertDictEqual(stream, get_activity_type_stream(activity))
+        result = get_activity_type_stream(activity)
+        metadata = result.pop("metadata")
+        automatic_count = 0
+        for mdata in metadata:
+            if mdata['metadata'].get('inclusion') == 'automatic':
+                automatic_count += 1        
+        self.assertDictEqual(stream, result)
+        self.assertEqual(10, len(metadata))
+        self.assertEqual(7,automatic_count)
 
     def test_discover_leads(self):
         client = Client("123-ABC-456", "id", "secret")
@@ -124,4 +128,13 @@ class TestDiscover(unittest.TestCase):
 
         with requests_mock.Mocker(real_http=True) as mock:
             mock.register_uri("GET", client.get_url("rest/v1/leads/describe.json"), json=data)
-            self.assertDictEqual(stream, discover_leads(client))
+            self.maxDiff = None
+            result = discover_leads(client)
+            metadata = result.pop("metadata")
+            automatic_count = 0
+            for mdata in metadata:
+                if mdata['metadata']['inclusion'] == 'automatic':
+                    automatic_count += 1
+            self.assertDictEqual(stream, result)
+            self.assertEqual(2,len(metadata))
+            self.assertEqual(1,automatic_count)

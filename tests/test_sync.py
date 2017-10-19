@@ -7,7 +7,9 @@ import pendulum
 import requests_mock
 
 from tap_marketo.client import Client, ApiException
-from tap_marketo.discover import discover_catalog
+from tap_marketo.discover import (discover_catalog,
+                                  ACTIVITY_TYPES_AUTOMATIC_INCLUSION,
+                                  PROGRAMS_AUTOMATIC_INCLUSION)
 from tap_marketo.sync import *
 
 
@@ -20,7 +22,7 @@ class TestSyncActivityTypes(unittest.TestCase):
         self.client = Client("123-ABC-456", "id", "secret")
         self.client.token_expires = pendulum.utcnow().add(days=1)
         self.client.calls_today = 1
-        self.stream = discover_catalog("activity_types")
+        self.stream = discover_catalog("activity_types", ACTIVITY_TYPES_AUTOMATIC_INCLUSION, True)
         for schema in self.stream["schema"]["properties"].values():
             schema["selected"] = True
 
@@ -175,7 +177,7 @@ class TestSyncPaginated(unittest.TestCase):
         self.client = Client("123-ABC-456", "id", "secret")
         self.client.token_expires = pendulum.utcnow().add(days=1)
         self.client.calls_today = 1
-        self.stream = discover_catalog("programs")
+        self.stream = discover_catalog("programs", PROGRAMS_AUTOMATIC_INCLUSION)
 
     def test_sync_paginated(self):
         state = {"bookmarks": {"programs": {"updatedAt": "2017-01-01T00:00:00Z", "next_page_token": "abc"}}}
@@ -243,15 +245,15 @@ class TestSyncActivities(unittest.TestCase):
                         "inclusion": "automatic",
                         "selected": True,
                     },
-                    "primaryAttributeName": {
+                    "primary_attribute_name": {
                         "type": "string",
                         "inclusion": "automatic",
                     },                    
-                    "primaryAttributeValueId": {
+                    "primary_attribute_value_id": {
                         "type": "string",
                         "inclusion": "automatic",
                     },                    
-                    "primaryAttributeValue": {
+                    "primary_attribute_value": {
                         "type": "string",
                         "inclusion": "automatic",
                     },                    
@@ -292,9 +294,9 @@ class TestSyncActivities(unittest.TestCase):
             "activityDate": "2017-01-01T00:00:00Z",
             "activityTypeId": "1",
             "webpage_id": "123",
-            "primaryAttributeName": "Webpage Id",
-            "primaryAttributeValue": "123",
-            "primaryAttributeValueId": None,
+            "primary_attribute_name": "Webpage Id",
+            "primary_attribute_value": "123",
+            "primary_attribute_value_id": None,
             "client_ip_address": "0.0.0.0",
             "query_parameters": "",
         }
@@ -303,9 +305,9 @@ class TestSyncActivities(unittest.TestCase):
             "leadId": 123,
             "activityDate": "2017-01-01T00:00:00+00:00",
             "activityTypeId": 1,
-            "primaryAttributeName": "Webpage Id",
-            "primaryAttributeValue": "123",
-            "primaryAttributeValueId": None,
+            "primary_attribute_name": "Webpage Id",
+            "primary_attribute_value": "123",
+            "primary_attribute_value_id": None,
             "client_ip_address": "0.0.0.0",
         }
         self.assertDictEqual(expected, format_values(self.stream, row))
@@ -330,9 +332,9 @@ class TestSyncActivities(unittest.TestCase):
             "activityTypeId": "1",
             "client_ip_address": "0.0.0.0",
             "query_parameters": "",
-            "primaryAttributeName": 'webpage_id',
-            "primaryAttributeValue": "123",
-            "primaryAttributeValueId": ""
+            "primary_attribute_name": 'webpage_id',
+            "primary_attribute_value": "123",
+            "primary_attribute_value_id": ""
         }
         self.assertDictEqual(expected, flatten_activity(row, self.stream))
 
@@ -419,12 +421,12 @@ class TestSyncActivities(unittest.TestCase):
         expected_calls = [
             unittest.mock.call("activities_activity_name",
                                {"marketoGUID": "2", "leadId": 2, "activityDate": "2017-01-01T00:00:00+00:00",
-                                "activityTypeId": 1, "primaryAttributeValueId": None, "primaryAttributeName": "webpage_id", "primaryAttributeValue": '1', "client_ip_address": "0.0.0.0"}),
+                                "activityTypeId": 1, "primary_attribute_value_id": None, "primary_attribute_name": "webpage_id", "primary_attribute_value": '1', "client_ip_address": "0.0.0.0"}),
             unittest.mock.call("activities_activity_name",
                                {"marketoGUID": "3", "leadId": 3, "activityDate": "2017-01-02T00:00:00+00:00",
-                                "activityTypeId": 1, "primaryAttributeValueId": None, "primaryAttributeName": "webpage_id", "primaryAttributeValue": '1', "client_ip_address": "0.0.0.0"}),
+                                "activityTypeId": 1, "primary_attribute_value_id": None, "primary_attribute_name": "webpage_id", "primary_attribute_value": '1', "client_ip_address": "0.0.0.0"}),
             unittest.mock.call("activities_activity_name",
                                {"marketoGUID": "4", "leadId": 4, "activityDate": "2017-01-03T00:00:00+00:00",
-                                "activityTypeId": 1, "primaryAttributeValueId": None, "primaryAttributeName": "webpage_id", "primaryAttributeValue": '1', "client_ip_address": "0.0.0.0"}),
+                                "activityTypeId": 1, "primary_attribute_value_id": None, "primary_attribute_name": "webpage_id", "primary_attribute_value": '1', "client_ip_address": "0.0.0.0"}),
         ]
         write_record.assert_has_calls(expected_calls)
