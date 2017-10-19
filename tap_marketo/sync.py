@@ -108,7 +108,7 @@ def get_or_create_export_for_leads(client, state, stream, fields, start_date):
             export_end = pendulum.utcnow()
 
         query = {query_field: {"startAt": start_date.isoformat(), "endAt": export_end.isoformat()}}
-
+        singer.log_info("scheduling export for stream \"leads\" with query: %s", query)
         # Create the new export and store the id and end date in state.
         # Does not start the export (must POST to the "enqueue" endpoint).
         export_id = client.create_export("leads", fields, query)
@@ -142,7 +142,8 @@ def sync_leads(client, state, stream):
     replication_key = stream.get("replication_key")
     tap_stream_id = stream.get("tap_stream_id")
     tap_job_start_time = pendulum.utcnow()
-    fields = [f for f, s in stream["schema"]["properties"].items() if s.get("selected")]
+    
+    fields = [f for f, s in stream["schema"]["properties"].items() if s.get("selected") or (s.get("inclusion") == "automatic")]
 
     og_bookmark_value = pendulum.parse(bookmarks.get_bookmark(state, tap_stream_id, replication_key))
     bookmark_date = og_bookmark_value
@@ -197,9 +198,10 @@ def get_or_create_export_for_activities(client, state, stream):
             end_pen = pendulum.utcnow()
 
         end_date = end_pen.isoformat()
+
         query = {"createdAt": {"startAt": start_date, "endAt": end_date},
                  "activityTypeIds": [activity_type_id]}
-
+        singer.log_info("scheduling export for stream \"%s\" with query: %s", stream["tap_stream_id"], query)
         # Create the new export and store the id and end date in state.
         # Does not start the export (must POST to the "enqueue" endpoint).
         export_id = client.create_export("activities", ACTIVITY_FIELDS, query)
@@ -439,9 +441,12 @@ def sync(client, catalog, state):
         singer.write_state(state)
         singer.log_info("%s: finished sync", stream["tap_stream_id"])
 
-    singer.log_info("Finished sync")
-
     # If Corona is not supported, log a warning near the end of the tap
     # log with instructions on how to get Corona supported.
+    singer.log_info("Performing final Corona check")
     if not client.use_corona:
+        singer.log_info("Finished sync")        
         singer.log_warning(NO_CORONA_WARNING)
+    else:
+        singer.log_info("Finished sync")        
+        

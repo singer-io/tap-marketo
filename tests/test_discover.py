@@ -35,9 +35,6 @@ class TestDiscover(unittest.TestCase):
             "key_properties": ["marketoGUID"],
             "replication_key": "activityDate",
             "replication_method": "INCREMENTAL",
-            "metadata": [{'breadcrumb': (),
-                          'metadata': {'activity_id': 1,
-                                       'primary_attribute_name': 'webpage_id'}}],
             "schema": {
                 "type": "object",
                 "additionalProperties": False,
@@ -60,15 +57,15 @@ class TestDiscover(unittest.TestCase):
                         "type": "integer",
                         "inclusion": "automatic",
                     },
-                    "primaryAttributeName": {
+                    "primary_attribute_name": {
                         "type": "string",
                         "inclusion": "automatic",
                     },                    
-                    "primaryAttributeValueId": {
+                    "primary_attribute_value_id": {
                         "type": "string",
                         "inclusion": "automatic",
                     },                    
-                    "primaryAttributeValue": {
+                    "primary_attribute_value": {
                         "type": "string",
                         "inclusion": "automatic",
                     },                                        
@@ -83,8 +80,11 @@ class TestDiscover(unittest.TestCase):
                 },
             },
         }
-
-        self.assertDictEqual(stream, get_activity_type_stream(activity))
+        self.maxDiff = None
+        result = get_activity_type_stream(activity)
+        metadata = result.pop("metadata")
+        self.assertDictEqual(stream, result)
+        self.assertEqual(10, len(metadata))
 
     def test_discover_leads(self):
         client = Client("123-ABC-456", "id", "secret")
@@ -105,6 +105,10 @@ class TestDiscover(unittest.TestCase):
             "key_properties": ["id"],
             "replication_key": "updatedAt",
             "replication_method": "INCREMENTAL",
+            "metadata": [{'breadcrumb': ('properties', 'foo'),
+                          'metadata': {'inclusion': 'available'}},
+                         {'breadcrumb': ('properties', 'id'),
+                          'metadata': {'inclusion': 'automatic'}}],
             "schema": {
                 "type": "object",
                 "additionalProperties": False,

@@ -16,7 +16,13 @@ STRING_TYPES = [
     'lead_function',
 ]
 
+ACTIVITY_TYPES_AUTOMATIC_INCLUSION = frozenset(["id", "name"])
+LISTS_AUTOMATIC_INCLUSION = frozenset(["id", "name", "createdAt", "updatedAt"])
+PROGRAMS_AUTOMATIC_INCLUSION = frozenset(["id", "createdAt", "updatedAt"])
+CAMPAIGNS_AUTOMATIC_INCLUSION = frozenset(["id", "createdAt", "udpatedAt"])
+
 LEAD_REQUIRED_FIELDS = frozenset(["id", "updatedAt", "createdAt"])
+
 def clean_string(string):
     return string.lower().replace(" ", "_")
 
@@ -69,6 +75,8 @@ def get_activity_type_stream(activity):
     # Regarding pimaryAttribute fields: On this side of things, Marketo will
     # describe the field in an activity that is considered the primary attribute
     # On the sync side, we will have to present that information in a flattened record
+    mdata = metadata.new()
+
     properties = {
         "marketoGUID": {"type": "string", "inclusion": "automatic"},
         "leadId": {"type": "integer", "inclusion": "automatic"},
@@ -79,7 +87,8 @@ def get_activity_type_stream(activity):
         "primary_attribute_value_id": {"type": "string", "inclusion": "automatic"},    
     }
 
-    mdata = metadata.new()
+    for prop in properties:
+        mdata = metadata.write(mdata, ('properties', prop), 'inclusion', 'automatic')
     
     if "primaryAttribute" in activity:
         primary = clean_string(activity["primaryAttribute"]["name"])
@@ -181,15 +190,14 @@ def discover_catalog(name, automatic_inclusion, stream_automatic_inclusion=False
         discovered_schema["metadata"] = metadata.to_list(mdata)
         return discovered_schema
 
-
 def discover(client):
     singer.log_info("Starting discover")
     streams = []
     streams.append(discover_leads(client))
-    streams.append(discover_catalog("activity_types", frozenset(["id", "name"]), True))
+    streams.append(discover_catalog("activity_types", ACTIVITY_TYPES_AUTOMATIC_INCLUSION, True))
     streams.extend(discover_activities(client))
-    streams.append(discover_catalog("campaigns", frozenset(["id", "createdAt", "udpatedAt"])))
-    streams.append(discover_catalog("lists", frozenset(["id", "name", "createdAt", "updatedAt"])))
-    streams.append(discover_catalog("programs", frozenset(["id", "createdAt", "updatedAt"])))
+    streams.append(discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION))
+    streams.append(discover_catalog("lists", LISTS_AUTOMATIC_INCLUSION))
+    streams.append(discover_catalog("programs", PROGRAMS_AUTOMATIC_INCLUSION))
     json.dump({"streams": streams}, sys.stdout, indent=2)
     singer.log_info("Finished discover")
