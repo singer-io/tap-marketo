@@ -80,9 +80,9 @@ def flatten_activity(row, stream):
     pan_field = metadata.get(mdata, (), 'primary_attribute_name')
     if pan_field:
         singer.log_info("primary attribute name is \" %s \" for stream %s", pan_field, stream['tap_stream_id'])
-        rtn['primaryAttributeName'] = pan_field
-        rtn['primaryAttributeValue'] = row['primaryAttributeValue']
-        rtn['primaryAttributeValueId'] = row['primaryAttributeValueId']
+        rtn['primary_attribute_name'] = pan_field
+        rtn['primary_attribute_value'] = row['primaryAttributeValue']
+        rtn['primary_attribute_value_id'] = row['primaryAttributeValueId']
 
     # Now flatten the attrs json to it's selected columns
     if "attributes" in row:

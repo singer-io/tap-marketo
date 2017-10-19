@@ -16,12 +16,12 @@ STRING_TYPES = [
     'lead_function',
 ]
 
-
+LEAD_REQUIRED_FIELDS = frozenset(["id", "updatedAt", "createdAt"])
 def clean_string(string):
     return string.lower().replace(" ", "_")
 
 
-def get_schema_for_type(typ, null=False):
+def get_schema_for_type(typ, breadcrumb, mdata, null=False):
     # http://developers.marketo.com/rest-api/lead-database/fields/field-types/
     if typ in ['datetime', 'date']:
         rtn = {"type": "string", "format": "date-time"}
@@ -33,16 +33,23 @@ def get_schema_for_type(typ, null=False):
         rtn = {'type': 'boolean'}
     elif typ in STRING_TYPES:
         rtn = {'type': 'string'}
+    elif typ in ['array']:
+        rtn = {'type': 'array',
+               'items': {'type': 'string'}}
     else:
-        return None
+        singer.log_info("Got marketo type \"%s\", converting to string", typ)
+        rtn = {'type': 'string'}
 
     if null:
         rtn["type"] = [rtn["type"], "null"]
         rtn["inclusion"] = "available"
+        mdata = metadata.write(mdata, breadcrumb, 'inclusion', 'available')
+
     else:
         rtn["inclusion"] = "automatic"
+        mdata = metadata.write(mdata, breadcrumb, 'inclusion', 'automatic')
 
-    return rtn
+    return rtn, mdata
 
 
 def get_activity_type_stream(activity):
@@ -67,9 +74,9 @@ def get_activity_type_stream(activity):
         "leadId": {"type": "integer", "inclusion": "automatic"},
         "activityDate": {"type": "string", "format": "date-time", "inclusion": "automatic"},
         "activityTypeId": {"type": "integer", "inclusion": "automatic"},
-        "primaryAttributeValue": {"type": "string", "inclusion": "automatic"},
-        "primaryAttributeName": {"type": "string", "inclusion": "automatic"},
-        "primaryAttributeValueId": {"type": "string", "inclusion": "automatic"},    
+        "primary_attribute_value": {"type": "string", "inclusion": "automatic"},
+        "primary_attribute_name": {"type": "string", "inclusion": "automatic"},
+        "primary_attribute_value_id": {"type": "string", "inclusion": "automatic"},    
     }
 
     mdata = metadata.new()
@@ -81,7 +88,7 @@ def get_activity_type_stream(activity):
     if "attributes" in activity:
         for attr in activity["attributes"]:
             attr_name = clean_string(attr["name"])
-            field_schema = get_schema_for_type(attr["dataType"], null=True)
+            field_schema, mdata = get_schema_for_type(attr["dataType"], breadcrumb=('properties', attr_name), mdata=mdata, null=True)
             if field_schema:
                 properties[attr_name] = field_schema
 
@@ -118,23 +125,25 @@ def discover_leads(client):
     endpoint = "rest/v1/leads/describe.json"
     data = client.request("GET", endpoint, endpoint_name="leads_discover")
     properties = {}
+    mdata = metadata.new()
+
     for field in data["result"]:
         if "rest" not in field:
             singer.log_debug("Field leads.%s not supported via the REST API.",
                              field["displayName"])
             continue
+        field_name = field["rest"]["name"]
 
-        if field["rest"]["name"] == "id":
-            field_schema = get_schema_for_type(field["dataType"], null=False)
+        if field["rest"]["name"] in LEAD_REQUIRED_FIELDS:
+            field_schema, mdata = get_schema_for_type(field["dataType"], ('properties', field_name), mdata, null=False)
         else:
-            field_schema = get_schema_for_type(field["dataType"], null=True)
+            field_schema, mdata = get_schema_for_type(field["dataType"], ('properties', field_name), mdata, null=True)
 
         if not field_schema:
             singer.log_debug("Marketo type %s unsupported for leads.%s",
-                             field["dataType"], field["rest"]["name"])
+                             field["dataType"], field_name)
             continue
-
-        properties[field["rest"]["name"]] = field_schema
+        properties[field_name] = field_schema
 
     return {
         "tap_stream_id": "leads",
@@ -142,6 +151,7 @@ def discover_leads(client):
         "key_properties": ["id"],
         "replication_key": "updatedAt",
         "replication_method": "INCREMENTAL",
+        "metadata": metadata.to_list(mdata),
         "schema": {
             "type": "object",
             "additionalProperties": False,
@@ -151,21 +161,35 @@ def discover_leads(client):
     }
 
 
-def discover_catalog(name):
+def discover_catalog(name, automatic_inclusion, stream_automatic_inclusion=False):
     root = os.path.dirname(os.path.realpath(__file__))
     path = os.path.join(root, 'schemas/{}.json'.format(name))
+    mdata = metadata.new()
+    
     with open(path, "r") as f:
-        return json.load(f)
+        discovered_schema = json.load(f)
+
+        for field in discovered_schema["schema"]["properties"]:
+            if field in automatic_inclusion:
+                mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'available')          
+            else:
+                mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'automatic')
+
+        if stream_automatic_inclusion:
+            mdata = metadata.write(mdata, (), 'inclusion', 'automatic')            
+                
+        discovered_schema["metadata"] = metadata.to_list(mdata)
+        return discovered_schema
 
 
 def discover(client):
     singer.log_info("Starting discover")
     streams = []
     streams.append(discover_leads(client))
-    streams.append(discover_catalog("activity_types"))
+    streams.append(discover_catalog("activity_types", frozenset(["id", "name"]), True))
     streams.extend(discover_activities(client))
-    streams.append(discover_catalog("campaigns"))
-    streams.append(discover_catalog("lists"))
-    streams.append(discover_catalog("programs"))
+    streams.append(discover_catalog("campaigns", frozenset(["id", "createdAt", "udpatedAt"])))
+    streams.append(discover_catalog("lists", frozenset(["id", "name", "createdAt", "updatedAt"])))
+    streams.append(discover_catalog("programs", frozenset(["id", "createdAt", "updatedAt"])))
     json.dump({"streams": streams}, sys.stdout, indent=2)
     singer.log_info("Finished discover")
