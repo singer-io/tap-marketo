@@ -121,14 +121,14 @@ def get_or_create_export_for_leads(client, state, stream, fields, start_date):
 
 def write_leads_records(client, stream, lines, og_bookmark_value, record_count):
     headers = parse_csv_line(next(lines))
-
+    
     for line in lines:
         parsed_line = parse_csv_line(line)
         parsed_line = dict(zip(headers, parsed_line))
         line_updated_at = pendulum.parse(parsed_line["updatedAt"])
+
         #accounts without corona need to have a manual filter on records
         if client.use_corona or (line_updated_at >= og_bookmark_value):
-
             record = format_values(stream, parsed_line)
             singer.write_record(stream["tap_stream_id"], record)
             record_count += 1
@@ -159,7 +159,13 @@ def sync_leads(client, state, stream):
 
         lines = client.stream_export("leads", export_id)
 
-        record_count = write_leads_records(client, stream, lines, og_bookmark_value, record_count)
+        try:
+            record_count = write_leads_records(client, stream, lines, og_bookmark_value, record_count)
+
+        except Exception as e:
+            singer.log_info("Exception while writing leads record, removing export information from state")
+            update_state_with_export_info(state, stream)
+            raise e
 
         if client.use_corona:
             state = update_state_with_export_info(state, stream, bookmark=export_end.isoformat(), \
@@ -258,13 +264,18 @@ def sync_activities(client, state, stream):
         # from state so a new export can be run next sync.
         wait_for_activity_export(client, state, stream, export_id)
 
-        # Stream the rows keeping count of the accepted rows.
-        lines = client.stream_export("activities", export_id)
-        headers = parse_csv_line(next(lines))
-        for line in lines:
-            record = convert_line(stream, headers, line)
-            record_count += handle_record(state, stream, record)
-
+        try:
+            # Stream the rows keeping count of the accepted rows.
+            lines = client.stream_export("activities", export_id)
+            headers = parse_csv_line(next(lines))
+            for line in lines:
+                record = convert_line(stream, headers, line)
+                record_count += handle_record(state, stream, record)
+        except Exception as e:
+            singer.log_info("Exception while writing activity \"%s\" record, removing export information from state", stream["tap_stream_id"])
+            update_state_with_export_info(state, stream)
+            raise e            
+                
         # The new start date is the end of the previous export. Update
         # the bookmark to the end date and continue with the next export.
 
