@@ -170,8 +170,37 @@ class TestSyncLeads(unittest.TestCase):
                                {"marketoGUID": "4", "leadId": 4, "updatedAt": "2017-01-03T00:00:00+00:00"})
         ]
         write_record.assert_has_calls(expected_calls)
-        
-        
+
+    @unittest.mock.patch("singer.write_state")
+    @freezegun.freeze_time("2017-01-15")        
+    def test_sync_leads_bad_csv(self, write_record):
+        self.client._use_corona = False
+        state = {"bookmarks": {"leads": {"updatedAt": "2017-01-01T00:00:00+00:00",
+                                         "export_id": "123",
+                                         "export_end": "2017-01-15T00:00:00+00:00"}}}
+        lines = [
+            b'marketoGUID,leadId,attributes',
+            b'1,1,1',
+            b'2,2,1',
+            b'3,3,1',
+            b'4,4,1'
+        ]
+
+        self.client.wait_for_export = unittest.mock.MagicMock(return_value=True)
+        self.client.stream_export = unittest.mock.MagicMock(return_value=(l for l in lines))
+
+        try:
+            state, record_count = sync_leads(self.client, state, self.stream)
+        except Exception:
+            pass
+            
+
+        expected_calls = [
+            unittest.mock.call({"bookmarks": {"leads": {"updatedAt": "2017-01-01T00:00:00+00:00",
+                                                  "export_id": None,
+                                                  "export_end": None}}})]
+        singer.write_state.assert_has_calls(expected_calls)
+
 class TestSyncPaginated(unittest.TestCase):
     def setUp(self):
         self.client = Client("123-ABC-456", "id", "secret")
