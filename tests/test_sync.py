@@ -261,8 +261,8 @@ class TestSyncActivities(unittest.TestCase):
             "replication_key": "activityDate",
             "replication_method": "INCREMENTAL",
             "metadata": [{'breadcrumb': (),
-                          'metadata': {'activity_id': 1,
-                                       'primary_attribute_name': 'webpage_id'}}],
+                          'metadata': {'marketo.activity-id': 1,
+                                       'marketo.primary-attribute-name': 'webpage_id'}}],
             "schema": {
                 "type": "object",
                 "additionalProperties": False,

@@ -116,7 +116,7 @@ class Client:
             if data["error"] == "unauthorized":
                 msg = "Authorization failed: "
             else:
-                msg = "API returned an error: "
+                msg = "Marketo API returned an error: "
 
             msg += data.get("error_description", "No message from api")
             raise ApiException(msg)
@@ -158,19 +158,19 @@ class Client:
             raise ApiException("Exceeded daily quota of %s calls", self.max_daily_calls)
 
         resp = self._request(method, url, endpoint_name, **kwargs)
-        if "stream" not in kwargs:
+        if "stream_id" not in kwargs:
             if resp.content == b'':
-                raise ApiException("Something went wrong and the API returned nothing.")
+                raise ApiException("Something went wrong and the Marketo API returned nothing.")
 
             data = resp.json()
             if not data["success"]:
                 err = ", ".join("{code}: {message}".format(**e) for e in data["errors"])
-                raise ApiException("API returned error(s): {}".format(err))
+                raise ApiException("Marketo API returned error(s): {}".format(err))
 
             return data
         else:
             if resp.status_code != 200:
-                raise ApiException("API returned error: {0.status_code}: {0.content}".format(resp))
+                raise ApiException("Marketo API returned error: {0.status_code}: {0.content}".format(resp))
 
             return resp.iter_lines()
 

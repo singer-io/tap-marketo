@@ -77,9 +77,8 @@ def flatten_activity(row, stream):
     # This name is the human readable name/description of the
     # pimaryAttribute
     mdata = metadata.to_map(stream['metadata'])
-    pan_field = metadata.get(mdata, (), 'primary_attribute_name')
+    pan_field = metadata.get(mdata, (), 'marketo.primary-attribute-name')
     if pan_field:
-        singer.log_info("primary attribute name is \" %s \" for stream %s", pan_field, stream['tap_stream_id'])
         rtn['primary_attribute_name'] = pan_field
         rtn['primary_attribute_value'] = row['primaryAttributeValue']
         rtn['primary_attribute_value_id'] = row['primaryAttributeValueId']
@@ -190,7 +189,7 @@ def get_or_create_export_for_activities(client, state, stream):
         # Activity ids correspond to activity type id in Marketo.
         # We need the activity type id to build the query.
         activity_metadata = metadata.to_map(stream["metadata"])
-        activity_type_id = metadata.get(activity_metadata, (), 'activity_id')
+        activity_type_id = metadata.get(activity_metadata, (), 'marketo.activity-id')
         singer.log_info("activity id for stream %s is %d", stream["tap_stream_id"], activity_type_id)
         
         # Activities must be queried by `createdAt` even though
