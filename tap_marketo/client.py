@@ -161,7 +161,7 @@ class Client:
             raise ApiException("Exceeded daily quota of %s calls", self.max_daily_calls)
 
         resp = self._request(method, url, endpoint_name, **kwargs)
-        if "stream_id" not in kwargs:
+        if "stream" not in kwargs:
             if resp.content == b'':
                 raise ApiException("Something went wrong and the Marketo API returned nothing.")
 
