@@ -43,7 +43,6 @@ def get_schema_for_type(typ, breadcrumb, mdata, null=False):
         rtn = {'type': 'array',
                'items': {'type': 'string'}}
     else:
-        singer.log_info("Got marketo type \"%s\", converting to string", typ)
         rtn = {'type': 'string'}
 
     if null:
@@ -81,18 +80,24 @@ def get_activity_type_stream(activity):
         "marketoGUID": {"type": "string", "inclusion": "automatic"},
         "leadId": {"type": "integer", "inclusion": "automatic"},
         "activityDate": {"type": "string", "format": "date-time", "inclusion": "automatic"},
-        "activityTypeId": {"type": "integer", "inclusion": "automatic"},
-        "primary_attribute_value": {"type": "string", "inclusion": "automatic"},
-        "primary_attribute_name": {"type": "string", "inclusion": "automatic"},
-        "primary_attribute_value_id": {"type": "string", "inclusion": "automatic"},    
+        "activityTypeId": {"type": "integer", "inclusion": "automatic"}    
     }
 
     for prop in properties:
         mdata = metadata.write(mdata, ('properties', prop), 'inclusion', 'automatic')
     
     if "primaryAttribute" in activity:
+        properties["primary_attribute_value"] = {"type": "string", "inclusion": "automatic"}
+        properties["primary_attribute_name"] = {"type": "string", "inclusion": "automatic"}
+        properties["primary_attribute_value_id"] = {"type": "string", "inclusion": "automatic"}
+        mdata = metadata.write(mdata, ('properties', "primary_attribute_value"), 'inclusion', 'automatic')
+        mdata = metadata.write(mdata, ('properties', "primary_attribute_name"), 'inclusion', 'automatic')
+        mdata = metadata.write(mdata, ('properties', "primary_attribute_value_id"), 'inclusion', 'automatic')
+
+        
         primary = clean_string(activity["primaryAttribute"]["name"])
-        mdata = metadata.write(mdata, (), 'primary_attribute_name', primary)
+        mdata = metadata.write(mdata, (), 'marketo.primary-attribute-name', primary)
+        
 
     if "attributes" in activity:
         for attr in activity["attributes"]:
@@ -102,7 +107,7 @@ def get_activity_type_stream(activity):
                 properties[attr_name] = field_schema
 
     activity_type_camel = clean_string(activity["name"])
-    mdata = metadata.write(mdata, (), 'activity_id', activity["id"])
+    mdata = metadata.write(mdata, (), 'marketo.activity-id', activity["id"])
 
     tap_stream_id = "activities_{}".format(activity_type_camel)
     

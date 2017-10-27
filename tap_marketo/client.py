@@ -13,6 +13,9 @@ POLL_INTERVAL = 60 * 5
 # If Corona is not supported, an error "1035" will be returned by the API.
 # http://developers.marketo.com/rest-api/bulk-extract/bulk-lead-extract/#filters
 NO_CORONA_CODE = "1035"
+API_QUOTA_EXCEEDED = "1029"
+
+API_QUOTA_EXCEEDED_MESSAGE = "Marketo API returned error(s): 1029: Export daily quota 500MB exceeded.  Data can resume replicating at midnight central time. Read more about Marketo Bulk API limits here: http://developers.marketo.com/rest-api/bulk-extract/#limits"
 
 # Marketo limits REST requests to 50000 per day with a rate limit of 100
 # calls per 20 seconds.
@@ -116,7 +119,7 @@ class Client:
             if data["error"] == "unauthorized":
                 msg = "Authorization failed: "
             else:
-                msg = "API returned an error: "
+                msg = "Marketo API returned an error: "
 
             msg += data.get("error_description", "No message from api")
             raise ApiException(msg)
@@ -160,17 +163,21 @@ class Client:
         resp = self._request(method, url, endpoint_name, **kwargs)
         if "stream" not in kwargs:
             if resp.content == b'':
-                raise ApiException("Something went wrong and the API returned nothing.")
+                raise ApiException("Something went wrong and the Marketo API returned nothing.")
 
             data = resp.json()
-            if not data["success"]:
+            err_codes = set(err["code"] for err in data.get("errors", []))
+            
+            if API_QUOTA_EXCEEDED in err_codes:
+                raise ApiException(API_QUOTA_EXCEEDED_MESSAGE)            
+            elif not data["success"]:
                 err = ", ".join("{code}: {message}".format(**e) for e in data["errors"])
-                raise ApiException("API returned error(s): {}".format(err))
+                raise ApiException("Marketo API returned error(s): {}".format(err))
 
             return data
         else:
             if resp.status_code != 200:
-                raise ApiException("API returned error: {0.status_code}: {0.content}".format(resp))
+                raise ApiException("Marketo API returned error: {0.status_code}: {0.content}".format(resp))
 
             return resp.iter_lines()
 
@@ -268,7 +275,10 @@ class Client:
         if NO_CORONA_CODE in err_codes:
             singer.log_info("Corona not supported.")
             return False
+        elif API_QUOTA_EXCEEDED in err_codes:
+            raise ApiException(API_QUOTA_EXCEEDED_MESSAGE)
         else:
             singer.log_info("Corona is supported.")
+            singer.log_info(data)
             self.cancel_export("leads", data["result"][0]["exportId"])
             return True
