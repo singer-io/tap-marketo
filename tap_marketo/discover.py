@@ -17,6 +17,7 @@ STRING_TYPES = [
 ]
 
 ACTIVITY_TYPES_AUTOMATIC_INCLUSION = frozenset(["id", "name"])
+ACTIVITY_TYPES_UNSUPPORTED = frozenset(["attributes"])
 LISTS_AUTOMATIC_INCLUSION = frozenset(["id", "name", "createdAt", "updatedAt"])
 PROGRAMS_AUTOMATIC_INCLUSION = frozenset(["id", "createdAt", "updatedAt"])
 CAMPAIGNS_AUTOMATIC_INCLUSION = frozenset(["id", "createdAt", "udpatedAt"])
@@ -175,7 +176,9 @@ def discover_leads(client):
     }
 
 
-def discover_catalog(name, automatic_inclusion, stream_automatic_inclusion=False):
+def discover_catalog(name, automatic_inclusion, **kwargs):
+    unsupported = kwargs.get("unsupported", frozenset([]))
+    stream_automatic_inclusion = kwargs.get("stream_automatic_inclusion", False)
     root = os.path.dirname(os.path.realpath(__file__))
     path = os.path.join(root, 'schemas/{}.json'.format(name))
     mdata = metadata.new()
@@ -185,9 +188,11 @@ def discover_catalog(name, automatic_inclusion, stream_automatic_inclusion=False
 
         for field in discovered_schema["schema"]["properties"]:
             if field in automatic_inclusion:
-                mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'available')          
-            else:
                 mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'automatic')
+            elif field in unsupported:
+                mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'unsupported') 
+            else:
+                mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'available')
 
         if stream_automatic_inclusion:
             mdata = metadata.write(mdata, (), 'inclusion', 'automatic')            
@@ -199,7 +204,7 @@ def discover(client):
     singer.log_info("Starting discover")
     streams = []
     streams.append(discover_leads(client))
-    streams.append(discover_catalog("activity_types", ACTIVITY_TYPES_AUTOMATIC_INCLUSION, True))
+    streams.append(discover_catalog("activity_types", ACTIVITY_TYPES_AUTOMATIC_INCLUSION, unsupported=ACTIVITY_TYPES_UNSUPPORTED, stream_automatic_inclusion=True))
     streams.extend(discover_activities(client))
     streams.append(discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION))
     streams.append(discover_catalog("lists", LISTS_AUTOMATIC_INCLUSION))
