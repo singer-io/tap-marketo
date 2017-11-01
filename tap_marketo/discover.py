@@ -20,7 +20,7 @@ ACTIVITY_TYPES_AUTOMATIC_INCLUSION = frozenset(["id", "name"])
 ACTIVITY_TYPES_UNSUPPORTED = frozenset(["attributes"])
 LISTS_AUTOMATIC_INCLUSION = frozenset(["id", "name", "createdAt", "updatedAt"])
 PROGRAMS_AUTOMATIC_INCLUSION = frozenset(["id", "createdAt", "updatedAt"])
-CAMPAIGNS_AUTOMATIC_INCLUSION = frozenset(["id", "createdAt", "udpatedAt"])
+CAMPAIGNS_AUTOMATIC_INCLUSION = frozenset(["id", "createdAt", "updatedAt"])
 
 LEAD_REQUIRED_FIELDS = frozenset(["id", "updatedAt", "createdAt"])
 
