@@ -23,7 +23,7 @@ class TestSyncActivityTypes(unittest.TestCase):
         self.client = Client("123-ABC-456", "id", "secret")
         self.client.token_expires = pendulum.utcnow().add(days=1)
         self.client.calls_today = 1
-        self.stream = discover_catalog("activity_types", ACTIVITY_TYPES_AUTOMATIC_INCLUSION, ACTIVITY_TYPES_UNSUPPORTED, True)
+        self.stream = discover_catalog("activity_types", ACTIVITY_TYPES_AUTOMATIC_INCLUSION, unsupported=ACTIVITY_TYPES_UNSUPPORTED, stream_acutomatic_inclusion=True)
         for schema in self.stream["schema"]["properties"].values():
             schema["selected"] = True
 
