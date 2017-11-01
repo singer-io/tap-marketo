@@ -9,6 +9,7 @@ import requests_mock
 from tap_marketo.client import Client, ApiException
 from tap_marketo.discover import (discover_catalog,
                                   ACTIVITY_TYPES_AUTOMATIC_INCLUSION,
+                                  ACTIVITY_TYPES_UNSUPPORTED,
                                   PROGRAMS_AUTOMATIC_INCLUSION)
 from tap_marketo.sync import *
 
@@ -22,7 +23,7 @@ class TestSyncActivityTypes(unittest.TestCase):
         self.client = Client("123-ABC-456", "id", "secret")
         self.client.token_expires = pendulum.utcnow().add(days=1)
         self.client.calls_today = 1
-        self.stream = discover_catalog("activity_types", ACTIVITY_TYPES_AUTOMATIC_INCLUSION, True)
+        self.stream = discover_catalog("activity_types", ACTIVITY_TYPES_AUTOMATIC_INCLUSION, ACTIVITY_TYPES_UNSUPPORTED, True)
         for schema in self.stream["schema"]["properties"].values():
             schema["selected"] = True
 
