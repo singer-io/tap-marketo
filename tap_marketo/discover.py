@@ -176,7 +176,9 @@ def discover_leads(client):
     }
 
 
-def discover_catalog(name, automatic_inclusion, unsupported=set([]), stream_automatic_inclusion=False):
+def discover_catalog(name, automatic_inclusion, **kwargs):
+    unsupported = kwargs.get("unsupported", frozenset([]))
+    stream_automatic_inclusion = kwargs.get("stream_automatic_inclusion", False)
     root = os.path.dirname(os.path.realpath(__file__))
     path = os.path.join(root, 'schemas/{}.json'.format(name))
     mdata = metadata.new()
