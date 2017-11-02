@@ -78,7 +78,7 @@ class TestSyncLeads(unittest.TestCase):
                                "inclusion": "automatic",
                                "selected": True,
                            },
-                           "leadId": {
+                           "id": {
                                "type": "integer",
                                "inclusion": "automatic",
                                "selected": False,
@@ -123,7 +123,7 @@ class TestSyncLeads(unittest.TestCase):
                        {"updatedAt": "2017-01-01"}}}
 
 
-        mock_lines = [b'a,b,updatedAt', b'1,2,2017-01-16', b'1,2,2017-01-01']
+        mock_lines = [b'id,a,b,updatedAt', b'1,1,2,2017-01-16', b'1,1,2,2017-01-01']
         mock_lines = (a for a in mock_lines)
 
         mock_og_value = pendulum.now()
@@ -133,6 +133,46 @@ class TestSyncLeads(unittest.TestCase):
 
         self.assertEqual(record_count, 1)
 
+
+    @freezegun.freeze_time("2017-01-15")
+    @unittest.mock.patch("singer.write_record")
+    def test_write_leads_allow_null_updated_at(self, write_record):
+        self.client._use_corona = False
+        mock_state = {"bookmarks":
+                      {"leads":
+                       {"updatedAt": "2017-01-01"}}}
+
+
+        mock_lines = [b'id,a,b,updatedAt', b'1,1,2,2017-01-16', b'1,1,2,null']
+        mock_lines = (a for a in mock_lines)
+
+        mock_og_value = pendulum.now()
+        mock_record_count = 0
+        record_count = write_leads_records(self.client, self.stream, \
+                                           mock_lines, mock_og_value, mock_record_count)
+
+        self.assertEqual(record_count, 2)
+
+
+    @freezegun.freeze_time("2017-01-15")
+    @unittest.mock.patch("singer.write_record")
+    def test_write_leads_filter_null_id(self, write_record):
+        self.client._use_corona = False
+        mock_state = {"bookmarks":
+                      {"leads":
+                       {"updatedAt": "2017-01-01"}}}
+
+
+        mock_lines = [b'id,a,b,updatedAt', b'null,1,2,2017-01-16', b'1,1,2,2017-01-16']
+        mock_lines = (a for a in mock_lines)
+
+        mock_og_value = pendulum.now()
+        mock_record_count = 0
+        record_count = write_leads_records(self.client, self.stream, \
+                                           mock_lines, mock_og_value, mock_record_count)
+
+        self.assertEqual(record_count, 1)        
+
     @unittest.mock.patch("singer.write_record")
     @freezegun.freeze_time("2017-01-15")
     def test_sync_leads(self, write_record):
@@ -141,7 +181,7 @@ class TestSyncLeads(unittest.TestCase):
                                          "export_id": "123",
                                          "export_end": "2017-01-15T00:00:00+00:00"}}}
         lines = [
-            b'marketoGUID,leadId,updatedAt,attributes',
+            b'marketoGUID,id,updatedAt,attributes',
             b'1,1,2016-12-31T00:00:00+00:00,1',
             b'2,2,2017-01-01T00:00:00+00:00,1',
             b'3,3,2017-01-02T00:00:00+00:00,1',
@@ -164,11 +204,11 @@ class TestSyncLeads(unittest.TestCase):
 
         expected_calls = [
             unittest.mock.call("leads",
-                               {"marketoGUID": "2", "leadId": 2, "updatedAt": "2017-01-01T00:00:00+00:00"}),
+                               {"marketoGUID": "2", "id": 2, "updatedAt": "2017-01-01T00:00:00+00:00"}),
             unittest.mock.call("leads",
-                               {"marketoGUID": "3", "leadId": 3, "updatedAt": "2017-01-02T00:00:00+00:00"}),
+                               {"marketoGUID": "3", "id": 3, "updatedAt": "2017-01-02T00:00:00+00:00"}),
             unittest.mock.call("leads",
-                               {"marketoGUID": "4", "leadId": 4, "updatedAt": "2017-01-03T00:00:00+00:00"})
+                               {"marketoGUID": "4", "id": 4, "updatedAt": "2017-01-03T00:00:00+00:00"})
         ]
         write_record.assert_has_calls(expected_calls)
 
@@ -180,7 +220,7 @@ class TestSyncLeads(unittest.TestCase):
                                          "export_id": "123",
                                          "export_end": "2017-01-15T00:00:00+00:00"}}}
         lines = [
-            b'marketoGUID,leadId,attributes',
+            b'marketoGUID,id,attributes',
             b'1,1,1',
             b'2,2,1',
             b'3,3,1',
