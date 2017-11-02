@@ -119,19 +119,38 @@ def get_or_create_export_for_leads(client, state, stream, fields, start_date):
     return export_id, export_end
 
 def write_leads_records(client, stream, lines, og_bookmark_value, record_count):
+    null_id_count = 0
+    null_updatedAt_count = 0
+
     headers = parse_csv_line(next(lines))
     
     for line in lines:
         parsed_line = parse_csv_line(line)
         parsed_line = dict(zip(headers, parsed_line))
-        line_updated_at = pendulum.parse(parsed_line["updatedAt"])
+
+        #deal with updatedAt potentially being null
+        line_updated_at = parsed_line.get('updatedAt')
+        if line_updated_at == 'null' or line_updated_at is None:
+            null_updatedAt_count += 1
+            if null_updatedAt_count <= 10:
+                singer.log_info("Found record with null updatedAt value.  The id value for the record is %s", parsed_line.get('id'))
+        else:
+            line_updated_at = pendulum.parse(parsed_line["updatedAt"])
+
+        #deal with potential null ids
+        if parsed_line.get('id') is None or parsed_line.get('id') == 'null':
+            if null_id_count <=10:
+                singer.log_info("Found record with id field equal to %s", parsed_line.get('id'))
+            null_id_count += 1
 
         #accounts without corona need to have a manual filter on records
-        if client.use_corona or (line_updated_at >= og_bookmark_value):
+        elif client.use_corona or line_updated_at == 'null' or (line_updated_at >= og_bookmark_value):
             record = format_values(stream, parsed_line)
             singer.write_record(stream["tap_stream_id"], record)
             record_count += 1
 
+    if null_id_count > 0 or null_updatedAt_count > 0:
+        singer.log_info("For this export: Count of null id fields: %d, count of null updatedAt fields: %d", null_id_count, null_updatedAt_count)
     return record_count
 
 def sync_leads(client, state, stream):
