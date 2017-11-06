@@ -102,8 +102,9 @@ def get_or_create_export_for_leads(client, state, stream, fields, start_date):
         if export_end >= pendulum.utcnow():
             export_end = pendulum.utcnow()
 
+        export_end = export_end.replace(microsecond=0)
+            
         query = {query_field: {"startAt": start_date.isoformat(), "endAt": export_end.isoformat()}}
-        singer.log_info("scheduling export for stream \"leads\" with query: %s", query)
         # Create the new export and store the id and end date in state.
         # Does not start the export (must POST to the "enqueue" endpoint).
         export_id = client.create_export("leads", fields, query)
@@ -231,14 +232,14 @@ def get_or_create_export_for_activities(client, state, stream):
         # The activity type id must also be included in the query. The
         # largest date range that can be used for activities is 30 days.
         start_date = bookmarks.get_bookmark(state, stream["tap_stream_id"], stream["replication_key"])
-        start_pen = pendulum.parse(start_date).subtract(days=ATTRIBUTION_WINDOW_DAYS)
+        start_pen = pendulum.parse(start_date)
         end_pen = start_pen.add(days=MAX_EXPORT_DAYS)
         if end_pen >= pendulum.utcnow():
             end_pen = pendulum.utcnow()
-
+        end_pen = end_pen.replace(microsecond=0)
         end_date = end_pen.isoformat()
 
-        query = {"createdAt": {"startAt": start_date, "endAt": end_date},
+        query = {"createdAt": {"startAt": start_pen.isoformat(), "endAt": end_date},
                  "activityTypeIds": [activity_type_id]}
         singer.log_info("scheduling export for stream \"%s\" with query: %s", stream["tap_stream_id"], query)
         # Create the new export and store the id and end date in state.
