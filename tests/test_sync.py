@@ -98,9 +98,9 @@ class TestSyncLeads(unittest.TestCase):
                                "selected": False,
                            },
                            "attributes": {
-                               "type": "integer",
+                               "type": "string",
                                "inclusion": "available",
-                               "selected": False,
+                               "selected": True,
                            }}}}
 
         self.client.create_export = self.mocked_client_create_export
@@ -167,7 +167,7 @@ class TestSyncLeads(unittest.TestCase):
         state = {"bookmarks": {"leads": {"updatedAt": "2017-01-01T00:00:00+00:00",
                                          "export_id": "123",
                                          "export_end": "2017-01-15T00:00:00+00:00"}}}
-        lines = 'marketoGUID,id,updatedAt,attributes\n1,1,2016-12-31T00:00:00+00:00,1\n2,2,2017-01-01T00:00:00+00:00,1\n3,3,2017-01-02T00:00:00+00:00,1\n4,4,2017-01-03T00:00:00+00:00,1'
+        lines = 'marketoGUID,id,updatedAt,attributes\n1,1,2016-12-31T00:00:00+00:00,"1\n2"\n2,2,2017-01-01T00:00:00+00:00,"1"\n3,3,2017-01-02T00:00:00+00:00,"1"\n4,4,2017-01-03T00:00:00+00:00,"ab\nc"'
 
         self.client.wait_for_export = unittest.mock.MagicMock(return_value=True)
         self.client.stream_export = unittest.mock.MagicMock(return_value=MockResponse(lines))
@@ -185,11 +185,11 @@ class TestSyncLeads(unittest.TestCase):
 
         expected_calls = [
             unittest.mock.call("leads",
-                               {"marketoGUID": "2", "id": 2, "updatedAt": "2017-01-01T00:00:00+00:00"}),
+                               {"marketoGUID": "2", "id": 2, "updatedAt": "2017-01-01T00:00:00+00:00", "attributes": "1"}),
             unittest.mock.call("leads",
-                               {"marketoGUID": "3", "id": 3, "updatedAt": "2017-01-02T00:00:00+00:00"}),
+                               {"marketoGUID": "3", "id": 3, "updatedAt": "2017-01-02T00:00:00+00:00", "attributes": "1"}),
             unittest.mock.call("leads",
-                               {"marketoGUID": "4", "id": 4, "updatedAt": "2017-01-03T00:00:00+00:00"})
+                               {"marketoGUID": "4", "id": 4, "updatedAt": "2017-01-03T00:00:00+00:00", "attributes": "ab\nc"})
         ]
         write_record.assert_has_calls(expected_calls)
 
