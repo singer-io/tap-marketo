@@ -18,6 +18,14 @@ def parse_params(request):
     return dict(urllib.parse.parse_qsl(request.query))
 
 
+class MockResponse:
+    def __init__(self, data):
+        self.data = data
+    def iter_content(self, decode_unicode=True, chunk_size=512):
+        yield self.data
+    def iter_lines(self, decode_unicode=True, chunk_size=512):
+        yield self.data
+        
 class TestSyncActivityTypes(unittest.TestCase):
     def setUp(self):
         self.client = Client("123-ABC-456", "id", "secret")
@@ -122,14 +130,13 @@ class TestSyncLeads(unittest.TestCase):
                       {"leads":
                        {"updatedAt": "2017-01-01"}}}
 
-
-        mock_lines = [b'id,a,b,updatedAt', b'1,1,2,2017-01-16', b'1,1,2,2017-01-01']
-        mock_lines = (a for a in mock_lines)
+        mock_lines = 'id,a,b,updatedAt\n1,1,2,2017-01-16\n1,1,2,2017-01-01'
+        mocked_resp = MockResponse(mock_lines)
 
         mock_og_value = pendulum.now()
         mock_record_count = 0
         record_count = write_leads_records(self.client, self.stream, \
-                                           mock_lines, mock_og_value, mock_record_count)
+                                           mocked_resp, mock_og_value, mock_record_count)
 
         self.assertEqual(record_count, 1)
 
@@ -143,35 +150,15 @@ class TestSyncLeads(unittest.TestCase):
                        {"updatedAt": "2017-01-01"}}}
 
 
-        mock_lines = [b'id,a,b,updatedAt', b'1,1,2,2017-01-16', b'1,1,2,null']
-        mock_lines = (a for a in mock_lines)
+        mock_lines = 'id,a,b,updatedAt\n1,1,2,2017-01-16\n1,1,2,null'
+        mocked_resp = MockResponse(mock_lines)
 
         mock_og_value = pendulum.now()
         mock_record_count = 0
         record_count = write_leads_records(self.client, self.stream, \
-                                           mock_lines, mock_og_value, mock_record_count)
+                                           mocked_resp, mock_og_value, mock_record_count)
 
         self.assertEqual(record_count, 2)
-
-
-    @freezegun.freeze_time("2017-01-15")
-    @unittest.mock.patch("singer.write_record")
-    def test_write_leads_filter_null_id(self, write_record):
-        self.client._use_corona = False
-        mock_state = {"bookmarks":
-                      {"leads":
-                       {"updatedAt": "2017-01-01"}}}
-
-
-        mock_lines = [b'id,a,b,updatedAt', b'null,1,2,2017-01-16', b'1,1,2,2017-01-16']
-        mock_lines = (a for a in mock_lines)
-
-        mock_og_value = pendulum.now()
-        mock_record_count = 0
-        record_count = write_leads_records(self.client, self.stream, \
-                                           mock_lines, mock_og_value, mock_record_count)
-
-        self.assertEqual(record_count, 1)        
 
     @unittest.mock.patch("singer.write_record")
     @freezegun.freeze_time("2017-01-15")
@@ -180,16 +167,10 @@ class TestSyncLeads(unittest.TestCase):
         state = {"bookmarks": {"leads": {"updatedAt": "2017-01-01T00:00:00+00:00",
                                          "export_id": "123",
                                          "export_end": "2017-01-15T00:00:00+00:00"}}}
-        lines = [
-            b'marketoGUID,id,updatedAt,attributes',
-            b'1,1,2016-12-31T00:00:00+00:00,1',
-            b'2,2,2017-01-01T00:00:00+00:00,1',
-            b'3,3,2017-01-02T00:00:00+00:00,1',
-            b'4,4,2017-01-03T00:00:00+00:00,1'
-        ]
+        lines = 'marketoGUID,id,updatedAt,attributes\n1,1,2016-12-31T00:00:00+00:00,1\n2,2,2017-01-01T00:00:00+00:00,1\n3,3,2017-01-02T00:00:00+00:00,1\n4,4,2017-01-03T00:00:00+00:00,1'
 
         self.client.wait_for_export = unittest.mock.MagicMock(return_value=True)
-        self.client.stream_export = unittest.mock.MagicMock(return_value=(l for l in lines))
+        self.client.stream_export = unittest.mock.MagicMock(return_value=MockResponse(lines))
 
         state, record_count = sync_leads(self.client, state, self.stream)
 
@@ -466,16 +447,10 @@ class TestSyncActivities(unittest.TestCase):
         state = {"bookmarks": {"activities_activity_name": {"activityDate": "2017-01-01T00:00:00+00:00",
                                                 "export_id": "123",
                                                 "export_end": "2017-01-15T00:00:00+00:00"}}}
-        lines = [
-            b'marketoGUID,leadId,activityDate,activityTypeId,primaryAttributeValue,primaryAttributeValueId,attributes',
-            b'1,1,2016-12-31T00:00:00+00:00,1,1,,{"Client IP Address":"0.0.0.0"}',
-            b'2,2,2017-01-01T00:00:00+00:00,1,1,,{"Client IP Address":"0.0.0.0"}',
-            b'3,3,2017-01-02T00:00:00+00:00,1,1,,{"Client IP Address":"0.0.0.0"}',
-            b'4,4,2017-01-03T00:00:00+00:00,1,1,,{"Client IP Address":"0.0.0.0"}',
-        ]
+        lines = 'marketoGUID,leadId,activityDate,activityTypeId,primaryAttributeValue,primaryAttributeValueId,attributes\n1,1,2016-12-31T00:00:00+00:00,1,1,,{"Client IP Address":"0.0.0.0"}\n2,2,2017-01-01T00:00:00+00:00,1,1,,{"Client IP Address":"0.0.0.0"}\n3,3,2017-01-02T00:00:00+00:00,1,1,,{"Client IP Address":"0.0.0.0"}\n4,4,2017-01-03T00:00:00+00:00,1,1,,{"Client IP Address":"0.0.0.0"}'
 
         self.client.wait_for_export = unittest.mock.MagicMock(return_value=True)
-        self.client.stream_export = unittest.mock.MagicMock(return_value=(l for l in lines))
+        self.client.stream_export = unittest.mock.MagicMock(return_value=MockResponse(lines))
 
         state, record_count = sync_activities(self.client, state, self.stream)
 

@@ -65,12 +65,6 @@ def format_values(stream, row):
         rtn[field] = format_value(row.get(field), schema)
     return rtn
 
-
-def parse_csv_line(line):
-    reader = csv.reader(io.StringIO(line.decode('utf-8')))
-    return next(reader)
-
-
 def flatten_activity(row, stream):
     # Start with the base fields
     rtn = {field: row[field] for field in BASE_ACTIVITY_FIELDS}
@@ -265,8 +259,7 @@ def update_state_with_export_info(state, stream, bookmark=None, export_id=None, 
     return state
 
 def convert_line(stream, headers, line):
-    parsed_line = parse_csv_line(line)
-    row = dict(zip(headers, parsed_line))
+    row = dict(zip(headers, line))
     row = flatten_activity(row, stream)
     return format_values(stream, row)
 
@@ -304,11 +297,12 @@ def sync_activities(client, state, stream):
         wait_for_activity_export(client, state, stream, export_id)
 
         try:
-            # Stream the rows keeping count of the accepted rows.
             resp = client.stream_export("activities", export_id)
-            lines = resp.iter_lines()
-            headers = parse_csv_line(next(lines))
-            for line in lines:
+            csv_stream = csv.reader(_iter_lines(resp),
+                                    delimiter=',',
+                                    quotechar='"')
+            headers = next(csv_stream)
+            for line in csv_stream:        
                 record = convert_line(stream, headers, line)
                 record_count += handle_record(state, stream, record)
         except Exception as e:
