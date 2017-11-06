@@ -1,5 +1,4 @@
 import csv
-import io
 import json
 import pendulum
 import singer
