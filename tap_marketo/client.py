@@ -179,7 +179,7 @@ class Client:
             if resp.status_code != 200:
                 raise ApiException("Marketo API returned error: {0.status_code}: {0.content}".format(resp))
 
-            return resp.iter_lines()
+            return resp
 
     def create_export(self, stream_type, fields, query):
         # http://developers.marketo.com/rest-api/bulk-extract/#creating_a_job

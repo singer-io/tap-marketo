@@ -29,7 +29,9 @@ NO_CORONA_WARNING = (
     "the Leads table requires a full export which can lead to lower data freshness. "
     "Please contact Marketo to request Corona support be added to your account."
 )
+ITER_CHUNK_SIZE = 512
 
+ATTRIBUTION_WINDOW_DAYS = 1
 
 def format_value(value, schema):
     if not isinstance(schema["type"], list):
@@ -118,39 +120,70 @@ def get_or_create_export_for_leads(client, state, stream, fields, start_date):
 
     return export_id, export_end
 
+def _iter_lines(response_lines):
+    """Clone of the iter_lines function from the requests library with the change
+        to pass keepends=True in order to ensure that we do not strip the line breaks
+        from within a quoted value from the CSV stream."""
+    pending = None
+
+    for chunk in response_lines.iter_content(decode_unicode=True, chunk_size=ITER_CHUNK_SIZE):
+        if pending is not None:
+            chunk = pending + chunk
+
+        lines = chunk.splitlines(keepends=True)
+        
+        if lines and lines[-1] and chunk and lines[-1][-1] == chunk[-1]:
+            pending = lines.pop()
+        else:
+            pending = None
+
+        for line in lines:
+            yield line
+
+    if pending is not None:
+        yield pending
+
 def write_leads_records(client, stream, lines, og_bookmark_value, record_count):
-    null_id_count = 0
     null_updatedAt_count = 0
 
-    headers = parse_csv_line(next(lines))
-    
-    for line in lines:
-        parsed_line = parse_csv_line(line)
-        parsed_line = dict(zip(headers, parsed_line))
+    csv_stream = csv.reader(_iter_lines(lines),
+                            delimiter=',',
+                            quotechar='"')
+
+    headers = next(csv_stream)
+    headers_count = len(headers)
+
+    singer.log_info("CSV check: %s", headers)
+
+    for line in csv_stream:
+        line_count = len(line)
+        line_count_failures = 0
+
+        if line_count != headers_count:
+            singer.log_info("Documenting: Badly shaped line.  Headers count: %d Line count: %d", headers_count, line_count)
+            if line_count_failures < 12:
+                singer.log_info("CSV check: %s", line.decode('utf-8'))
+                line_count_failures +=1
+        
+        line = dict(zip(headers, line))
 
         #deal with updatedAt potentially being null
-        line_updated_at = parsed_line.get('updatedAt')
+        line_updated_at = line.get('updatedAt')
         if line_updated_at == 'null' or line_updated_at is None:
             null_updatedAt_count += 1
             if null_updatedAt_count <= 10:
-                singer.log_info("Found record with null updatedAt value.  The id value for the record is %s", parsed_line.get('id'))
+                singer.log_info("Found record with null updatedAt value.  The id value for the record is %s", line.get('id'))    
         else:
-            line_updated_at = pendulum.parse(parsed_line["updatedAt"])
-
-        #deal with potential null ids
-        if parsed_line.get('id') is None or parsed_line.get('id') == 'null':
-            if null_id_count <=10:
-                singer.log_info("Found record with id field equal to %s", parsed_line.get('id'))
-            null_id_count += 1
+            line_updated_at = pendulum.parse(line["updatedAt"])
 
         #accounts without corona need to have a manual filter on records
-        elif client.use_corona or line_updated_at == 'null' or (line_updated_at >= og_bookmark_value):
-            record = format_values(stream, parsed_line)
+        if client.use_corona or line_updated_at == 'null' or (line_updated_at >= og_bookmark_value):
+            record = format_values(stream, line)
             singer.write_record(stream["tap_stream_id"], record)
             record_count += 1
 
-    if null_id_count > 0 or null_updatedAt_count > 0:
-        singer.log_info("For this export: Count of null id fields: %d, count of null updatedAt fields: %d", null_id_count, null_updatedAt_count)
+    if null_updatedAt_count > 0:
+        singer.log_info("For this export: Count of null updatedAt fields: %d", null_updatedAt_count)
     return record_count
 
 def sync_leads(client, state, stream):
@@ -164,7 +197,7 @@ def sync_leads(client, state, stream):
     fields = [f for f, s in stream["schema"]["properties"].items() if s.get("selected") or (s.get("inclusion") == "automatic")]
 
     og_bookmark_value = pendulum.parse(bookmarks.get_bookmark(state, tap_stream_id, replication_key))
-    bookmark_date = og_bookmark_value
+    bookmark_date = og_bookmark_value.subtract(days=ATTRIBUTION_WINDOW_DAYS)
 
     while bookmark_date < tap_job_start_time:
         export_id, export_end = get_or_create_export_for_leads(client, state, stream, fields, bookmark_date)
@@ -216,7 +249,7 @@ def get_or_create_export_for_activities(client, state, stream):
         # The activity type id must also be included in the query. The
         # largest date range that can be used for activities is 30 days.
         start_date = bookmarks.get_bookmark(state, stream["tap_stream_id"], stream["replication_key"])
-        start_pen = pendulum.parse(start_date)
+        start_pen = pendulum.parse(start_date).subtract(days=ATTRIBUTION_WINDOW_DAYS)
         end_pen = start_pen.add(days=MAX_EXPORT_DAYS)
         if end_pen >= pendulum.utcnow():
             end_pen = pendulum.utcnow()
@@ -284,7 +317,8 @@ def sync_activities(client, state, stream):
 
         try:
             # Stream the rows keeping count of the accepted rows.
-            lines = client.stream_export("activities", export_id)
+            resp = client.stream_export("activities", export_id)
+            lines = resp.iter_lines()
             headers = parse_csv_line(next(lines))
             for line in lines:
                 record = convert_line(stream, headers, line)
