@@ -151,20 +151,8 @@ def write_leads_records(client, stream, lines, og_bookmark_value, record_count):
                             quotechar='"')
 
     headers = next(csv_stream)
-    headers_count = len(headers)
 
-    singer.log_info("CSV check: %s", headers)
-
-    for line in csv_stream:
-        line_count = len(line)
-        line_count_failures = 0
-
-        if line_count != headers_count:
-            singer.log_info("Documenting: Badly shaped line.  Headers count: %d Line count: %d", headers_count, line_count)
-            if line_count_failures < 12:
-                singer.log_info("CSV check: %s", line.decode('utf-8'))
-                line_count_failures +=1
-        
+    for line in csv_stream:        
         line = dict(zip(headers, line))
 
         #deal with updatedAt potentially being null
