@@ -70,7 +70,7 @@ class Client:
     @property
     def use_corona(self):
         if getattr(self, "_use_corona", None) is None:
-            self._use_corona = self.test_corona()
+            self._use_corona = True
         return self._use_corona
 
     @property
@@ -191,7 +191,7 @@ class Client:
 
         endpoint = self.get_bulk_endpoint(stream_type, "create")
         endpoint_name = "{}_create".format(stream_type)
-        singer.log_info('Scheduling export job with query %s', query)
+        singer.log_info('Scheduling export job for stream %s with query %s', stream_type, query)
         data = self.request("POST", endpoint, endpoint_name=endpoint_name, json=payload)
         return data["result"][0]["exportId"]
 
@@ -244,41 +244,41 @@ class Client:
 
         raise ExportFailed("Timed out")
 
-    def test_corona(self):
-        # http://developers.marketo.com/rest-api/bulk-extract/#limits
-        # Corona allows us to do bulk queries for Leads using updatedAt
-        # as a filter. Clients without Corona (should only be clients
-        # with < 50,000 Leads) must do a full bulk export every sync.
-        # We test for Corona by requesting a one-second export of leads
-        # using the updatedAt filter.
-        singer.log_info("Testing for Corona support")
-        start_pen = pendulum.utcnow().subtract(days=1).replace(microsecond=0)
-        end_pen = start_pen.add(seconds=1)
-        payload = {
-            "format": "CSV",
-            "fields": ["id"],
-            "filter": {
-                "updatedAt": {
-                    "startAt": start_pen.isoformat(),
-                    "endAt": end_pen.isoformat(),
-                },
-            },
-        }
-        endpoint = self.get_bulk_endpoint("leads", "create")
-        data = self._request("POST", endpoint, endpoint_name="leads_create", json=payload).json()
+    # def test_corona(self):
+    #     # http://developers.marketo.com/rest-api/bulk-extract/#limits
+    #     # Corona allows us to do bulk queries for Leads using updatedAt
+    #     # as a filter. Clients without Corona (should only be clients
+    #     # with < 50,000 Leads) must do a full bulk export every sync.
+    #     # We test for Corona by requesting a one-second export of leads
+    #     # using the updatedAt filter.
+    #     singer.log_info("Testing for Corona support")
+    #     start_pen = pendulum.utcnow().subtract(days=1).replace(microsecond=0)
+    #     end_pen = start_pen.add(seconds=1)
+    #     payload = {
+    #         "format": "CSV",
+    #         "fields": ["id"],
+    #         "filter": {
+    #             "updatedAt": {
+    #                 "startAt": start_pen.isoformat(),
+    #                 "endAt": end_pen.isoformat(),
+    #             },
+    #         },
+    #     }
+    #     endpoint = self.get_bulk_endpoint("leads", "create")
+    #     data = self._request("POST", endpoint, endpoint_name="leads_create", json=payload).json()
 
-        # If the error code indicating no Corona support is present,
-        # Corona is not supported. If we don't get that error code,
-        # Corona is supported and we need to clean up by cancelling the
-        # test export we requested.
-        err_codes = set(err["code"] for err in data.get("errors", []))
-        if NO_CORONA_CODE in err_codes:
-            singer.log_info("Corona not supported.")
-            return False
-        elif API_QUOTA_EXCEEDED in err_codes:
-            raise ApiException(API_QUOTA_EXCEEDED_MESSAGE)
-        else:
-            singer.log_info("Corona is supported.")
-            singer.log_info(data)
-            self.cancel_export("leads", data["result"][0]["exportId"])
-            return True
+    #     # If the error code indicating no Corona support is present,
+    #     # Corona is not supported. If we don't get that error code,
+    #     # Corona is supported and we need to clean up by cancelling the
+    #     # test export we requested.
+    #     err_codes = set(err["code"] for err in data.get("errors", []))
+    #     if NO_CORONA_CODE in err_codes:
+    #         singer.log_info("Corona not supported.")
+    #         return False
+    #     elif API_QUOTA_EXCEEDED in err_codes:
+    #         raise ApiException(API_QUOTA_EXCEEDED_MESSAGE)
+    #     else:
+    #         singer.log_info("Corona is supported.")
+    #         singer.log_info(data)
+    #         self.cancel_export("leads", data["result"][0]["exportId"])
+    #         return True

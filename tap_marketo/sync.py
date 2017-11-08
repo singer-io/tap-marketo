@@ -120,7 +120,16 @@ def _iter_lines(response_lines):
         from within a quoted value from the CSV stream."""
     pending = None
 
-    for chunk in response_lines.iter_content(decode_unicode=True, chunk_size=ITER_CHUNK_SIZE):
+    # fl = open("content.txt", "wb")
+    # fl.write(response_lines.content)
+    # fl.close()
+
+    # singer.log_info("Response headers: %s", str(response_lines.headers))
+    response_lines.encoding = 'utf-8'
+    
+    for chunk in response_lines.iter_content(decode_unicode=True, chunk_size=None):
+        #chunk = chunk.decode('utf-8')
+
         if pending is not None:
             chunk = pending + chunk
 
@@ -146,13 +155,21 @@ def write_leads_records(client, stream, lines, og_bookmark_value, record_count):
 
     headers = next(csv_stream)
 
-    for line in csv_stream:        
+    headers_count = len(headers)
+    for line in csv_stream:
+        line_count = len(line)
+        if line_count != headers_count:
+            singer.log_info("Documenting: line and header count do not match %i %i", line_count, headers_count)
+            singer.log_info("Documenting: %s", line)
+            raise Exception("Line and header count do not match")
+            
         line = dict(zip(headers, line))
-
+        
         #deal with updatedAt potentially being null
         line_updated_at = line.get('updatedAt')
         if line_updated_at == 'null' or line_updated_at is None:
             null_updatedAt_count += 1
+            singer.log_info("Documenting: null upatedAt.  %s", line)
             if null_updatedAt_count <= 10:
                 singer.log_info("Found record with null updatedAt value.  The id value for the record is %s", line.get('id'))    
         else:
@@ -181,7 +198,9 @@ def sync_leads(client, state, stream):
     og_bookmark_value = pendulum.parse(bookmarks.get_bookmark(state, tap_stream_id, replication_key))
     bookmark_date = og_bookmark_value.subtract(days=ATTRIBUTION_WINDOW_DAYS)
 
-    while bookmark_date < tap_job_start_time:
+    stop = pendulum.parse("2017-06-17T00:00:00+00:00")
+    
+    while bookmark_date < stop:
         export_id, export_end = get_or_create_export_for_leads(client, state, stream, fields, bookmark_date)
 
         try:
