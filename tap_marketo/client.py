@@ -167,9 +167,9 @@ class Client:
 
             data = resp.json()
             err_codes = set(err["code"] for err in data.get("errors", []))
-            
+
             if API_QUOTA_EXCEEDED in err_codes:
-                raise ApiException(API_QUOTA_EXCEEDED_MESSAGE)            
+                raise ApiException(API_QUOTA_EXCEEDED_MESSAGE)
             elif not data["success"]:
                 err = ", ".join("{code}: {message}".format(**e) for e in data["errors"])
                 raise ApiException("Marketo API returned error(s): {}".format(err))

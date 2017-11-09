@@ -28,9 +28,110 @@ NO_CORONA_WARNING = (
     "the Leads table requires a full export which can lead to lower data freshness. "
     "Please contact Marketo to request Corona support be added to your account."
 )
-ITER_CHUNK_SIZE = 512
-
+DEFAULT_CHUNK_SIZE = 5 * (2 ** 20)  # 5MB chunk size
 ATTRIBUTION_WINDOW_DAYS = 1
+
+
+class NonRectangularCsvRow(Exception):
+    def __init__(self, headers, row):
+        super(Exception, self).__init__("Non-rectangular CSV row detected.")
+        self.headers = headers
+        self.row = row
+
+def download_chunk(client, stream_type, export_id, start, chunk_size):
+    endpoint = client.get_bulk_endpoint(stream_type, "file", export_id)
+    headers = {"Range": "bytes={}-{}".format(start, start + chunk_size)}
+    resp = client._request("GET", endpoint, headers=headers)
+    return resp.content
+
+def get_export_size(client, stream_type, export_id):
+    endpoint = client.get_bulk_endpoint(stream_type, "status", export_id)
+    resp = client._request("GET", endpoint)
+    return resp.json()["result"][0]["fileSize"]
+
+def decode_utf8_chunk(chunk):
+    # Since we're getting a chunk of utf-8 bytes we need to fall back one char
+    # at a time until we can successfully decode. Since the longest utf-8 char
+    # is 4 bytes long, if the 4th decode fails then we have an actual unicode
+    # decoding error and should let that surface.
+    try:
+        unicode_chunk = chunk.decode('utf-8')
+        return unicode_chunk, b""
+    except UnicodeDecodeError:
+        try:
+            unicode_chunk = chunk[:-1].decode('utf-8')
+            return unicode_chunk, chunk[-1:]
+        except UnicodeDecodeError:
+            try:
+                unicode_chunk = chunk[:-2].decode('utf-8')
+                return unicode_chunk, chunk[-2:]
+            except UnicodeDecodeError:
+                # If this fails then there's really an encoding error
+                unicode_chunk = chunk[:-3].decode('utf-8')
+                return unicode_chunk, chunk[-3:]
+
+def gen_export_rows(client, stream_type, export_id, chunk_size=DEFAULT_CHUNK_SIZE):
+    # To download the CSV we need to know the export size so we can chunk the
+    # file download so that the connection doesn't snap in the middle. Each
+    # chunk has the possibility of ending with a partial unicode character, so
+    # the chunk is decoded using the `decode_utf8_chunk` function which returns
+    # the decoded chunk plus any bytes from a partial unicode character that
+    # remain. Once we have a unicode chunk, we have to split the lines keeping
+    # the newlines that appear inside of a line.
+    #
+    # The unicode chunk likely ends with a partial CSV line, so we save that as
+    # a partial row for the next cycle. We yield that row only after the entire
+    # file has been downloaded.
+
+    export_size = get_export_size(client, stream_type, export_id)
+    start_byte = 0
+    leftover_bytes = b""
+    leftover_row = None
+    leftover_chars = ""
+    headers = None
+
+    while start_byte < export_size:
+        # Download the chunk and append it to the leftover bytes
+        byte_chunk = download_utf8_chunk(client, stream_type, export_id, start_byte, chunk_size)
+        byte_chunk = leftover_bytes + byte_chunk
+
+        # Decode bytes and retain bytes leftover from a partial utf8 char
+        unicode_chunk, leftover_bytes = decode_chunk(byte_chunk)
+
+        # Append the decoded unicode string to the leftover chars
+        unicode_chunk = leftover_chars + unicode_chunk
+
+        # Split decoded unicode string keeping newlines
+        lines = unicode_chunk.splitlines(keepends=True)
+
+        # Parse the unicode string as CSV keeping in mind quoted newlines
+        reader = csv.reader(lines, delimiter=',', quotechar='"')
+        reader_rows = list(reader)
+
+        # On first loop we have no headers, so pop off the header row
+        if headers is None:
+            headers = reader_rows.pop(0)
+
+        # Keep the last line for the next chunk
+        leftover_row = reader_rows.pop(-1)
+        leftover_chars = ",".join(leftover_row)
+
+        # Yield the rows as dicts making sure to check that the number of
+        # fields match the number of headers
+        for row in reader_rows:
+            if len(row) != len(headers):
+                raise NonRectangularCsvRow(headers, row)
+
+            yield dict(zip(headers, line))
+
+        # Increment start_byte and continue
+        start_byte += chunk_size
+
+    # Check the last row's shape and yield it as a dict if it's rectangular
+    if len(leftover_row) != len(headers):
+        raise NonRectangularCsvRow(headers, leftover_row)
+
+    yield dict(zip(headers, leftover_row))
 
 def format_value(value, schema):
     if not isinstance(schema["type"], list):
@@ -54,7 +155,6 @@ def format_value(value, schema):
         return value.lower() == "true"
 
     return value
-
 
 def format_values(stream, row):
     rtn = {}
@@ -96,13 +196,13 @@ def get_or_create_export_for_leads(client, state, stream, fields, start_date):
             query_field = "updatedAt"
         else:
             query_field = "createdAt"
-        
+
         export_end = start_date.add(days=MAX_EXPORT_DAYS)
         if export_end >= pendulum.utcnow():
             export_end = pendulum.utcnow()
 
         export_end = export_end.replace(microsecond=0)
-            
+
         query = {query_field: {"startAt": start_date.isoformat(), "endAt": export_end.isoformat()}}
         # Create the new export and store the id and end date in state.
         # Does not start the export (must POST to the "enqueue" endpoint).
@@ -110,80 +210,9 @@ def get_or_create_export_for_leads(client, state, stream, fields, start_date):
         update_state_with_export_info(state, stream, export_id=export_id, export_end=export_end.isoformat())
 
     else:
-        export_end = pendulum.parse(export_end)    
+        export_end = pendulum.parse(export_end)
 
     return export_id, export_end
-
-def _iter_lines(response_lines):
-    """Clone of the iter_lines function from the requests library with the change
-        to pass keepends=True in order to ensure that we do not strip the line breaks
-        from within a quoted value from the CSV stream."""
-    pending = None
-
-    # fl = open("content.txt", "wb")
-    # fl.write(response_lines.content)
-    # fl.close()
-
-    # singer.log_info("Response headers: %s", str(response_lines.headers))
-    response_lines.encoding = 'utf-8'
-    
-    for chunk in response_lines.iter_content(decode_unicode=True, chunk_size=None):
-        #chunk = chunk.decode('utf-8')
-
-        if pending is not None:
-            chunk = pending + chunk
-
-        lines = chunk.splitlines(keepends=True)
-        
-        if lines and lines[-1] and chunk and lines[-1][-1] == chunk[-1]:
-            pending = lines.pop()
-        else:
-            pending = None
-
-        for line in lines:
-            yield line
-
-    if pending is not None:
-        yield pending
-
-def write_leads_records(client, stream, lines, og_bookmark_value, record_count):
-    null_updatedAt_count = 0
-
-    csv_stream = csv.reader(_iter_lines(lines),
-                            delimiter=',',
-                            quotechar='"')
-
-    headers = next(csv_stream)
-
-    headers_count = len(headers)
-    for line in csv_stream:
-        line_count = len(line)
-        if line_count != headers_count:
-            singer.log_info("Documenting: line and header count do not match %i %i", line_count, headers_count)
-            singer.log_info("Documenting: %s", line)
-            raise Exception("Line and header count do not match")
-            
-        line = dict(zip(headers, line))
-        
-        #deal with updatedAt potentially being null
-        line_updated_at = line.get('updatedAt')
-        if line_updated_at == 'null' or line_updated_at is None:
-            null_updatedAt_count += 1
-            singer.log_info("Documenting: null upatedAt.  %s", line)
-            if null_updatedAt_count <= 10:
-                singer.log_info("Found record with null updatedAt value.  The id value for the record is %s", line.get('id'))    
-        else:
-            line_updated_at = pendulum.parse(line["updatedAt"])
-
-        #accounts without corona need to have a manual filter on records
-        if client.use_corona or line_updated_at == 'null' or (line_updated_at >= og_bookmark_value):
-            record = format_values(stream, line)
-            singer.write_record(stream["tap_stream_id"], record)
-            record_count += 1
-
-    if null_updatedAt_count > 0:
-        singer.log_info("For this export: Count of null updatedAt fields: %d", null_updatedAt_count)
-    return record_count
 
 def sync_leads(client, state, stream):
     # http://developers.marketo.com/rest-api/bulk-extract/bulk-lead-extract/
@@ -192,14 +221,14 @@ def sync_leads(client, state, stream):
     replication_key = stream.get("replication_key")
     tap_stream_id = stream.get("tap_stream_id")
     tap_job_start_time = pendulum.utcnow()
-    
+
     fields = [f for f, s in stream["schema"]["properties"].items() if s.get("selected") or (s.get("inclusion") == "automatic")]
 
     og_bookmark_value = pendulum.parse(bookmarks.get_bookmark(state, tap_stream_id, replication_key))
     bookmark_date = og_bookmark_value.subtract(days=ATTRIBUTION_WINDOW_DAYS)
 
     stop = pendulum.parse("2017-06-17T00:00:00+00:00")
-    
+
     while bookmark_date < stop:
         export_id, export_end = get_or_create_export_for_leads(client, state, stream, fields, bookmark_date)
 
@@ -207,28 +236,30 @@ def sync_leads(client, state, stream):
             client.wait_for_export("leads", export_id)
         except ExportFailed as ex:
             update_state_with_export_info(state, stream)
-            singer.log_critical("Export job failure.  Status was" + ex)
-
-        lines = client.stream_export("leads", export_id)
+            singer.log_critical("Export job failure. Status was %s", ex)
 
         try:
-            record_count = write_leads_records(client, stream, lines, og_bookmark_value, record_count)
-
+            for row in gen_export_rows(client, "leads", export_id):
+                record = format_values(stream, row)
+                record_updated_at = record.get('updatedAt', None)
+                if client.use_corona or record_updated_at == 'null' or pendulum.parse(record_updated_at) >= og_bookmark_value:
+                    singer.write_record(stream["tap_stream_id"], record)
+                    record_count += 1
         except Exception as e:
             singer.log_info("Exception while writing leads record, removing export information from state")
             update_state_with_export_info(state, stream)
             raise e
 
         if client.use_corona:
-            state = update_state_with_export_info(state, stream, bookmark=export_end.isoformat(), \
-                                          export_id=None, export_end=None)
+            state = update_state_with_export_info(state, stream, bookmark=export_end.isoformat(),
+                                                  export_id=None, export_end=None)
         else:
-            state = update_state_with_export_info(state, stream, \
-                                          export_id=None, export_end=None)
+            state = update_state_with_export_info(state, stream,
+                                                  export_id=None, export_end=None)
 
         bookmark_date = export_end
 
-    state = update_state_with_export_info(state, stream, bookmark=bookmark_date.isoformat(), \
+    state = update_state_with_export_info(state, stream, bookmark=bookmark_date.isoformat(),
                                           export_id=None, export_end=None)
 
 
@@ -244,7 +275,7 @@ def get_or_create_export_for_activities(client, state, stream):
         activity_metadata = metadata.to_map(stream["metadata"])
         activity_type_id = metadata.get(activity_metadata, (), 'marketo.activity-id')
         singer.log_info("activity id for stream %s is %d", stream["tap_stream_id"], activity_type_id)
-        
+
         # Activities must be queried by `createdAt` even though
         # that is not a real field. `createdAt` proxies `activityDate`.
         # The activity type id must also be included in the query. The
@@ -313,25 +344,24 @@ def sync_activities(client, state, stream):
 
         # If the export fails while running, clear the export information
         # from state so a new export can be run next sync.
-        wait_for_activity_export(client, state, stream, export_id)
+        try:
+            wait_for_activity_export(client, state, stream, export_id)
+        except ExportFailed as ex:
+            update_state_with_export_info(state, stream)
+            singer.log_critical("Export job failure. Status was %s", ex)
 
         try:
-            resp = client.stream_export("activities", export_id)
-            csv_stream = csv.reader(_iter_lines(resp),
-                                    delimiter=',',
-                                    quotechar='"')
-            headers = next(csv_stream)
-            for line in csv_stream:        
-                record = convert_line(stream, headers, line)
-                record_count += handle_record(state, stream, record)
+            for row in gen_export_rows(client, "activities", export_id):
+                record = format_values(stream, row)
+                singer.write_record(stream["tap_stream_id"], record)
+                record_count += 1
         except Exception as e:
             singer.log_info("Exception while writing activity \"%s\" record, removing export information from state", stream["tap_stream_id"])
             update_state_with_export_info(state, stream)
-            raise e            
-                
+            raise e
+
         # The new start date is the end of the previous export. Update
         # the bookmark to the end date and continue with the next export.
-
         start_date = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_end")
         update_state_with_export_info(state, stream, bookmark=start_date)
         start_pen = pendulum.parse(start_date)
@@ -509,8 +539,7 @@ def sync(client, catalog, state):
     # log with instructions on how to get Corona supported.
     singer.log_info("Performing final Corona check")
     if not client.use_corona:
-        singer.log_info("Finished sync")        
+        singer.log_info("Finished sync")
         singer.log_warning(NO_CORONA_WARNING)
     else:
-        singer.log_info("Finished sync")        
-        
+        singer.log_info("Finished sync")
