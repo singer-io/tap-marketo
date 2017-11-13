@@ -8,7 +8,7 @@ from singer import bookmarks
 
 from tap_marketo.client import Client
 from tap_marketo.discover import discover
-from tap_marketo.sync import sync
+from tap_marketo import sync
 from singer.bookmarks import (
     get_bookmark,
     write_bookmark,
@@ -64,7 +64,7 @@ def _main(config, properties, state, discover_mode=False):
         discover(client)
     elif properties:
         state = validate_state(config, properties, state)
-        sync(client, properties, state)
+        sync.sync(client, properties, state)
 
 
 def main():

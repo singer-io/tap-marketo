@@ -21,11 +21,31 @@ def parse_params(request):
 class MockResponse:
     def __init__(self, data):
         self.data = data
+
     def iter_content(self, decode_unicode=True, chunk_size=512):
         yield self.data
+
     def iter_lines(self, decode_unicode=True, chunk_size=512):
         yield self.data
-        
+
+
+class TestChunking(unittest.TestCase):
+    def test_decode_utf8_chunk(self):
+        unicode_bytes = b"\xf0\x9d\x85\xa1"
+        unicode_char = unicode_bytes.decode('utf8')
+
+        self.assertEqual((unicode_char, b""), decode_utf8_chunk(unicode_bytes))
+        self.assertEqual(("", unicode_bytes[:3]), decode_utf8_chunk(unicode_bytes[:3]))
+        self.assertEqual(("", unicode_bytes[:2]), decode_utf8_chunk(unicode_bytes[:2]))
+        self.assertEqual(("", unicode_bytes[:1]), decode_utf8_chunk(unicode_bytes[:1]))
+        self.assertEqual(("", b""), decode_utf8_chunk(b""))
+
+    @unittest.mock.patch("tap_marketo.sync.get_export_size")
+    @unittest.mock.patch("tap_marketo.sync.download_utf8_chunk")
+    def test_gen_export_rows(self, mock_get_export_size, mock_download_utf8_chunk):
+        pass
+
+
 class TestSyncActivityTypes(unittest.TestCase):
     def setUp(self):
         self.client = Client("123-ABC-456", "id", "secret")
@@ -104,7 +124,7 @@ class TestSyncLeads(unittest.TestCase):
                            }}}}
 
         self.client.create_export = self.mocked_client_create_export
-        
+
     @freezegun.freeze_time("2017-01-15")
     def test_get_or_create_export_resume(self):
         export_end = pendulum.now().add(days=30).isoformat()
@@ -194,7 +214,7 @@ class TestSyncLeads(unittest.TestCase):
         write_record.assert_has_calls(expected_calls)
 
     @unittest.mock.patch("singer.write_state")
-    @freezegun.freeze_time("2017-01-15")        
+    @freezegun.freeze_time("2017-01-15")
     def test_sync_leads_bad_csv(self, write_record):
         self.client._use_corona = False
         state = {"bookmarks": {"leads": {"updatedAt": "2017-01-01T00:00:00+00:00",
@@ -215,7 +235,7 @@ class TestSyncLeads(unittest.TestCase):
             state, record_count = sync_leads(self.client, state, self.stream)
         except Exception:
             pass
-            
+
 
         expected_calls = [
             unittest.mock.call({"bookmarks": {"leads": {"updatedAt": "2017-01-01T00:00:00+00:00",
@@ -299,15 +319,15 @@ class TestSyncActivities(unittest.TestCase):
                     "primary_attribute_name": {
                         "type": "string",
                         "inclusion": "automatic",
-                    },                    
+                    },
                     "primary_attribute_value_id": {
                         "type": "string",
                         "inclusion": "automatic",
-                    },                    
+                    },
                     "primary_attribute_value": {
                         "type": "string",
                         "inclusion": "automatic",
-                    },                    
+                    },
                     "leadId": {
                         "type": "integer",
                         "inclusion": "automatic",

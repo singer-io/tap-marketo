@@ -92,21 +92,27 @@ def gen_export_rows(client, stream_type, export_id, chunk_size=DEFAULT_CHUNK_SIZ
 
     while start_byte < export_size:
         # Download the chunk and append it to the leftover bytes
-        byte_chunk = download_utf8_chunk(client, stream_type, export_id, start_byte, chunk_size)
+        byte_chunk = download_chunk(client, stream_type, export_id, start_byte, chunk_size)
         byte_chunk = leftover_bytes + byte_chunk
 
+        print("byte_chunk: ", byte_chunk)
+
         # Decode bytes and retain bytes leftover from a partial utf8 char
-        unicode_chunk, leftover_bytes = decode_chunk(byte_chunk)
+        unicode_chunk, leftover_bytes = decode_utf8_chunk(byte_chunk)
+        print("leftover_bytes: ", leftover_bytes)
 
         # Append the decoded unicode string to the leftover chars
         unicode_chunk = leftover_chars + unicode_chunk
+        print("unicode_chunk: ", unicode_chunk)
 
         # Split decoded unicode string keeping newlines
         lines = unicode_chunk.splitlines(keepends=True)
+        print("lines: ", lines)
 
         # Parse the unicode string as CSV keeping in mind quoted newlines
         reader = csv.reader(lines, delimiter=',', quotechar='"')
         reader_rows = list(reader)
+        print("rows: ", reader_rows)
 
         # On first loop we have no headers, so pop off the header row
         if headers is None:
@@ -115,6 +121,8 @@ def gen_export_rows(client, stream_type, export_id, chunk_size=DEFAULT_CHUNK_SIZ
         # Keep the last line for the next chunk
         leftover_row = reader_rows.pop(-1)
         leftover_chars = ",".join(leftover_row)
+        print("leftover_chars: ", leftover_chars)
+        print("\n")
 
         # Yield the rows as dicts making sure to check that the number of
         # fields match the number of headers
@@ -122,7 +130,7 @@ def gen_export_rows(client, stream_type, export_id, chunk_size=DEFAULT_CHUNK_SIZ
             if len(row) != len(headers):
                 raise NonRectangularCsvRow(headers, row)
 
-            yield dict(zip(headers, line))
+            yield dict(zip(headers, row))
 
         # Increment start_byte and continue
         start_byte += chunk_size
