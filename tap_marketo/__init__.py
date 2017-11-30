@@ -50,14 +50,20 @@ def get_start(entity):
 
     return STATE[entity]
 
+class RateLimitExceededException(Exception):
+    pass
 
 @utils.ratelimit(100, 20)
+# When one of the handlers catches its associated exception, the other handler
+# will be reset back to 0 tries.
 @backoff.on_exception(backoff.expo,
                       (requests.exceptions.RequestException),
                       max_tries=5,
                       giveup=lambda e: e.response is not None and
                       400 <= e.response.status_code < 500,
                       factor=2)
+@backoff.on_exception(backoff.expo,
+                      RateLimitExceededException)
 
 def request(endpoint, params=None):
     if not CONFIG['token_expires'] or datetime.datetime.utcnow() >= CONFIG['token_expires']:
@@ -84,8 +90,12 @@ def request(endpoint, params=None):
 
     if not data['success']:
         reasons = ", ".join("{code}: {message}".format(**err) for err in data['errors'])
-        LOGGER.critical("API call failed. {}".format(reasons))
-        sys.exit(1)
+        if len(data['errors']) == 1 and data['errors'][0]['code'] == "606":
+            LOGGER.warning("Rate limit exceeded. Will try again. (Response: {})".format(reasons))
+            raise RateLimitExceededException()
+        else:
+            LOGGER.critical("API call failed. {}".format(reasons))
+            sys.exit(1)
 
     return data
 
