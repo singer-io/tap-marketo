@@ -54,6 +54,8 @@ class RateLimitExceededException(Exception):
     pass
 
 @utils.ratelimit(100, 20)
+# When one of the handlers catches its associated exception, the other handler
+# will be reset back to 0 tries.
 @backoff.on_exception(backoff.expo,
                       (requests.exceptions.RequestException),
                       max_tries=5,
