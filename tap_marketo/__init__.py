@@ -53,13 +53,21 @@ def get_start(entity):
 class RateLimitExceededException(Exception):
     pass
 
+class RetryableCallFailureException(Exception):
+    pass
+
+RETRYABLE_RATE_LIMIT_ERROR_CODES = ["606", "615"]
+RETRYABLE_ERROR_CODES = ["611"]
+
 @utils.ratelimit(100, 20)
 # When one of the handlers catches its associated exception, the other handler
 # will be reset back to 0 tries.
 @backoff.on_exception(backoff.expo,
-                      (requests.exceptions.RequestException),
+                      (requests.exceptions.RequestException,
+                       RetryableCallFailureException),
                       max_tries=5,
-                      giveup=lambda e: e.response is not None and
+                      giveup=lambda e: isinstance(e, requests.exceptions.RequestException) and
+                      e.response is not None and
                       400 <= e.response.status_code < 500,
                       factor=2)
 @backoff.on_exception(backoff.expo,
@@ -89,13 +97,18 @@ def request(endpoint, params=None):
     data = resp.json()
 
     if not data['success']:
-        reasons = ", ".join("{code}: {message}".format(**err) for err in data['errors'])
-        if len(data['errors']) == 1 and data['errors'][0]['code'] == "606":
+        errors = data['errors']
+        reasons = ", ".join("{code}: {message}".format(**err) for err in errors)
+        if any(err['code'] in RETRYABLE_RATE_LIMIT_ERROR_CODES for err in errors):
             LOGGER.warning("Rate limit exceeded. Will try again. (Response: {})".format(reasons))
             raise RateLimitExceededException()
         else:
-            LOGGER.critical("API call failed. {}".format(reasons))
-            sys.exit(1)
+            retryable = any(err['code'] in RETRYABLE_ERROR_CODES for err in errors)
+            exception_class = Exception
+            if retryable:
+                exception_class = RetryableCallFailureException
+                LOGGER.warning("Retryable API call failed. {}".format(reasons))
+            raise exception_class("API call failed. {}".format(reasons))
 
     return data
 
