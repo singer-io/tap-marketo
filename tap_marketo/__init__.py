@@ -64,7 +64,7 @@ RETRYABLE_ERROR_CODES = ["611"]
 # will be reset back to 0 tries.
 @backoff.on_exception(backoff.expo,
                       (requests.exceptions.RequestException,
-                      RetryableCallFailureException),
+                       RetryableCallFailureException),
                       max_tries=5,
                       giveup=lambda e: isinstance(e, requests.exceptions.RequestException) and
                       e.response is not None and
