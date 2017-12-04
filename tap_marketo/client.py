@@ -167,9 +167,9 @@ class Client:
 
             data = resp.json()
             err_codes = set(err["code"] for err in data.get("errors", []))
-            
+
             if API_QUOTA_EXCEEDED in err_codes:
-                raise ApiException(API_QUOTA_EXCEEDED_MESSAGE)            
+                raise ApiException(API_QUOTA_EXCEEDED_MESSAGE)
             elif not data["success"]:
                 err = ", ".join("{code}: {message}".format(**e) for e in data["errors"])
                 raise ApiException("Marketo API returned error(s): {}".format(err))
@@ -207,12 +207,14 @@ class Client:
         endpoint_name = "{}_cancel".format(stream_type)
         self.request("POST", endpoint, endpoint_name=endpoint_name)
 
-    def poll_export(self, stream_type, export_id):
-        # http://developers.marketo.com/rest-api/bulk-extract/#polling_job_status
+    def get_export_status(self, stream_type, export_id):
         endpoint = self.get_bulk_endpoint(stream_type, "status", export_id)
         endpoint_name = "{}_poll".format(stream_type)
-        data = self.request("GET", endpoint, endpoint_name=endpoint_name)
-        return data["result"][0]["status"]
+        return self.request("GET", endpoint, endpoint_name=endpoint_name)
+
+    def poll_export(self, stream_type, export_id):
+        # http://developers.marketo.com/rest-api/bulk-extract/#polling_job_status
+        return self.get_export_status(stream_type, export_id)["result"][0]["status"]
 
     def stream_export(self, stream_type, export_id):
         # http://developers.marketo.com/rest-api/bulk-extract/#retrieving_your_data
