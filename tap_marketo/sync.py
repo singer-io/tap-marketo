@@ -114,7 +114,7 @@ def stream_rows(client, stream_type, export_id):
             yield dict(zip(headers, line))
 
 
-def get_or_create_export_for_leads(client, state, stream, export_stat):
+def get_or_create_export_for_leads(client, state, stream, export_start):
     export_id = bookmarks.get_bookmark(state, "leads", "export_id")
 
     if export_id is None:
@@ -233,7 +233,7 @@ def sync_activities(client, state, stream):
     job_started = pendulum.utcnow()
     record_count = 0
     while export_start < job_started:
-        export_id, export_end = get_or_create_export_for_activities(client, state, stream, start_date)
+        export_id, export_end = get_or_create_export_for_activities(client, state, stream, export_start)
         state = wait_for_export(client, state, stream, export_id)
         for row in stream_rows(client, "activites", export_id):
             row = flatten_activity(row, stream)
