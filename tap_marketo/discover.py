@@ -81,12 +81,12 @@ def get_activity_type_stream(activity):
         "marketoGUID": {"type": "string", "inclusion": "automatic"},
         "leadId": {"type": "integer", "inclusion": "automatic"},
         "activityDate": {"type": "string", "format": "date-time", "inclusion": "automatic"},
-        "activityTypeId": {"type": "integer", "inclusion": "automatic"}    
+        "activityTypeId": {"type": "integer", "inclusion": "automatic"}
     }
 
     for prop in properties:
         mdata = metadata.write(mdata, ('properties', prop), 'inclusion', 'automatic')
-    
+
     if "primaryAttribute" in activity:
         properties["primary_attribute_value"] = {"type": "string", "inclusion": "automatic"}
         properties["primary_attribute_name"] = {"type": "string", "inclusion": "automatic"}
@@ -95,10 +95,10 @@ def get_activity_type_stream(activity):
         mdata = metadata.write(mdata, ('properties', "primary_attribute_name"), 'inclusion', 'automatic')
         mdata = metadata.write(mdata, ('properties', "primary_attribute_value_id"), 'inclusion', 'automatic')
 
-        
+
         primary = clean_string(activity["primaryAttribute"]["name"])
         mdata = metadata.write(mdata, (), 'marketo.primary-attribute-name', primary)
-        
+
 
     if "attributes" in activity:
         for attr in activity["attributes"]:
@@ -111,7 +111,7 @@ def get_activity_type_stream(activity):
     mdata = metadata.write(mdata, (), 'marketo.activity-id', activity["id"])
 
     tap_stream_id = "activities_{}".format(activity_type_camel)
-    
+
     return {
         "tap_stream_id": tap_stream_id,
         "stream": tap_stream_id,
@@ -182,7 +182,7 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
     root = os.path.dirname(os.path.realpath(__file__))
     path = os.path.join(root, 'schemas/{}.json'.format(name))
     mdata = metadata.new()
-    
+
     with open(path, "r") as f:
         discovered_schema = json.load(f)
 
@@ -190,13 +190,13 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
             if field in automatic_inclusion:
                 mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'automatic')
             elif field in unsupported:
-                mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'unsupported') 
+                mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'unsupported')
             else:
                 mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'available')
 
         if stream_automatic_inclusion:
-            mdata = metadata.write(mdata, (), 'inclusion', 'automatic')            
-                
+            mdata = metadata.write(mdata, (), 'inclusion', 'automatic')
+
         discovered_schema["metadata"] = metadata.to_list(mdata)
         return discovered_schema
 
