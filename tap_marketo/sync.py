@@ -116,6 +116,10 @@ def stream_rows(client, stream_type, export_id):
 
 def get_or_create_export_for_leads(client, state, stream, export_start):
     export_id = bookmarks.get_bookmark(state, "leads", "export_id")
+    # check if export is still valid
+    if not client.export_available("leads", export_id):
+        singer.log_info("Export %s no longer available.", export_id)
+        export_id = None
 
     if export_id is None:
         # Corona mode is required to query by "updatedAt", otherwise a full
@@ -140,6 +144,9 @@ def get_or_create_export_for_leads(client, state, stream, export_start):
 
 def get_or_create_export_for_activities(client, state, stream, export_start):
     export_id = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_id")
+    if not client.export_available(stream["tap_stream_id"], export_id):
+        singer.log_info("Export %s no longer available.", export_id)
+        export_id = None
 
     if export_id is None:
         # The activity id is in the top-most breadcrumb of the metatdata

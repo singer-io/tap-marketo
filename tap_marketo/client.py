@@ -207,6 +207,17 @@ class Client:
         endpoint_name = "{}_cancel".format(stream_type)
         self.request("POST", endpoint, endpoint_name=endpoint_name)
 
+    def get_existing_export_ids(self, stream_type):
+        endpoint = self.get_bulk_endpoint(stream_type, "export")
+        endpoint_name = "{}_export_statuses".format(stream_type)
+        result = self.request(
+            "GET", endpoint,
+            params={"status": ["Created", "Queued", "Processing", "Completed"]})
+        return {r["exportId"] for r in result["result"]}
+
+    def export_available(self, stream_type, export_id):
+        return export_id in self.get_existing_export_ids(stream_type)
+
     def get_export_status(self, stream_type, export_id):
         endpoint = self.get_bulk_endpoint(stream_type, "status", export_id)
         endpoint_name = "{}_poll".format(stream_type)
