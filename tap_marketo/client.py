@@ -163,7 +163,7 @@ class Client:
         resp = self._request(method, url, endpoint_name, **kwargs)
         if "stream" not in kwargs:
             if resp.content == b'':
-                raise ApiException("Something went wrong and the Marketo API returned nothing.")
+                return {}
 
             data = resp.json()
             err_codes = set(err["code"] for err in data.get("errors", []))
@@ -213,7 +213,10 @@ class Client:
         result = self.request(
             "GET", endpoint,
             params={"status": ["Created", "Queued", "Processing", "Completed"]})
-        return {r["exportId"] for r in result["result"]}
+        if "result" in result:
+            return {r["exportId"] for r in result["result"]}
+        else:
+            return set()
 
     def export_available(self, stream_type, export_id):
         return export_id in self.get_existing_export_ids(stream_type)
