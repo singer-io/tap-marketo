@@ -281,7 +281,7 @@ def sync_programs(client, state, stream):
 
         # If the no asset message is in the warnings, we have exhausted
         # the search results and can end the sync.
-        if NO_ASSET_MSG in data["warnings"]:
+        if "warnings" in data and NO_ASSET_MSG in data["warnings"]:
             break
 
         # Each row just needs the values formatted. If the record is
