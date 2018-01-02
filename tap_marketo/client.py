@@ -6,8 +6,8 @@ import requests
 import singer
 
 
-# By default, jobs will run for 30 minutes and be polled every 5 minutes.
-JOB_TIMEOUT = 60 * 30
+# By default, jobs will run for 3 hours and be polled every 5 minutes.
+JOB_TIMEOUT = 60 * 180
 POLL_INTERVAL = 60 * 5
 
 # If Corona is not supported, an error "1035" will be returned by the API.
@@ -43,6 +43,7 @@ class ApiException(Exception):
 class ExportFailed(Exception):
     """Indicates an error occured while attempting a bulk export."""
     pass
+
 
 class Client:
     # pylint: disable=unused-argument
@@ -258,7 +259,7 @@ class Client:
 
             time.sleep(self.poll_interval)
 
-        raise ExportFailed("Timed out")
+        raise ExportFailed("Export timed out after {} minutes".format(self.job_timeout / 60))
 
     def test_corona(self):
         # http://developers.marketo.com/rest-api/bulk-extract/#limits
