@@ -6,6 +6,7 @@ import tempfile
 import singer
 from singer import metadata
 from singer import bookmarks
+from singer import utils
 
 from tap_marketo.client import ExportFailed
 
@@ -201,9 +202,11 @@ def flatten_activity(row, stream):
 
 def sync_leads(client, state, stream):
     # http://developers.marketo.com/rest-api/bulk-extract/bulk-lead-extract/
-    singer.write_schema("leads", stream["schema"], stream["key_properties"])
-    initial_bookmark = pendulum.parse(bookmarks.get_bookmark(state, "leads", stream["replication_key"]))
-    export_start = pendulum.parse(bookmarks.get_bookmark(state, "leads", stream["replication_key"]))
+    replication_key = stream["replication_key"]
+
+    singer.write_schema("leads", stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
+    initial_bookmark = pendulum.parse(bookmarks.get_bookmark(state, "leads", replication_key))
+    export_start = pendulum.parse(bookmarks.get_bookmark(state, "leads", replication_key))
     if client.use_corona:
         export_start = export_start.subtract(days=ATTRIBUTION_WINDOW_DAYS)
 
@@ -214,16 +217,20 @@ def sync_leads(client, state, stream):
         export_id, export_end = get_or_create_export_for_leads(client, state, stream, export_start)
         state = wait_for_export(client, state, stream, export_id)
         for row in stream_rows(client, "leads", export_id):
+            time_extracted = utils.now()
+
             record = format_values(stream, row)
             record_bookmark = pendulum.parse(record["updatedAt"])
 
             if client.use_corona:
                 max_bookmark = export_end
-                singer.write_record("leads", record)
+
+                singer.write_record("leads", record, time_extracted=time_extracted)
                 record_count += 1
             elif record_bookmark >= initial_bookmark:
                 max_bookmark = max(max_bookmark, record_bookmark)
-                singer.write_record("leads", record)
+
+                singer.write_record("leads", record, time_extracted=time_extracted)
                 record_count += 1
 
         # Now that one of the exports is finished, update the bookmark
@@ -235,17 +242,22 @@ def sync_leads(client, state, stream):
 
 def sync_activities(client, state, stream):
     # http://developers.marketo.com/rest-api/bulk-extract/bulk-activity-extract/
-    singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
-    export_start = pendulum.parse(bookmarks.get_bookmark(state, stream["tap_stream_id"], stream["replication_key"]))
+    replication_key = stream["replication_key"]
+
+    singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
+    export_start = pendulum.parse(bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key))
     job_started = pendulum.utcnow()
     record_count = 0
     while export_start < job_started:
         export_id, export_end = get_or_create_export_for_activities(client, state, stream, export_start)
         state = wait_for_export(client, state, stream, export_id)
         for row in stream_rows(client, "activites", export_id):
+            time_extracted = utils.now()
+
             row = flatten_activity(row, stream)
             record = format_value(stream, row)
-            singer.write_record(stream["tap_stream_id"], record)
+
+            singer.write_record(stream["tap_stream_id"], record, time_extracted=time_extracted)
             record_count += 1
 
         state = update_state_with_export_info(state, stream, bookmark=export_start.isoformat())
@@ -264,8 +276,10 @@ def sync_programs(client, state, stream):
     # The Programs endpoint uses offsets with a return limit of 200
     # per page. If requesting past the final program, an error message
     # is returned to indicate that the endpoint has been fully synced.
-    singer.write_schema("programs", stream["schema"], stream["key_properties"])
-    start_date = bookmarks.get_bookmark(state, "programs", "updatedAt")
+    replication_key = "updatedAt"
+
+    singer.write_schema("programs", stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
+    start_date = bookmarks.get_bookmark(state, "programs", replication_key)
     end_date = pendulum.utcnow().isoformat()
     params = {
         "maxReturn": 200,
@@ -284,20 +298,23 @@ def sync_programs(client, state, stream):
         if "warnings" in data and NO_ASSET_MSG in data["warnings"]:
             break
 
+        time_extracted = utils.now()
+
         # Each row just needs the values formatted. If the record is
         # newer than the original start date, stream the record.
         for row in data["result"]:
             record = format_values(stream, row)
-            if record["updatedAt"] >= start_date:
+            if record[replication_key] >= start_date:
                 record_count += 1
-                singer.write_record("programs", record)
+
+                singer.write_record("programs", record, time_extracted=time_extracted)
 
         # Increment the offset by the return limit for the next query.
         params["offset"] += params["maxReturn"]
 
     # Now that we've finished every page we can update the bookmark to
     # the end of the query.
-    state = bookmarks.write_bookmark(state, "programs", "updatedAt", end_date)
+    state = bookmarks.write_bookmark(state, "programs", replication_key, end_date)
     singer.write_state(state)
     return state, record_count
 
@@ -309,8 +326,10 @@ def sync_paginated(client, state, stream):
     # Campaigns and Static Lists are paginated with a max return of 300
     # items per page. There are no filters that can be used to only
     # return updated records.
-    singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
-    start_date = bookmarks.get_bookmark(state, stream["tap_stream_id"], stream["replication_key"])
+    replication_key = stream["replication_key"]
+
+    singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
+    start_date = bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key)
     params = {"batchSize": 300}
     endpoint = "rest/v1/{}.json".format(stream["tap_stream_id"])
 
@@ -327,6 +346,8 @@ def sync_paginated(client, state, stream):
     while True:
         data = client.request("GET", endpoint, endpoint_name=stream["tap_stream_id"], params=params)
 
+        time_extracted = utils.now()
+
         # Each row just needs the values formatted. If the record is
         # newer than the original start date, stream the record. Finally,
         # update the bookmark if newer than the existing bookmark.
@@ -334,7 +355,8 @@ def sync_paginated(client, state, stream):
             record = format_values(stream, row)
             if record[stream["replication_key"]] >= start_date:
                 record_count += 1
-                singer.write_record(stream["tap_stream_id"], record)
+
+                singer.write_record(stream["tap_stream_id"], record, time_extracted=time_extracted)
 
         # No next page, results are exhausted.
         if "nextPageToken" not in data:
@@ -358,14 +380,19 @@ def sync_activity_types(client, state, stream):
     #
     # Activity types aren't even paginated. Grab all the results in one
     # request, format the values, and output them.
+
     singer.write_schema("activity_types", stream["schema"], stream["key_properties"])
     endpoint = "rest/v1/activities/types.json"
     data = client.request("GET", endpoint, endpoint_name="activity_types")
     record_count = 0
+
+    time_extracted = utils.now()
+
     for row in data["result"]:
         record = format_values(stream, row)
         record_count += 1
-        singer.write_record("activity_types", record)
+
+        singer.write_record("activity_types", record, time_extracted=time_extracted)
 
     return state, record_count
 
