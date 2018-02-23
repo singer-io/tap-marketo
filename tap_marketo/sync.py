@@ -145,7 +145,7 @@ def get_or_create_export_for_leads(client, state, stream, export_start):
 
 def get_or_create_export_for_activities(client, state, stream, export_start):
     export_id = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_id")
-    if not client.export_available("activities", export_id):
+    if export_id is not None and not client.export_available("activities", export_id):
         singer.log_info("Export %s no longer available.", export_id)
         export_id = None
 
