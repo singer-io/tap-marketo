@@ -209,7 +209,7 @@ class Client:
         self.request("POST", endpoint, endpoint_name=endpoint_name)
 
     def get_existing_export_ids(self, stream_type):
-        endpoint = "/bulk/v1/{}/export.json".format(stream_type)
+        endpoint = "bulk/v1/{}/export.json".format(stream_type)
         endpoint_name = "{}_export_statuses".format(stream_type)
         result = self.request(
             "GET", endpoint,
