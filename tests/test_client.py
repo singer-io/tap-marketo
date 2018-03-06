@@ -14,6 +14,7 @@ logging.disable(logging.CRITICAL)
 
 
 class TestClient(unittest.TestCase):
+    maxDiff = None
     def setUp(self):
         self.client = Client("123-ABC-789", "id", "secret")
 

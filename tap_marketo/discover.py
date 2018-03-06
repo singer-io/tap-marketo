@@ -162,7 +162,7 @@ def discover_leads(client):
 
     mdata = metadata.write(mdata, (), 'replication-key', 'updatedAt')
     mdata = metadata.write(mdata, (), 'replication-method', 'INCREMENTAL')
-        
+
     return {
         "tap_stream_id": "leads",
         "stream": "leads",
@@ -186,7 +186,6 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
 
     with open(path, "r") as f:
         discovered_schema = json.load(f)
-
         for field in discovered_schema["schema"]["properties"]:
             if field in automatic_inclusion:
                 mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'automatic')
