@@ -26,6 +26,11 @@ ACTIVITY_FIELDS = BASE_ACTIVITY_FIELDS + [
     "attributes",
 ]
 
+REPLICATION_KEYS = {
+    "leads": "updatedAt",
+    "activities": "activityDate"
+}
+
 NO_ASSET_MSG = "No assets found for the given search criteria."
 NO_CORONA_WARNING = (
     "Your account does not have Corona support enabled. Without Corona, each sync of "

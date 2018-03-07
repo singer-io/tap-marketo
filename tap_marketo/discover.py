@@ -109,6 +109,8 @@ def get_activity_type_stream(activity):
 
     activity_type_camel = clean_string(activity["name"])
     mdata = metadata.write(mdata, (), 'marketo.activity-id', activity["id"])
+    mdata = metadata.write(mdata, (), 'replication-key', 'activityDate')
+    mdata = metadata.write(mdata, (), 'replication-method', 'INCREMENTAL')
 
     tap_stream_id = "activities_{}".format(activity_type_camel)
 
@@ -116,8 +118,6 @@ def get_activity_type_stream(activity):
         "tap_stream_id": tap_stream_id,
         "stream": tap_stream_id,
         "key_properties": ["marketoGUID"],
-        "replication_key": "activityDate",
-        "replication_method": "INCREMENTAL",
         "metadata": metadata.to_list(mdata),
         "schema": {
             "type": "object",
@@ -160,12 +160,13 @@ def discover_leads(client):
             continue
         properties[field_name] = field_schema
 
+    mdata = metadata.write(mdata, (), 'replication-key', 'updatedAt')
+    mdata = metadata.write(mdata, (), 'replication-method', 'INCREMENTAL')
+
     return {
         "tap_stream_id": "leads",
         "stream": "leads",
         "key_properties": ["id"],
-        "replication_key": "updatedAt",
-        "replication_method": "INCREMENTAL",
         "metadata": metadata.to_list(mdata),
         "schema": {
             "type": "object",
@@ -185,7 +186,6 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
 
     with open(path, "r") as f:
         discovered_schema = json.load(f)
-
         for field in discovered_schema["schema"]["properties"]:
             if field in automatic_inclusion:
                 mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'automatic')

@@ -6,8 +6,8 @@ import requests_mock
 from tap_marketo.client import Client
 from tap_marketo.discover import *
 
-
 class TestDiscover(unittest.TestCase):
+    maxDiff = None
     def test_get_activity_type_stream(self):
         activity = {
             "id": 1,
@@ -33,8 +33,6 @@ class TestDiscover(unittest.TestCase):
             "tap_stream_id": "activities_visit_webpage",
             "stream": "activities_visit_webpage",
             "key_properties": ["marketoGUID"],
-            "replication_key": "activityDate",
-            "replication_method": "INCREMENTAL",
             "schema": {
                 "type": "object",
                 "additionalProperties": False,
@@ -107,8 +105,6 @@ class TestDiscover(unittest.TestCase):
             "tap_stream_id": "leads",
             "stream": "leads",
             "key_properties": ["id"],
-            "replication_key": "updatedAt",
-            "replication_method": "INCREMENTAL",
             "schema": {
                 "type": "object",
                 "additionalProperties": False,
@@ -132,9 +128,17 @@ class TestDiscover(unittest.TestCase):
             result = discover_leads(client)
             metadata = result.pop("metadata")
             automatic_count = 0
+
             for mdata in metadata:
-                if mdata['metadata']['inclusion'] == 'automatic':
+                field_metadata = mdata.get('metadata', {})
+                if mdata.get('metadata', {}).get('inclusion', '') == 'automatic':
                     automatic_count += 1
+            inclusion_metadata = list(filter(lambda m: m['metadata'].get('inclusion'), metadata))
             self.assertDictEqual(stream, result)
-            self.assertEqual(2,len(metadata))
+            self.assertEqual(2,len(inclusion_metadata))
             self.assertEqual(1,automatic_count)
+
+if __name__== "__main__":
+    test1 = TestDiscover()
+    test1.test_get_activity_type_stream()
+    test1.test_discover_leads()
