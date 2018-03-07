@@ -26,6 +26,13 @@ ACTIVITY_FIELDS = BASE_ACTIVITY_FIELDS + [
     "attributes",
 ]
 
+REPLICATION_KEYS = {
+    'activityTypes': 'activityDate',
+    'leads': 'updatedAt',
+    'campaigns': 'updatedAt',
+    'lists': 'updatedAt',
+}
+
 NO_ASSET_MSG = "No assets found for the given search criteria."
 NO_CORONA_WARNING = (
     "Your account does not have Corona support enabled. Without Corona, each sync of "
@@ -202,7 +209,7 @@ def flatten_activity(row, stream):
 
 def sync_leads(client, state, stream):
     # http://developers.marketo.com/rest-api/bulk-extract/bulk-lead-extract/
-    replication_key = stream["replication_key"]
+    replication_key = REPLICATION_KEYS.get(stream["tap_stream_id"])
 
     singer.write_schema("leads", stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
     initial_bookmark = pendulum.parse(bookmarks.get_bookmark(state, "leads", replication_key))
@@ -242,7 +249,7 @@ def sync_leads(client, state, stream):
 
 def sync_activities(client, state, stream):
     # http://developers.marketo.com/rest-api/bulk-extract/bulk-activity-extract/
-    replication_key = stream["replication_key"]
+    replication_key = REPLICATION_KEYS.get(stream["tap_stream_id"])
 
     singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
     export_start = pendulum.parse(bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key))
@@ -326,7 +333,7 @@ def sync_paginated(client, state, stream):
     # Campaigns and Static Lists are paginated with a max return of 300
     # items per page. There are no filters that can be used to only
     # return updated records.
-    replication_key = stream["replication_key"]
+    replication_key = REPLICATION_KEYS.get(stream["tap_stream_id"])
 
     singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
     start_date = bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key)

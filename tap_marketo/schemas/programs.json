@@ -2,8 +2,6 @@
   "tap_stream_id": "programs",
   "stream": "programs",
   "key_properties": ["id"],
-  "replication_key": "updatedAt",
-  "replication_method": "INCREMENTAL",
   "schema": {
     "type": "object",
     "additionalProperties": false,

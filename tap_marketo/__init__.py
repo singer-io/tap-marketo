@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env pthon3
 
 # Marketo Docs are located at http://developers.marketo.com/rest-api/
 
@@ -8,7 +8,7 @@ from singer import bookmarks
 
 from tap_marketo.client import Client
 from tap_marketo.discover import discover
-from tap_marketo.sync import sync
+from tap_marketo.sync import sync, REPLICATION_KEYS
 from singer.bookmarks import (
     get_bookmark,
     write_bookmark,
@@ -41,18 +41,18 @@ def validate_state(config, catalog, state):
                 set_currently_syncing(state, None)
             continue
 
-        if not stream.get("replication_key"):
+        if not REPLICATION_KEYS.get(stream['tap_stream_id']):
             continue
 
         # If there's no bookmark for a stream (new integration, newly selected,
         # reset, etc) we need to use the default start date from the config.
         bookmark = get_bookmark(state,
                                 stream["tap_stream_id"],
-                                stream["replication_key"])
+                                REPLICATION_KEYS.get(stream['tap_stream_id']))
         if bookmark is None:
             state = write_bookmark(state,
                                    stream["tap_stream_id"],
-                                   stream["replication_key"],
+                                   REPLICATION_KEYS.get(stream['tap_stream_id']),
                                    config["start_date"])
 
     singer.write_state(state)
