@@ -39,7 +39,7 @@ def determine_replication_key(tap_stream_id):
     elif tap_stream_id == 'programs':
         return 'updatedAt'
     else:
-        return None;
+        return None
 
 
 NO_ASSET_MSG = "No assets found for the given search criteria."
