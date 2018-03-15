@@ -280,8 +280,6 @@ class MockResponse:
 #             "tap_stream_id": "activities_activity_name",
 #             "stream": "activities_activity_name",
 #             "key_properties": ["marketoGUID"],
-#             "replication_key": "activityDate",
-#             "replication_method": "INCREMENTAL",
 #             "metadata": [{'breadcrumb': (),
 #                           'metadata': {'marketo.activity-id': 1,
 #                                        'marketo.primary-attribute-name': 'webpage_id'}}],

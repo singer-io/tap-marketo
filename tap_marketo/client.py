@@ -110,10 +110,10 @@ class Client:
             resp = requests.get(url, params=params)
             resp_time = pendulum.utcnow()
         except requests.exceptions.ConnectionError:
-            raise ApiException("Connection error while refreshing token at %s.", url)
+            raise ApiException("Connection error while refreshing token at {}.".format(url))
 
         if resp.status_code != 200:
-            raise ApiException("Error refreshing token [%s]: %s", resp.status_code, resp.content)
+            raise ApiException("Error refreshing token [{}]: {}".format(resp.status_code, resp.content))
 
         data = resp.json()
         if "error" in data:
@@ -159,7 +159,7 @@ class Client:
 
         self.calls_today += 1
         if self.calls_today > self.max_daily_calls:
-            raise ApiException("Exceeded daily quota of %s calls", self.max_daily_calls)
+            raise ApiException("Exceeded daily quota of {} calls".format(self.max_daily_calls))
 
         resp = self._request(method, url, endpoint_name, **kwargs)
         if "stream" not in kwargs:
@@ -210,7 +210,6 @@ class Client:
 
     def get_existing_export_ids(self, stream_type):
         endpoint = "bulk/v1/{}/export.json".format(stream_type)
-        endpoint_name = "{}_export_statuses".format(stream_type)
         result = self.request(
             "GET", endpoint,
             params={"status": ["Created", "Queued", "Processing", "Completed"]})

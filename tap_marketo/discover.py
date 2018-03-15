@@ -116,8 +116,6 @@ def get_activity_type_stream(activity):
         "tap_stream_id": tap_stream_id,
         "stream": tap_stream_id,
         "key_properties": ["marketoGUID"],
-        "replication_key": "activityDate",
-        "replication_method": "INCREMENTAL",
         "metadata": metadata.to_list(mdata),
         "schema": {
             "type": "object",
@@ -164,8 +162,6 @@ def discover_leads(client):
         "tap_stream_id": "leads",
         "stream": "leads",
         "key_properties": ["id"],
-        "replication_key": "updatedAt",
-        "replication_method": "INCREMENTAL",
         "metadata": metadata.to_list(mdata),
         "schema": {
             "type": "object",

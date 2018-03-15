@@ -2,7 +2,6 @@
   "tap_stream_id": "activity_types",
   "stream": "activity_types",
   "key_properties": ["id"],
-  "replication_method": "FULL_TABLE",
   "schema": {
     "type": "object",
     "additionalProperties": false,
