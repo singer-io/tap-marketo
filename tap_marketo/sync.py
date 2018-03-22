@@ -266,11 +266,11 @@ def sync_activities(client, state, stream):
     while export_start < job_started:
         export_id, export_end = get_or_create_export_for_activities(client, state, stream, export_start)
         state = wait_for_export(client, state, stream, export_id)
-        for row in stream_rows(client, "activites", export_id):
+        for row in stream_rows(client, "activities", export_id):
             time_extracted = utils.now()
 
             row = flatten_activity(row, stream)
-            record = format_value(stream, row)
+            record = format_value(row, stream['schema'])
 
             singer.write_record(stream["tap_stream_id"], record, time_extracted=time_extracted)
             record_count += 1
