@@ -270,7 +270,7 @@ def sync_activities(client, state, stream):
             time_extracted = utils.now()
 
             row = flatten_activity(row, stream)
-            record = format_value(row, stream['schema'])
+            record = format_values(stream, row)
 
             singer.write_record(stream["tap_stream_id"], record, time_extracted=time_extracted)
             record_count += 1
