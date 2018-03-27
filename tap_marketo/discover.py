@@ -78,19 +78,19 @@ def get_activity_type_stream(activity):
     mdata = metadata.new()
 
     properties = {
-        "marketoGUID": {"type": "string", "inclusion": "automatic"},
-        "leadId": {"type": "integer", "inclusion": "automatic"},
-        "activityDate": {"type": "string", "format": "date-time", "inclusion": "automatic"},
-        "activityTypeId": {"type": "integer", "inclusion": "automatic"}
+        "marketoGUID": {"type": ["null", "string"], "inclusion": "automatic"},
+        "leadId": {"type": ["null", "integer"], "inclusion": "automatic"},
+        "activityDate": {"type": ["null", "string"], "format": "date-time", "inclusion": "automatic"},
+        "activityTypeId": {"type": ["null", "integer"], "inclusion": "automatic"}
     }
 
     for prop in properties:
         mdata = metadata.write(mdata, ('properties', prop), 'inclusion', 'automatic')
 
     if "primaryAttribute" in activity:
-        properties["primary_attribute_value"] = {"type": "string", "inclusion": "automatic"}
-        properties["primary_attribute_name"] = {"type": "string", "inclusion": "automatic"}
-        properties["primary_attribute_value_id"] = {"type": "string", "inclusion": "automatic"}
+        properties["primary_attribute_value"] = {"type": ["null", "string"], "inclusion": "automatic"}
+        properties["primary_attribute_name"] = {"type": ["null", "string"], "inclusion": "automatic"}
+        properties["primary_attribute_value_id"] = {"type": ["null", "string"], "inclusion": "automatic"}
         mdata = metadata.write(mdata, ('properties', "primary_attribute_value"), 'inclusion', 'automatic')
         mdata = metadata.write(mdata, ('properties', "primary_attribute_name"), 'inclusion', 'automatic')
         mdata = metadata.write(mdata, ('properties', "primary_attribute_value_id"), 'inclusion', 'automatic')
