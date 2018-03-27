@@ -39,32 +39,32 @@ class TestDiscover(unittest.TestCase):
                 "inclusion": "available",
                 "properties": {
                     "marketoGUID": {
-                        "type": "string",
+                        "type": ["null", "string"],
                         "inclusion": "automatic",
                     },
                     "leadId": {
-                        "type": "integer",
+                        "type": ["null", "integer"],
                         "inclusion": "automatic",
                     },
                     "activityDate": {
-                        "type": "string",
+                        "type": ["null", "string"],
                         "format": "date-time",
                         "inclusion": "automatic",
                     },
                     "activityTypeId": {
-                        "type": "integer",
+                        "type": ["null", "integer"],
                         "inclusion": "automatic",
                     },
                     "primary_attribute_name": {
-                        "type": "string",
+                        "type": ["null", "string"],
                         "inclusion": "automatic",
                     },                    
                     "primary_attribute_value_id": {
-                        "type": "string",
+                        "type": ["null", "string"],
                         "inclusion": "automatic",
                     },                    
                     "primary_attribute_value": {
-                        "type": "string",
+                        "type": ["null", "string"],
                         "inclusion": "automatic",
                     },                                        
                     "client_ip_address": {
