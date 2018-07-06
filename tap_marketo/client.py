@@ -15,7 +15,7 @@ POLL_INTERVAL = 60 * 5
 NO_CORONA_CODE = "1035"
 API_QUOTA_EXCEEDED = "1029"
 
-API_QUOTA_EXCEEDED_MESSAGE = "Marketo API returned error(s): 1029: Export daily quota 500MB exceeded.  Data can resume replicating at midnight central time. Read more about Marketo Bulk API limits here: http://developers.marketo.com/rest-api/bulk-extract/#limits"
+API_QUOTA_EXCEEDED_MESSAGE = "Marketo API returned error(s): {}. Data can resume replicating at midnight central time. Read more about Marketo Bulk API limits here: http://developers.marketo.com/rest-api/bulk-extract/#limits"
 
 # Marketo limits REST requests to 50000 per day with a rate limit of 100
 # calls per 20 seconds.
@@ -168,9 +168,8 @@ class Client:
 
             data = resp.json()
             err_codes = set(err["code"] for err in data.get("errors", []))
-
             if API_QUOTA_EXCEEDED in err_codes:
-                raise ApiException(API_QUOTA_EXCEEDED_MESSAGE)
+                raise ApiException(API_QUOTA_EXCEEDED_MESSAGE.format(data['errors']))
             elif not data["success"]:
                 err = ", ".join("{code}: {message}".format(**e) for e in data["errors"])
                 raise ApiException("Marketo API returned error(s): {}".format(err))
@@ -292,7 +291,7 @@ class Client:
             singer.log_info("Corona not supported.")
             return False
         elif API_QUOTA_EXCEEDED in err_codes:
-            raise ApiException(API_QUOTA_EXCEEDED_MESSAGE)
+            raise ApiException(API_QUOTA_EXCEEDED_MESSAGE.format(data['errors']))
         else:
             singer.log_info("Corona is supported.")
             singer.log_info(data)
