@@ -42,7 +42,7 @@ def get_schema_for_type(typ, breadcrumb, mdata, null=False):
         rtn = {'type': 'string'}
     elif typ in ['array']:
         rtn = {'type': 'array',
-               'items': {'type': 'string'}}
+               'items': {'type': ['integer','number','string','null']}}
     else:
         rtn = {'type': 'string'}
 

@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.0.24
+  * Allow auto-discovered array values to be integer, number, string, or null
+
 ## 2.0.23
   * If a field is marked as an integer, and is already `int` type, do no conversion. (Fixes case from 2.0.22)
 
