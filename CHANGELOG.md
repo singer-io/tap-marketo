@@ -1,7 +1,7 @@
 # Changelog
 
 ## 2.0.25
-  * Update version of `requests` to `0.20.0` in response to CVE 2018-18074
+  * Update version of `requests` to `2.20.0` in response to CVE 2018-18074
 
 ## 2.0.24
   * Allow auto-discovered array values to be integer, number, string, or null
