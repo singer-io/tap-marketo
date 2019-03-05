@@ -37,12 +37,10 @@ def extract_domain(url):
 
 class ApiException(Exception):
     """Indicates an error occured communicating with the Marketo API."""
-    pass
 
 
 class ExportFailed(Exception):
     """Indicates an error occured while attempting a bulk export."""
-    pass
 
 
 class Client:
