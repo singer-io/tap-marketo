@@ -104,8 +104,8 @@ def update_state_with_export_info(state, stream, bookmark=None, export_id=None, 
     return state
 
 
-def get_export_end(export_start):
-    export_end = export_start.add(days=MAX_EXPORT_DAYS)
+def get_export_end(export_start, end_days=MAX_EXPORT_DAYS):
+    export_end = export_start.add(days=end_days)
     if export_end >= pendulum.utcnow():
         export_end = pendulum.utcnow()
 
@@ -167,7 +167,7 @@ def get_or_create_export_for_leads(client, state, stream, export_start):
     return export_id, export_end
 
 
-def get_or_create_export_for_activities(client, state, stream, export_start):
+def get_or_create_export_for_activities(client, state, stream, export_start, config):
     export_id = bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_id")
     if export_id is not None and not client.export_available("activities", export_id):
         singer.log_info("Export %s no longer available.", export_id)
@@ -184,7 +184,7 @@ def get_or_create_export_for_activities(client, state, stream, export_start):
         # that is not a real field. `createdAt` proxies `activityDate`.
         # The activity type id must also be included in the query. The
         # largest date range that can be used for activities is 30 days.
-        export_end = get_export_end(export_start)
+        export_end = get_export_end(export_start, end_days=int(config.get('max_export_days', MAX_EXPORT_DAYS)))
         query = {"createdAt": {"startAt": export_start.isoformat(),
                                "endAt": export_end.isoformat()},
                  "activityTypeIds": [activity_type_id]}
@@ -264,7 +264,7 @@ def sync_leads(client, state, stream):
     return state, record_count
 
 
-def sync_activities(client, state, stream):
+def sync_activities(client, state, stream, config):
     # http://developers.marketo.com/rest-api/bulk-extract/bulk-activity-extract/
     replication_key = determine_replication_key(stream['tap_stream_id'])
     singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
@@ -272,7 +272,7 @@ def sync_activities(client, state, stream):
     job_started = pendulum.utcnow()
     record_count = 0
     while export_start < job_started:
-        export_id, export_end = get_or_create_export_for_activities(client, state, stream, export_start)
+        export_id, export_end = get_or_create_export_for_activities(client, state, stream, export_start, config)
         state = wait_for_export(client, state, stream, export_id)
         for row in stream_rows(client, "activities", export_id):
             time_extracted = utils.now()
@@ -420,7 +420,7 @@ def sync_activity_types(client, state, stream):
     return state, record_count
 
 
-def sync(client, catalog, state):
+def sync(client, catalog, config, state):
     starting_stream = bookmarks.get_currently_syncing(state)
     if starting_stream:
         singer.log_info("Resuming sync from %s", starting_stream)
@@ -452,7 +452,7 @@ def sync(client, catalog, state):
         elif stream["tap_stream_id"] == "leads":
             state, record_count = sync_leads(client, state, stream)
         elif stream["tap_stream_id"].startswith("activities_"):
-            state, record_count = sync_activities(client, state, stream)
+            state, record_count = sync_activities(client, state, stream, config)
         elif stream["tap_stream_id"] in ["campaigns", "lists"]:
             state, record_count = sync_paginated(client, state, stream)
         elif stream["tap_stream_id"] == "programs":

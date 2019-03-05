@@ -65,7 +65,7 @@ def _main(config, properties, state, discover_mode=False):
         discover(client)
     elif properties:
         state = validate_state(config, properties, state)
-        sync(client, properties, state)
+        sync(client, properties, config, state)
 
 
 def main():
