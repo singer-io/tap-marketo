@@ -25,21 +25,17 @@ ACTIVITY_FIELDS = BASE_ACTIVITY_FIELDS + [
     "attributes",
 ]
 
+REPLICATION_KEYS = {
+    'leads' : 'updated_at',
+    'lists' : 'updated_at',
+    'campaigns' : 'updated_at',
+    'programs' : 'updated_at',
+}
+
 def determine_replication_key(tap_stream_id):
     if tap_stream_id.startswith("activities_"):
         return 'activityDate'
-    elif tap_stream_id == 'activity_types':
-        return None
-    elif tap_stream_id == 'leads':
-        return 'updatedAt'
-    elif tap_stream_id == 'lists':
-        return 'updatedAt'
-    elif tap_stream_id == 'campaigns':
-        return 'updatedAt'
-    elif tap_stream_id == 'programs':
-        return 'updatedAt'
-    else:
-        return None
+    return REPLICATION_KEYS.get(tap_stream_id, None)
 
 
 NO_ASSET_MSG = "No assets found for the given search criteria."
