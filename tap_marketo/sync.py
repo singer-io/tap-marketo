@@ -7,7 +7,7 @@ import singer
 from singer import metadata
 from singer import bookmarks
 from singer import utils
-from tap_marketo.client import ExportFailed
+from tap_marketo.client import ExportFailed, ApiQuotaExceeded
 
 # We can request up to 30 days worth of activities per export.
 MAX_EXPORT_DAYS = 30
@@ -184,14 +184,28 @@ def get_or_create_export_for_activities(client, state, stream, export_start, con
         # that is not a real field. `createdAt` proxies `activityDate`.
         # The activity type id must also be included in the query. The
         # largest date range that can be used for activities is 30 days.
-        export_end = get_export_end(export_start, end_days=int(config.get('max_export_days', MAX_EXPORT_DAYS)))
+        max_export_days = int(config.get('max_export_days',
+                                         MAX_EXPORT_DAYS))
+        export_end = get_export_end(export_start,
+                                    end_days=max_export_days)
         query = {"createdAt": {"startAt": export_start.isoformat(),
                                "endAt": export_end.isoformat()},
                  "activityTypeIds": [activity_type_id]}
 
         # Create the new export and store the id and end date in state.
         # Does not start the export (must POST to the "enqueue" endpoint).
-        export_id = client.create_export("activities", ACTIVITY_FIELDS, query)
+        try:
+            export_id = client.create_export("activities", ACTIVITY_FIELDS, query)
+        except ApiQuotaExceeded as e:
+            # The main reason we wrap the ApiQuotaExceeded exception in a
+            # new one is to be able to tell the customer what their
+            # configured max_export_days is.
+            raise ApiQuotaExceeded(
+                ("You may wish to consider changing the "
+                 "`max_export_days` config value to a lower number if "
+                 "you're unable to sync a single {} day window within "
+                 "your current API quota.").format(
+                     max_export_days)) from e
         state = update_state_with_export_info(
             state, stream, export_id=export_id, export_end=export_end.isoformat())
     else:
