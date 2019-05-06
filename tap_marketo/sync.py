@@ -7,7 +7,7 @@ import singer
 from singer import metadata
 from singer import bookmarks
 from singer import utils
-from tap_marketo.client import ExportFailed
+from tap_marketo.client import ExportFailed, ApiQuotaExceeded
 
 # We can request up to 30 days worth of activities per export.
 MAX_EXPORT_DAYS = 30
@@ -196,8 +196,11 @@ def get_or_create_export_for_activities(client, state, stream, export_start, con
         # Does not start the export (must POST to the "enqueue" endpoint).
         try:
             export_id = client.create_export("activities", ACTIVITY_FIELDS, query)
-        except client.ApiException as e:
-            raise client.ApiException(
+        except ApiQuotaExceeded as e:
+            # The main reason we wrap the ApiQuotaExceeded exception in a
+            # new one is to be able to tell the customer what their
+            # configured max_export_days is.
+            raise ApiQuotaExceeded(
                 ("You may wish to consider changing the "
                  "`max_export_days` config value to a lower number if "
                  "you're unable to sync a single {} day window within "
