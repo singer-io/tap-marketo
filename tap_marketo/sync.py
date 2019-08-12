@@ -124,20 +124,18 @@ def wait_for_export(client, state, stream, export_id):
 
 
 def stream_rows(client, stream_type, export_id):
-    tf = tempfile.NamedTemporaryFile(mode="wb")
     singer.log_info("Download starting.")
-    resp = client.stream_export(stream_type, export_id)
-    for chunk in resp.iter_content(chunk_size=1024):
-        if chunk:
-            tf.write(chunk)
+    with tempfile.NamedTemporaryFile(mode="wb") as tf:
+        resp = client.stream_export(stream_type, export_id)
+        for chunk in resp.iter_content(chunk_size=1024):
+            if chunk:
+                tf.write(chunk)
 
-    singer.log_info("Download completed. Begin streaming rows.")
-    with open(tf.name, 'r', encoding='utf-8') as csv_file:
-        reader = csv.DictReader(csv_file, delimiter=',', quotechar='"')
-        for row in reader:
-            yield row
-
-    tf.close()
+        singer.log_info("Download completed. Begin streaming rows.")
+        with open(tf.name, 'r', encoding='utf-8') as csv_file:
+            reader = csv.DictReader(csv_file, delimiter=',', quotechar='"')
+            for row in reader:
+                yield row
 
 
 def get_or_create_export_for_leads(client, state, stream, export_start):
