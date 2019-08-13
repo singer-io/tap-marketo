@@ -123,19 +123,22 @@ def wait_for_export(client, state, stream, export_id):
     return state
 
 
+# This function has an issue with UTF-8 data most likely caused by decode_unicode=True
+# See https://github.com/singer-io/tap-marketo/pull/51/files
 def stream_rows(client, stream_type, export_id):
-    singer.log_info("Download starting.")
-    with tempfile.NamedTemporaryFile(mode="wb") as tf:
+    with tempfile.NamedTemporaryFile(mode="w+", encoding="utf8") as csv_file:
+        singer.log_info("Download starting.")
         resp = client.stream_export(stream_type, export_id)
-        for chunk in resp.iter_content(chunk_size=1024):
+        for chunk in resp.iter_content(chunk_size=1024, decode_unicode=True):
             if chunk:
-                tf.write(chunk)
+                csv_file.write(chunk)
 
         singer.log_info("Download completed. Begin streaming rows.")
-        with open(tf.name, 'r', encoding='utf-8') as csv_file:
-            reader = csv.DictReader(csv_file, delimiter=',', quotechar='"')
-            for row in reader:
-                yield row
+        csv_file.seek(0)
+        reader = csv.reader(csv_file, delimiter=',', quotechar='"')
+        headers = next(reader)
+        for line in reader:
+            yield dict(zip(headers, line))
 
 
 def get_or_create_export_for_leads(client, state, stream, export_start):
