@@ -86,6 +86,10 @@ def get_activity_type_stream(activity):
         mdata = metadata.write(mdata, ('properties', prop), 'inclusion', 'automatic')
 
     if "primaryAttribute" in activity:
+        properties["primary_attribute_value"] = {"type": ["null", "string"]}
+        properties["primary_attribute_name"] = {"type": ["null", "string"]}
+        properties["primary_attribute_value_id"] = {"type": ["null", "string"]}
+
         mdata = metadata.write(mdata, ('properties', "primary_attribute_value"), 'inclusion', 'automatic')
         mdata = metadata.write(mdata, ('properties', "primary_attribute_name"), 'inclusion', 'automatic')
         mdata = metadata.write(mdata, ('properties', "primary_attribute_value_id"), 'inclusion', 'automatic')
