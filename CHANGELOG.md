@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.0
+  * Replaced `annotated_schema` with Singer `metadata` [#54](https://github.com/singer-io/tap-marketo/pull/54)
+    * Fixed unit tests to also use `metadata`
+  * Added unittest for `validate_state`
+
 ## 2.1.0
   * Allows activities reports to request a value lower than the default 30 days for exports [#44](https://github.com/singer-io/tap-marketo/pull/44)
 
