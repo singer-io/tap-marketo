@@ -87,10 +87,15 @@ def format_value(value, schema):
 
 def format_values(stream, row):
     rtn = {}
+
+    available_fields = []
+    for entry in stream['metadata']:
+        if entry['metadata'].get('selected') or entry['metadata'].get('inclusion') == 'automatic':
+            available_fields.append(entry['breadcrumb'][-1])
+
     for field, schema in stream["schema"]["properties"].items():
-        if not schema.get("selected") and not (schema.get("inclusion") == "automatic"):
-            continue
-        rtn[field] = format_value(row.get(field), schema)
+        if field in available_fields:
+            rtn[field] = format_value(row.get(field), schema)
     return rtn
 
 
@@ -158,8 +163,11 @@ def get_or_create_export_for_leads(client, state, stream, export_start):
 
         # Create the new export and store the id and end date in state.
         # Does not start the export (must POST to the "enqueue" endpoint).
-        fields = [f for f, s in stream["schema"]["properties"].items()
-                  if s.get("selected") or (s.get("inclusion") == "automatic")]
+        fields = []
+        for entry in stream['metadata']:
+            if entry['metadata'].get('selected') or entry['metadata'].get('inclusion') == 'automatic':
+                fields.append(entry['breadcrumb'][-1])
+
         export_id = client.create_export("leads", fields, query)
         state = update_state_with_export_info(
             state, stream, export_id=export_id, export_end=export_end.isoformat())
@@ -445,7 +453,14 @@ def sync(client, catalog, config, state):
 
     for stream in catalog["streams"]:
         # Skip unselected streams.
-        if not stream["schema"].get("selected"):
+        mdata = stream['metadata']
+
+        try:
+            stream_selected = [entry for entry in mdata if entry['breadcrumb'] == []][0]
+        except:
+            raise RuntimeError('Bad catalog: Expected metadata entry for stream')
+
+        if not (stream_selected and stream_selected['metadata']['selected']):
             singer.log_info("%s: not selected", stream["tap_stream_id"])
             continue
 

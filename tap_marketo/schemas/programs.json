@@ -5,64 +5,50 @@
   "schema": {
     "type": "object",
     "additionalProperties": false,
-    "inclusion": "available",
     "properties": {
       "id": {
         "type": "integer",
-        "inclusion": "automatic"
       },
       "createdAt": {
         "type": "string",
         "format": "date-time",
-        "inclusion": "automatic"
       },
       "updatedAt": {
         "type": "string",
         "format": "date-time",
-        "inclusion": "automatic"
       },
       "name": {
         "type": "string",
-        "inclusion": "available"
       },
       "description": {
         "type": ["null", "string"],
-        "inclusion": "available"
       },
       "url": {
         "type": ["null", "string"],
-        "inclusion": "available"
       },
       "type": {
         "type": ["null", "string"],
-        "inclusion": "available"
       },
       "channel": {
         "type": ["null", "string"],
-        "inclusion": "available"
       },
       "status": {
         "type": ["null", "string"],
-        "inclusion": "available"
       },
       "workspace": {
         "type": ["null", "string"],
-        "inclusion": "available"
       },
       "folder": {
         "type": "object",
         "properties": {
           "type": {
             "type": ["null", "string"],
-            "inclusion": "available"
           },
           "value": {
             "type": ["null", "integer"],
-            "inclusion": "available"
           },
           "folderName": {
             "type": ["null", "string"],
-            "inclusion": "available"
           }
         }
       }

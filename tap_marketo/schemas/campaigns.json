@@ -5,49 +5,38 @@
   "schema": {
     "type": "object",
     "additionalProperties": false,
-    "inclusion": "available",
     "properties": {
       "id": {
         "type": "integer",
-        "inclusion": "automatic"
       },
       "createdAt": {
         "type": "string",
         "format": "date-time",
-        "inclusion": "automatic"
       },
       "updatedAt": {
         "type": "string",
         "format": "date-time",
-        "inclusion": "automatic"
       },
       "active": {
         "type": ["boolean", "null"],
-        "inclusion": "available"
       },
       "description": {
         "type": ["string", "null"],
-        "inclusion": "available"
       },
       "name": {
         "type": "string",
-        "inclusion": "available"
       },
       "programId": {
         "type": ["integer", "null"],
-        "inclusion": "available"
       },
       "programName": {
         "type": ["string", "null"],
-        "inclusion": "available"
       },
       "type": {
         "type": "string",
-        "inclusion": "available"
       },
       "workspaceName": {
         "type": ["string", "null"],
-        "inclusion": "available"
       }
     }
   }
