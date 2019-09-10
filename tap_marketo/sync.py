@@ -165,7 +165,7 @@ def get_or_create_export_for_leads(client, state, stream, export_start):
         # Does not start the export (must POST to the "enqueue" endpoint).
         fields = []
         for entry in stream['metadata']:
-            if entry['metadata'].get('selected') or entry['metadata'].get('inclusion') == 'automatic':
+            if len(entry['breadcrumb']) > 0 and (entry['metadata'].get('selected') or entry['metadata'].get('inclusion') == 'automatic'):
                 fields.append(entry['breadcrumb'][-1])
 
         export_id = client.create_export("leads", fields, query)
