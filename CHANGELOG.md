@@ -1,6 +1,9 @@
 # Changelog
 
 ## 2.2.2
+  * Ignore stream metadata when building formatting fields [commit](https://github.com/singer-io/tap-marketo/commit/afad72a975a0df8834a1a647cef4271e1845a874)
+
+## 2.2.2
   * Ignore stream metadata when building field list [commit](https://github.com/singer-io/tap-marketo/commit/76fecfdd6289b578a041434d5d7929bb73098f36)
 
 ## 2.2.1
