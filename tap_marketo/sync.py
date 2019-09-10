@@ -460,7 +460,7 @@ def sync(client, catalog, config, state):
         except:
             raise RuntimeError('Bad catalog: Expected metadata entry for stream')
 
-        if not (stream_selected and stream_selected['metadata']['selected']):
+        if not (stream_selected and stream_selected.get('metadata', {}).get('selected', False)):
             singer.log_info("%s: not selected", stream["tap_stream_id"])
             continue
 
