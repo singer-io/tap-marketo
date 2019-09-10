@@ -90,7 +90,7 @@ def format_values(stream, row):
 
     available_fields = []
     for entry in stream['metadata']:
-        if entry['metadata'].get('selected') or entry['metadata'].get('inclusion') == 'automatic':
+        if len(entry['breadcrumb']) > 0 and (entry['metadata'].get('selected') or entry['metadata'].get('inclusion') == 'automatic'):
             available_fields.append(entry['breadcrumb'][-1])
 
     for field, schema in stream["schema"]["properties"].items():
