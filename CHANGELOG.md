@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.2.2
+  * Ignore stream metadata when building field list [commit](https://github.com/singer-io/tap-marketo/commit/76fecfdd6289b578a041434d5d7929bb73098f36)
+
 ## 2.2.1
   * Fixed invalid json schema in `activity_types` schema [#55](https://github.com/singer-io/tap-marketo/pull/55), [#56](https://github.com/singer-io/tap-marketo/pull/56)
 
