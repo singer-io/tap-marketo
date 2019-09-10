@@ -7,48 +7,48 @@
     "additionalProperties": false,
     "properties": {
       "id": {
-        "type": "integer",
+        "type": "integer"
       },
       "createdAt": {
         "type": "string",
-        "format": "date-time",
+        "format": "date-time"
       },
       "updatedAt": {
         "type": "string",
-        "format": "date-time",
+        "format": "date-time"
       },
       "name": {
-        "type": "string",
+        "type": "string"
       },
       "description": {
-        "type": ["null", "string"],
+        "type": ["null", "string"]
       },
       "url": {
-        "type": ["null", "string"],
+        "type": ["null", "string"]
       },
       "type": {
-        "type": ["null", "string"],
+        "type": ["null", "string"]
       },
       "channel": {
-        "type": ["null", "string"],
+        "type": ["null", "string"]
       },
       "status": {
-        "type": ["null", "string"],
+        "type": ["null", "string"]
       },
       "workspace": {
-        "type": ["null", "string"],
+        "type": ["null", "string"]
       },
       "folder": {
         "type": "object",
         "properties": {
           "type": {
-            "type": ["null", "string"],
+            "type": ["null", "string"]
           },
           "value": {
-            "type": ["null", "integer"],
+            "type": ["null", "integer"]
           },
           "folderName": {
-            "type": ["null", "string"],
+            "type": ["null", "string"]
           }
         }
       }

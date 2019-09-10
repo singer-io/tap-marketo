@@ -7,27 +7,27 @@
     "additionalProperties": false,
     "properties": {
       "id": {
-        "type": "integer",
+        "type": "integer"
       },
       "name": {
-        "type": "string",
+        "type": "string"
       },
       "createdAt": {
         "type": "string",
-        "format": "date-time",
+        "format": "date-time"
       },
       "updatedAt": {
         "type": "string",
-        "format": "date-time",
+        "format": "date-time"
       },
       "description": {
-        "type": ["string", "null"],
+        "type": ["string", "null"]
       },
       "programName": {
-        "type": ["string", "null"],
+        "type": ["string", "null"]
       },
       "workspaceName": {
-        "type": ["string", "null"],
+        "type": ["string", "null"]
       }
     }
   }
