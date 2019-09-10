@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.2.1
+  * Fixed invalid json schema in `activity_types` schema [#55](https://github.com/singer-io/tap-marketo/pull/55), [#56](https://github.com/singer-io/tap-marketo/pull/56)
+
 ## 2.2.0
   * Replaced `annotated_schema` with Singer `metadata` [#54](https://github.com/singer-io/tap-marketo/pull/54)
     * Fixed unit tests to also use `metadata`
