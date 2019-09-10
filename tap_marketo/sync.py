@@ -453,14 +453,9 @@ def sync(client, catalog, config, state):
 
     for stream in catalog["streams"]:
         # Skip unselected streams.
-        mdata = stream['metadata']
+        mdata = metadata.to_map(stream['metadata'])
 
-        try:
-            stream_selected = [entry for entry in mdata if entry['breadcrumb'] == []][0]
-        except:
-            raise RuntimeError('Bad catalog: Expected metadata entry for stream')
-
-        if not (stream_selected and stream_selected.get('metadata', {}).get('selected', False)):
+        if not metadata.get(mdata, (), 'selected'):
             singer.log_info("%s: not selected", stream["tap_stream_id"])
             continue
 
