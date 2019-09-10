@@ -7,13 +7,13 @@
     "additionalProperties": false,
     "properties": {
       "id": {
-        "type": "integer",
+        "type": "integer"
       },
       "name": {
-        "type": "string",
+        "type": "string"
       },
       "description": {
-        "type": ["string", "null"],
+        "type": ["string", "null"]
       },
       "primaryAttribute": {
         "type": ["object", "null"],
@@ -38,7 +38,7 @@
               "type": "string"
             }
           }
-        },
+        }
       }
     }
   }
