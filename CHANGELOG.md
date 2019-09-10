@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.2.5
+  * Use `singer-python` functions to do stream selection
+
 ## 2.2.4
   * Use get to access dict key [commit](https://github.com/singer-io/tap-marketo/commit/2f6cb5ea278077bbf4fd73efa79faf0e0aa87cb1)
 ## 2.2.3
