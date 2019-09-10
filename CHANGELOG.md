@@ -1,6 +1,8 @@
 # Changelog
 
-## 2.2.2
+## 2.2.4
+  * Use get to access dict key [commit](https://github.com/singer-io/tap-marketo/commit/2f6cb5ea278077bbf4fd73efa79faf0e0aa87cb1)
+## 2.2.3
   * Ignore stream metadata when building formatting fields [commit](https://github.com/singer-io/tap-marketo/commit/afad72a975a0df8834a1a647cef4271e1845a874)
 
 ## 2.2.2
