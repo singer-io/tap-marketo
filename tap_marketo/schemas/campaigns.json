@@ -7,36 +7,36 @@
     "additionalProperties": false,
     "properties": {
       "id": {
-        "type": "integer",
+        "type": "integer"
       },
       "createdAt": {
         "type": "string",
-        "format": "date-time",
+        "format": "date-time"
       },
       "updatedAt": {
         "type": "string",
-        "format": "date-time",
+        "format": "date-time"
       },
       "active": {
-        "type": ["boolean", "null"],
+        "type": ["boolean", "null"]
       },
       "description": {
-        "type": ["string", "null"],
+        "type": ["string", "null"]
       },
       "name": {
-        "type": "string",
+        "type": "string"
       },
       "programId": {
-        "type": ["integer", "null"],
+        "type": ["integer", "null"]
       },
       "programName": {
-        "type": ["string", "null"],
+        "type": ["string", "null"]
       },
       "type": {
-        "type": "string",
+        "type": "string"
       },
       "workspaceName": {
-        "type": ["string", "null"],
+        "type": ["string", "null"]
       }
     }
   }
