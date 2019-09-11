@@ -18,6 +18,11 @@ jobs:
             source ~/.virtualenvs/tap-marketo/bin/activate
             pylint tap_marketo -d C,R
       - run:
+          name: 'JSON Validator'
+          command: |
+            source /usr/local/share/virtualenvs/tap-tester/bin/activate
+            stitch-validate-json ~/.virtualenvs/tap-marketo/lib/python3.5/site-packages/tap_marketo/schemas/*.json
+      - run:
           name: 'Unit Tests'
           command: |
             source ~/.virtualenvs/tap-marketo/bin/activate
