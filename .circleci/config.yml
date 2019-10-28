@@ -41,3 +41,8 @@ jobs:
       #                  --password=$SANDBOX_PASSWORD \
       #                  --client-id=50 \
       #                  tap_tester.suites.marketo
+workflows:
+  version: 2
+  commit:
+    jobs:
+      - build
