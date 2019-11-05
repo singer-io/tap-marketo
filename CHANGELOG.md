@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.2.6
+  * Check for empty list instead of empty tuple for stream metadata [#58](https://github.com/singer-io/tap-marketo/pull/58)
+
 ## 2.2.5
   * Use `singer-python` functions to do stream selection
 
