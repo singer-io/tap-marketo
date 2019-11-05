@@ -16,7 +16,7 @@ class TestValidateState(unittest.TestCase):
                     "stream": "activities_visit_webpage",
                     "key_properties": ["marketoGUID"],
                     "metadata" : [
-                        {'breadcrumb': (),
+                        {'breadcrumb': [],
                          'metadata': {'marketo.activity-id': 1,
                                       'selected' : True,
                                       'marketo.primary-attribute-name': 'webpage_id'}},
@@ -24,55 +24,55 @@ class TestValidateState(unittest.TestCase):
                             "metadata" : {
                                 "inclusion": "automatic"
                             },
-                            "breadcrumb" : ("properties", 'marketoGUID')
+                            "breadcrumb" : ["properties", 'marketoGUID']
                         },
                         {
                             "metadata" : {
                                 "inclusion": "automatic"
                             },
-                            "breadcrumb" : ("properties", 'leadId')
+                            "breadcrumb" : ["properties", 'leadId']
                         },
                         {
                             "metadata" : {
                                 "inclusion": "automatic"
                             },
-                            "breadcrumb" : ("properties", 'activityDate')
+                            "breadcrumb" : ["properties", 'activityDate']
                         },
                         {
                             "metadata" : {
                                 "inclusion": "automatic"
                             },
-                            "breadcrumb" : ("properties", 'activityTypeId')
+                            "breadcrumb" : ["properties", 'activityTypeId']
                         },
                         {
                             "metadata" : {
                                 "inclusion": "automatic"
                             },
-                            "breadcrumb" : ("properties", 'primary_attribute_name')
+                            "breadcrumb" : ["properties", 'primary_attribute_name']
                         },
                         {
                             "metadata" : {
                                 "inclusion": "automatic"
                             },
-                            "breadcrumb" : ("properties", 'primary_attribute_value_id')
+                            "breadcrumb" : ["properties", 'primary_attribute_value_id']
                         },
                         {
                             "metadata" : {
                                 "inclusion": "automatic"
                             },
-                            "breadcrumb" : ("properties", 'primary_attribute_value')
+                            "breadcrumb" : ["properties", 'primary_attribute_value']
                         },
                         {
                             "metadata" : {
                                 "inclusion": "available"
                             },
-                            "breadcrumb" : ("properties", 'client_ip_address')
+                            "breadcrumb" : ["properties", 'client_ip_address']
                         },
                         {
                             "metadata" : {
                                 "inclusion": "available"
                             },
-                            "breadcrumb" : ("properties", 'query_parameters')
+                            "breadcrumb" : ["properties", 'query_parameters']
                         },
                     ],
                     "schema": {
@@ -115,7 +115,7 @@ class TestValidateState(unittest.TestCase):
                     "stream": "leads",
                     "key_properties": ["marketoGUID"],
                     "metadata" : [
-                        {'breadcrumb': (),
+                        {'breadcrumb': [],
                          'metadata': {'marketo.activity-id': 1,
                                       'selected' : False,
                                       'marketo.primary-attribute-name': 'webpage_id'}},
@@ -123,55 +123,55 @@ class TestValidateState(unittest.TestCase):
                             "metadata" : {
                                 "inclusion": "automatic"
                             },
-                            "breadcrumb" : ("properties", 'marketoGUID')
+                            "breadcrumb" : ["properties", 'marketoGUID']
                         },
                         {
                             "metadata" : {
                                 "inclusion": "automatic"
                             },
-                            "breadcrumb" : ("properties", 'leadId')
+                            "breadcrumb" : ["properties", 'leadId']
                         },
                         {
                             "metadata" : {
                                 "inclusion": "automatic"
                             },
-                            "breadcrumb" : ("properties", 'activityDate')
+                            "breadcrumb" : ["properties", 'activityDate']
                         },
                         {
                             "metadata" : {
                                 "inclusion": "automatic"
                             },
-                            "breadcrumb" : ("properties", 'activityTypeId')
+                            "breadcrumb" : ["properties", 'activityTypeId']
                         },
                         {
                             "metadata" : {
                                 "inclusion": "automatic"
                             },
-                            "breadcrumb" : ("properties", 'primary_attribute_name')
+                            "breadcrumb" : ["properties", 'primary_attribute_name']
                         },
                         {
                             "metadata" : {
                                 "inclusion": "automatic"
                             },
-                            "breadcrumb" : ("properties", 'primary_attribute_value_id')
+                            "breadcrumb" : ["properties", 'primary_attribute_value_id']
                         },
                         {
                             "metadata" : {
                                 "inclusion": "automatic"
                             },
-                            "breadcrumb" : ("properties", 'primary_attribute_value')
+                            "breadcrumb" : ["properties", 'primary_attribute_value']
                         },
                         {
                             "metadata" : {
                                 "inclusion": "available"
                             },
-                            "breadcrumb" : ("properties", 'client_ip_address')
+                            "breadcrumb" : ["properties", 'client_ip_address']
                         },
                         {
                             "metadata" : {
                                 "inclusion": "available"
                             },
-                            "breadcrumb" : ("properties", 'query_parameters')
+                            "breadcrumb" : ["properties", 'query_parameters']
                         },
                     ],
                     "schema": {
