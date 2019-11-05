@@ -35,7 +35,7 @@ REQUIRED_CONFIG_KEYS = [
 def validate_state(config, catalog, state):
     for stream in catalog["streams"]:
         for mdata in stream['metadata']:
-            if mdata['breadcrumb'] == () and mdata['metadata'].get('selected') != True:
+            if mdata['breadcrumb'] == [] and mdata['metadata'].get('selected') != True:
                 # If a stream is deselected while it's the current stream, unset the
                 # current stream.
                 if stream["tap_stream_id"] == get_currently_syncing(state):
