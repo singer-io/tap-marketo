@@ -17,6 +17,11 @@ API_QUOTA_EXCEEDED = "1029"
 
 API_QUOTA_EXCEEDED_MESSAGE = "Marketo API returned error(s): {}. Data can resume replicating at midnight central time. Read more about Marketo Bulk API limits here: http://developers.marketo.com/rest-api/bulk-extract/#limits"
 
+# Marketo has a 100 requests per 20 seconds quota, this raises a 606 code if hit
+SHORT_TERM_QUOTA_EXCEEDED = "606"
+
+SHORT_TERM_QUOTA_EXCEEDED_MESSAGE = "Marketo API returned error(s): {}. This is due to a short term rate limiting mechanism. Backing off and retrying the request."
+
 # Marketo limits REST requests to 50000 per day with a rate limit of 100
 # calls per 20 seconds.
 # http://developers.marketo.com/rest-api/
@@ -34,6 +39,12 @@ def extract_domain(url):
         raise ValueError("%s is not a valid Marketo URL" % url)
     return result.group()
 
+def retry_persistently(exception):
+    """
+    To be used as a `giveup` parameter in backoff to never giveup for
+    certain exception types.
+    """
+    return False
 
 class ApiException(Exception):
     """Indicates an error occured communicating with the Marketo API."""
@@ -42,8 +53,14 @@ class ApiException(Exception):
 class ApiQuotaExceeded(Exception):
     """Indicates that there's no quota left for the API"""
 
+class ShortTermQuotaExceeded(Exception):
+    """
+    Indicates that more than 100 requests across all the user's apps have
+    been made in the past 20 seconds and that we need to back off.
+    """
 
 class ExportFailed(Exception):
+
     """Indicates an error occured while attempting a bulk export."""
 
 
@@ -155,6 +172,7 @@ class Client:
         self.calls_today = int(data["result"][0]["total"])
         singer.log_info("Used %s of %s requests", self.calls_today, self.max_daily_calls)
 
+    @singer.utils.backoff((ShortTermQuotaExceeded), retry_persistently)
     def request(self, method, url, endpoint_name=None, **kwargs):
         if self.calls_today % 250 == 0:
             self.update_calls_today()
@@ -172,6 +190,10 @@ class Client:
             err_codes = set(err["code"] for err in data.get("errors", []))
             if API_QUOTA_EXCEEDED in err_codes:
                 raise ApiQuotaExceeded(API_QUOTA_EXCEEDED_MESSAGE.format(data['errors']))
+            elif SHORT_TERM_QUOTA_EXCEEDED in err_codes:
+                message = SHORT_TERM_QUOTA_EXCEEDED_MESSAGE.format(data['errors'])
+                singer.log_warning(message)
+                raise ShortTermQuotaExceeded(message)
             elif not data["success"]:
                 err = ", ".join("{code}: {message}".format(**e) for e in data["errors"])
                 raise ApiException("Marketo API returned error(s): {}".format(err))
