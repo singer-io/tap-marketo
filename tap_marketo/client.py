@@ -39,7 +39,7 @@ def extract_domain(url):
         raise ValueError("%s is not a valid Marketo URL" % url)
     return result.group()
 
-def retry_persistently(exception):
+def retry_persistently(_exception):
     """
     To be used as a `giveup` parameter in backoff to never giveup for
     certain exception types.
