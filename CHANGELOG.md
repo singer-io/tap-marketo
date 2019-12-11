@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.2.7
+  * On requests, client will retry when hitting the 100 requests per 20 seconds rate limit error [#60](https://github.com/singer-io/tap-marketo/pull/60)
+
 ## 2.2.6
   * Check for empty list instead of empty tuple for stream metadata [#58](https://github.com/singer-io/tap-marketo/pull/58)
 
