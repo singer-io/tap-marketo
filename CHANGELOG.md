@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.8
+  * Alters requests backoff to a more predictable pattern that covers the rate limit window [#61](https://github.com/singer-io/tap-marketo/pull/61)
+  * Increases `singer-python` dependency to `5.9.0` [#61](https://github.com/singer-io/tap-marketo/pull/61)
+  * Adds explicit `backoff` dependency at version `1.8.0` [#61](https://github.com/singer-io/tap-marketo/pull/61)
+
 ## 2.2.7
   * On requests, client will retry when hitting the 100 requests per 20 seconds rate limit error [#60](https://github.com/singer-io/tap-marketo/pull/60)
 
