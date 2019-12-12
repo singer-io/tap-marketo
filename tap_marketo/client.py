@@ -65,7 +65,7 @@ def handle_short_term_rate_limit():
                                 jitter=None,
                                 logger=singer.get_logger())
 
-def raise_for_marketo_errors(data):
+def raise_for_rate_limit(data):
     err_codes = set(err["code"] for err in data.get("errors", []))
     if API_QUOTA_EXCEEDED in err_codes:
         raise ApiQuotaExceeded(API_QUOTA_EXCEEDED_MESSAGE.format(data['errors']))
@@ -73,9 +73,6 @@ def raise_for_marketo_errors(data):
         message = SHORT_TERM_QUOTA_EXCEEDED_MESSAGE.format(data['errors'])
         singer.log_warning(message)
         raise ShortTermQuotaExceeded(message)
-    elif not data["success"]:
-        err = ", ".join("{code}: {message}".format(**e) for e in data["errors"])
-        raise ApiException("Marketo API returned error(s): {}".format(err))
 
 class Client:
     # pylint: disable=unused-argument
@@ -180,7 +177,7 @@ class Client:
         # http://developers.marketo.com/rest-api/endpoint-reference/lead-database-endpoint-reference/#!/Usage/getDailyUsageUsingGET
         data = self._request("GET", "rest/v1/stats/usage.json").json()
 
-        raise_for_marketo_errors(data)
+        raise_for_rate_limit(data)
         if "result" not in data:
             raise ApiException(data)
 
@@ -202,7 +199,11 @@ class Client:
                 return {}
 
             data = resp.json()
-            raise_for_marketo_errors(data)
+            raise_for_rate_limit(data)
+            if not data["success"]:
+                err = ", ".join("{code}: {message}".format(**e) for e in data["errors"])
+                raise ApiException("Marketo API returned error(s): {}".format(err))
+
 
             return data
         else:
@@ -313,7 +314,7 @@ class Client:
         endpoint = self.get_bulk_endpoint("leads", "create")
         data = self._request("POST", endpoint, endpoint_name="leads_create", json=payload).json()
 
-        raise_for_marketo_errors(data)
+        raise_for_rate_limit(data)
 
         # If the error code indicating no Corona support is present,
         # Corona is not supported. If we don't get that error code,
