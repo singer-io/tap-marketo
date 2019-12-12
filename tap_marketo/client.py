@@ -1,6 +1,7 @@
 import re
 import time
 
+import backoff
 import pendulum
 import requests
 import singer
@@ -39,13 +40,6 @@ def extract_domain(url):
         raise ValueError("%s is not a valid Marketo URL" % url)
     return result.group()
 
-def retry_persistently(_exception):
-    """
-    To be used as a `giveup` parameter in backoff to never giveup for
-    certain exception types.
-    """
-    return False
-
 class ApiException(Exception):
     """Indicates an error occured communicating with the Marketo API."""
 
@@ -63,6 +57,22 @@ class ExportFailed(Exception):
 
     """Indicates an error occured while attempting a bulk export."""
 
+def handle_short_term_rate_limit():
+    return backoff.on_exception(backoff.constant,
+                                (ShortTermQuotaExceeded),
+                                max_tries=5,
+                                interval=4,
+                                jitter=None,
+                                logger=singer.get_logger())
+
+def raise_for_rate_limit(data):
+    err_codes = set(err["code"] for err in data.get("errors", []))
+    if API_QUOTA_EXCEEDED in err_codes:
+        raise ApiQuotaExceeded(API_QUOTA_EXCEEDED_MESSAGE.format(data['errors']))
+    elif SHORT_TERM_QUOTA_EXCEEDED in err_codes:
+        message = SHORT_TERM_QUOTA_EXCEEDED_MESSAGE.format(data['errors'])
+        singer.log_warning(message)
+        raise ShortTermQuotaExceeded(message)
 
 class Client:
     # pylint: disable=unused-argument
@@ -166,13 +176,15 @@ class Client:
     def update_calls_today(self):
         # http://developers.marketo.com/rest-api/endpoint-reference/lead-database-endpoint-reference/#!/Usage/getDailyUsageUsingGET
         data = self._request("GET", "rest/v1/stats/usage.json").json()
+
+        raise_for_rate_limit(data)
         if "result" not in data:
             raise ApiException(data)
 
         self.calls_today = int(data["result"][0]["total"])
         singer.log_info("Used %s of %s requests", self.calls_today, self.max_daily_calls)
 
-    @singer.utils.backoff((ShortTermQuotaExceeded), retry_persistently)
+    @handle_short_term_rate_limit()
     def request(self, method, url, endpoint_name=None, **kwargs):
         if self.calls_today % 250 == 0:
             self.update_calls_today()
@@ -187,16 +199,11 @@ class Client:
                 return {}
 
             data = resp.json()
-            err_codes = set(err["code"] for err in data.get("errors", []))
-            if API_QUOTA_EXCEEDED in err_codes:
-                raise ApiQuotaExceeded(API_QUOTA_EXCEEDED_MESSAGE.format(data['errors']))
-            elif SHORT_TERM_QUOTA_EXCEEDED in err_codes:
-                message = SHORT_TERM_QUOTA_EXCEEDED_MESSAGE.format(data['errors'])
-                singer.log_warning(message)
-                raise ShortTermQuotaExceeded(message)
-            elif not data["success"]:
+            raise_for_rate_limit(data)
+            if not data["success"]:
                 err = ", ".join("{code}: {message}".format(**e) for e in data["errors"])
                 raise ApiException("Marketo API returned error(s): {}".format(err))
+
 
             return data
         else:
@@ -283,6 +290,7 @@ class Client:
 
         raise ExportFailed("Export timed out after {} minutes".format(self.job_timeout / 60))
 
+    @handle_short_term_rate_limit()
     def test_corona(self):
         # http://developers.marketo.com/rest-api/bulk-extract/#limits
         # Corona allows us to do bulk queries for Leads using updatedAt
@@ -306,6 +314,8 @@ class Client:
         endpoint = self.get_bulk_endpoint("leads", "create")
         data = self._request("POST", endpoint, endpoint_name="leads_create", json=payload).json()
 
+        raise_for_rate_limit(data)
+
         # If the error code indicating no Corona support is present,
         # Corona is not supported. If we don't get that error code,
         # Corona is supported and we need to clean up by cancelling the
@@ -314,8 +324,6 @@ class Client:
         if NO_CORONA_CODE in err_codes:
             singer.log_info("Corona not supported.")
             return False
-        elif API_QUOTA_EXCEEDED in err_codes:
-            raise ApiQuotaExceeded(API_QUOTA_EXCEEDED_MESSAGE.format(data['errors']))
         else:
             singer.log_info("Corona is supported.")
             singer.log_info(data)
