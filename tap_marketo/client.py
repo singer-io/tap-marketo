@@ -247,7 +247,7 @@ class Client:
         if "result" in result:
             return {r["exportId"]: r for r in result["result"]}
         else:
-            return set()
+            return dict()
 
     def export_file_exists(self, stream_type, export_id, existing_exports):
         if existing_exports.get(export_id, {}).get("status") != "Completed":
@@ -267,8 +267,10 @@ class Client:
             raise
 
     def export_available(self, stream_type, export_id):
+        # NB: Marketo may return that an export is Completed, but the file doesn't exist, so we need to check both.
         existing_exports = self.get_existing_exports(stream_type)
-        return export_id in existing_exports and self.export_file_exists(stream_type, export_id, existing_exports)
+        export_id_exists = export_id in existing_exports
+        return export_id_exists and self.export_file_exists(stream_type, export_id, existing_exports)
 
     def get_export_status(self, stream_type, export_id):
         endpoint = self.get_bulk_endpoint(stream_type, "status", export_id)
