@@ -1,7 +1,7 @@
 # Changelog
 
 ## 2.2.9
-  * Fix issue where Marketo reports an export as existing, but returns a 404 on the underlying file. [#62](https://github.com/singer-io/tap-marketo/pull/62)
+  * Fix export availability result around issue where Marketo reports an export as existing, but returns a 404 on the underlying file. [#62](https://github.com/singer-io/tap-marketo/pull/62)
 
 ## 2.2.8
   * Alters requests backoff to a more predictable pattern that covers the rate limit window [#61](https://github.com/singer-io/tap-marketo/pull/61)
