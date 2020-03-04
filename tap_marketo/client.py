@@ -258,7 +258,8 @@ class Client:
         endpoint = self.get_bulk_endpoint(stream_type, "file", export_id)
         endpoint_name = "{}_stream".format(stream_type)
         try:
-            result = self.request("GET", endpoint, endpoint_name=endpoint_name, stream=True, headers={"Range": "bytes=0-0"})
+            # Range described here: https://developers.marketo.com/rest-api/bulk-extract/#crayon-5e600bb5f1a53663868461
+            self.request("GET", endpoint, endpoint_name=endpoint_name, stream=True, headers={"Range": "bytes=0-0"})
             return True
         except requests.exceptions.HTTPError as ex:
             if ex.response.status_code == 404:
