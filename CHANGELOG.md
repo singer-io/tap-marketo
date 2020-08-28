@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.3.0
+  * Enables `leads` stream to work with optional parameter `max_export_days`[#65](https://github.com/singer-io/tap-marketo/pull/65)
+
 ## 2.2.9
   * Fix export availability result around issue where Marketo reports an export as existing, but returns a 404 on the underlying file. [#62](https://github.com/singer-io/tap-marketo/pull/62)
 
