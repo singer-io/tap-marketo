@@ -146,7 +146,7 @@ def stream_rows(client, stream_type, export_id):
             yield dict(zip(headers, line))
 
 
-def get_or_create_export_for_leads(client, state, stream, export_start):
+def get_or_create_export_for_leads(client, state, stream, export_start, config):
     export_id = bookmarks.get_bookmark(state, "leads", "export_id")
     # check if export is still valid
     if export_id is not None and not client.export_available("leads", export_id):
@@ -157,7 +157,10 @@ def get_or_create_export_for_leads(client, state, stream, export_start):
         # Corona mode is required to query by "updatedAt", otherwise a full
         # sync is required using "createdAt".
         query_field = "updatedAt" if client.use_corona else "createdAt"
-        export_end = get_export_end(export_start)
+        max_export_days = int(config.get('max_export_days',
+                                         MAX_EXPORT_DAYS))
+        export_end = get_export_end(export_start,
+                                    end_days=max_export_days)
         query = {query_field: {"startAt": export_start.isoformat(),
                                "endAt": export_end.isoformat()}}
 
@@ -248,7 +251,7 @@ def flatten_activity(row, stream):
     return rtn
 
 
-def sync_leads(client, state, stream):
+def sync_leads(client, state, stream, config):
     # http://developers.marketo.com/rest-api/bulk-extract/bulk-lead-extract/
     replication_key = determine_replication_key(stream["tap_stream_id"])
 
@@ -262,7 +265,7 @@ def sync_leads(client, state, stream):
     record_count = 0
     max_bookmark = initial_bookmark
     while export_start < job_started:
-        export_id, export_end = get_or_create_export_for_leads(client, state, stream, export_start)
+        export_id, export_end = get_or_create_export_for_leads(client, state, stream, export_start, config)
         state = wait_for_export(client, state, stream, export_id)
         for row in stream_rows(client, "leads", export_id):
             time_extracted = utils.now()
@@ -476,7 +479,7 @@ def sync(client, catalog, config, state):
         if stream["tap_stream_id"] == "activity_types":
             state, record_count = sync_activity_types(client, state, stream)
         elif stream["tap_stream_id"] == "leads":
-            state, record_count = sync_leads(client, state, stream)
+            state, record_count = sync_leads(client, state, stream, config)
         elif stream["tap_stream_id"].startswith("activities_"):
             state, record_count = sync_activities(client, state, stream, config)
         elif stream["tap_stream_id"] in ["campaigns", "lists"]:

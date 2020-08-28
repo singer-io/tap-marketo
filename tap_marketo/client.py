@@ -138,8 +138,8 @@ class Client:
             url = self.get_url("identity/oauth/token")
             resp = requests.get(url, params=params)
             resp_time = pendulum.utcnow()
-        except requests.exceptions.ConnectionError:
-            raise ApiException("Connection error while refreshing token at {}.".format(url))
+        except requests.exceptions.ConnectionError as e:
+            raise ApiException("Connection error while refreshing token at {}.".format(url)) from e
 
         if resp.status_code != 200:
             raise ApiException("Error refreshing token [{}]: {}".format(resp.status_code, resp.content))
