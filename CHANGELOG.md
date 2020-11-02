@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.4.0
+  * Adds table-key-properties metadata [#67](https://github.com/singer-io/tap-marketo/pull/67)
+
 ## 2.3.0
   * Enables `leads` stream to work with optional parameter `max_export_days`[#65](https://github.com/singer-io/tap-marketo/pull/65)
 
