@@ -35,7 +35,8 @@ class TestDiscover(unittest.TestCase):
             "key_properties": ["marketoGUID"],
             "metadata" : [
                 {'breadcrumb': (),
-                 'metadata': {'marketo.activity-id': 1,
+                 'metadata': {'table-key-properties': 'marketoGUID',
+                              'marketo.activity-id': 1,
                               'marketo.primary-attribute-name': 'webpage_id'}},
                 {
                     "metadata" : {
@@ -178,8 +179,8 @@ class TestDiscover(unittest.TestCase):
             metadata = result.pop("metadata")
             automatic_count = 0
             for mdata in metadata:
-                if mdata['metadata']['inclusion'] == 'automatic':
+                if mdata.get('metadata', {}).get('inclusion') == 'automatic':
                     automatic_count += 1
             self.assertDictEqual(stream, result)
-            self.assertEqual(2,len(metadata))
+            self.assertEqual(3,len(metadata))
             self.assertEqual(1,automatic_count)
