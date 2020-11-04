@@ -35,7 +35,7 @@ class TestDiscover(unittest.TestCase):
             "key_properties": ["marketoGUID"],
             "metadata" : [
                 {'breadcrumb': (),
-                 'metadata': {'table-key-properties': 'marketoGUID',
+                 'metadata': {'table-key-properties': ['marketoGUID'],
                               'marketo.activity-id': 1,
                               'marketo.primary-attribute-name': 'webpage_id'}},
                 {
