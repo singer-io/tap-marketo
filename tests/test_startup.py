@@ -17,7 +17,7 @@ class TestValidateState(unittest.TestCase):
                     "key_properties": ["marketoGUID"],
                     "metadata" : [
                         {'breadcrumb': [],
-                         'metadata': {'table-key-properties': 'marketoGUID',
+                         'metadata': {'table-key-properties': ['marketoGUID'],
                                       'marketo.activity-id': 1,
                                       'selected' : True,
                                       'marketo.primary-attribute-name': 'webpage_id'}},
@@ -117,7 +117,7 @@ class TestValidateState(unittest.TestCase):
                     "key_properties": ["marketoGUID"],
                     "metadata" : [
                         {'breadcrumb': [],
-                         'metadata': {'table-key-properties': 'id',
+                         'metadata': {'table-key-properties': ['id'],
                                       'marketo.activity-id': 1,
                                       'selected' : False,
                                       'marketo.primary-attribute-name': 'webpage_id'}},

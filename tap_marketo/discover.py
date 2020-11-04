@@ -112,7 +112,7 @@ def get_activity_type_stream(activity):
     tap_stream_id = "activities_{}".format(activity_type_camel)
 
     # The activities steams use "marketoGUID" as the key_properties
-    mdata = metadata.write(mdata, (), 'table-key-properties', 'marketoGUID')
+    mdata = metadata.write(mdata, (), 'table-key-properties', ['marketoGUID'])
 
     return {
         "tap_stream_id": tap_stream_id,
@@ -160,7 +160,7 @@ def discover_leads(client):
         properties[field_name] = field_schema
 
     # The leads steam uses "id" as the key_properties
-    mdata = metadata.write(mdata, (), 'table-key-properties', 'id')
+    mdata = metadata.write(mdata, (), 'table-key-properties', ['id'])
 
     return {
         "tap_stream_id": "leads",
@@ -197,7 +197,7 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
             mdata = metadata.write(mdata, (), 'inclusion', 'automatic')
 
         # The steams using discover_catalog all use "id" as the key_properties
-        mdata = metadata.write(mdata, (), 'table-key-properties', 'id')
+        mdata = metadata.write(mdata, (), 'table-key-properties', ['id'])
 
         discovered_schema["metadata"] = metadata.to_list(mdata)
         return discovered_schema
