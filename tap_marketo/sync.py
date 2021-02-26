@@ -140,7 +140,7 @@ def stream_rows(client, stream_type, export_id):
 
         singer.log_info("Download completed. Begin streaming rows.")
         csv_file.seek(0)
-        reader = csv.reader(csv_file, delimiter=',', quotechar='"')
+        reader = csv.reader((line.replace('\0', '') for line in csv_file), delimiter=',', quotechar='"')
         headers = next(reader)
         for line in reader:
             yield dict(zip(headers, line))
