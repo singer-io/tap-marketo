@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.4.2
+  * Ignore null characters in CSV files [#70](https://github.com/singer-io/tap-marketo/pull/70)
+
 ## 2.4.1
   * table-key-properties metadata should be a list [#68](https://github.com/singer-io/tap-marketo/pull/68)
 
