@@ -127,6 +127,9 @@ def wait_for_export(client, state, stream, export_id):
 
     return state
 
+MEGABYTE_IN_BYTES = 1024 * 1024
+CHUNK_SIZE_MB = 10
+CHUNK_SIZE_BYTES = MEGABYTE_IN_BYTES * CHUNK_SIZE_MB
 
 # This function has an issue with UTF-8 data most likely caused by decode_unicode=True
 # See https://github.com/singer-io/tap-marketo/pull/51/files
@@ -134,7 +137,7 @@ def stream_rows(client, stream_type, export_id):
     with tempfile.NamedTemporaryFile(mode="w+", encoding="utf8") as csv_file:
         singer.log_info("Download starting.")
         resp = client.stream_export(stream_type, export_id)
-        for chunk in resp.iter_content(chunk_size=1024, decode_unicode=True):
+        for chunk in resp.iter_content(chunk_size=CHUNK_SIZE_BYTES, decode_unicode=True):
             if chunk:
                 csv_file.write(chunk)
 
