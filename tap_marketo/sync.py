@@ -139,10 +139,19 @@ def stream_rows(client, stream_type, export_id):
         resp = client.stream_export(stream_type, export_id)
         for chunk in resp.iter_content(chunk_size=CHUNK_SIZE_BYTES, decode_unicode=True):
             if chunk:
-                csv_file.write(chunk)
+                # Encode to utf8 bytes
+                byte_str = chunk.encode('utf-8')
+
+                # Replace CR and CRLF
+                byte_str = byte_str.replace(b'\r', b'')
+                byte_str = byte_str.replace(b'\r\n', b'')
+
+                # write the bytes decoded as a string
+                csv_file.write(byte_str.decode('utf-8'))
 
         singer.log_info("Download completed. Begin streaming rows.")
         csv_file.seek(0)
+
         reader = csv.reader((line.replace('\0', '') for line in csv_file), delimiter=',', quotechar='"')
         headers = next(reader)
         for line in reader:
