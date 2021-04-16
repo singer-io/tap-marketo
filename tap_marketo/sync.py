@@ -139,9 +139,8 @@ def stream_rows(client, stream_type, export_id):
         resp = client.stream_export(stream_type, export_id)
         for chunk in resp.iter_content(chunk_size=CHUNK_SIZE_BYTES, decode_unicode=True):
             if chunk:
-                # Replace CR and CRLF
+                # Replace CR
                 chunk = chunk.replace('\r', '')
-                chunk = chunk.replace('\r\n', '')
                 csv_file.write(chunk)
 
         singer.log_info("Download completed. Begin streaming rows.")
