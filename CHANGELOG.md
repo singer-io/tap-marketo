@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.4.3
+  * Remove CR characters as CSV chunks are being written [#73](https://github.com/singer-io/tap-marketo/pull/73)
+
 ## 2.4.2
   * Ignore null characters in CSV files [#70](https://github.com/singer-io/tap-marketo/pull/70)
 
