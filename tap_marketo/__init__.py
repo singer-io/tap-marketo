@@ -15,6 +15,7 @@ from singer.bookmarks import (
     get_currently_syncing,
     set_currently_syncing,
 )
+from singer.catalog import Catalog
 
 REQUIRED_CONFIG_KEYS = [
     "start_date",
@@ -33,6 +34,9 @@ REQUIRED_CONFIG_KEYS = [
 
 
 def validate_state(config, catalog, state):
+    if isinstance(catalog, Catalog):
+        catalog = catalog.to_dict()
+
     for stream in catalog["streams"]:
         for mdata in stream['metadata']:
             if mdata['breadcrumb'] == [] and mdata['metadata'].get('selected') != True:
