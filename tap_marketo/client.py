@@ -30,6 +30,9 @@ MAX_DAILY_CALLS = int(50000 * 0.8)
 RATE_LIMIT_CALLS = 100
 RATE_LIMIT_SECONDS = 20
 
+# timeout request after 300 seconds
+REQUEST_TIMEOUT = 300
+
 DEFAULT_USER_AGENT = "Singer.io/tap-marketo"
 DOMAIN_RE = r"([\d]{3}-[\w]{3}-[\d]{3})"
 
@@ -80,7 +83,8 @@ class Client:
                  max_daily_calls=MAX_DAILY_CALLS,
                  user_agent=DEFAULT_USER_AGENT,
                  job_timeout=JOB_TIMEOUT,
-                 poll_interval=POLL_INTERVAL, **kwargs):
+                 poll_interval=POLL_INTERVAL,
+                 request_timeout=REQUEST_TIMEOUT, **kwargs):
 
         self.domain = extract_domain(endpoint)
         self.client_id = client_id
@@ -89,6 +93,11 @@ class Client:
         self.user_agent = user_agent
         self.job_timeout = job_timeout
         self.poll_interval = poll_interval
+
+        if request_timeout and float(request_timeout):
+            self.request_timeout = float(request_timeout)
+        else:
+            self.request_timeout = REQUEST_TIMEOUT # If value is 0,"0" or "" then set default to 300 seconds.
 
         self.token_expires = None
         self.access_token = None
@@ -124,6 +133,8 @@ class Client:
         endpoint += "{}.json".format(action)
         return endpoint
 
+    # backoff for Timeout error is already included in "requests.exceptions.RequestException"
+    # as it is a parent class of "Timeout" error
     @singer.utils.backoff((requests.exceptions.RequestException), singer.utils.exception_is_4xx)
     def refresh_token(self):
         # http://developers.marketo.com/rest-api/authentication/#creating_an_access_token
@@ -136,7 +147,7 @@ class Client:
 
         try:
             url = self.get_url("identity/oauth/token")
-            resp = requests.get(url, params=params)
+            resp = requests.get(url, params=params, timeout=self.request_timeout)
             resp_time = pendulum.utcnow()
         except requests.exceptions.ConnectionError as e:
             raise ApiException("Connection error while refreshing token at {}.".format(url)) from e
@@ -158,6 +169,8 @@ class Client:
         self.token_expires = resp_time.add(seconds=data["expires_in"] - 15)
         singer.log_info("Token valid until %s", self.token_expires)
 
+    # backoff for Timeout error is already included in "requests.exceptions.RequestException"
+    # as it is the parent class of "Timeout" error
     @singer.utils.ratelimit(RATE_LIMIT_CALLS, RATE_LIMIT_SECONDS)
     @singer.utils.backoff((requests.exceptions.RequestException), singer.utils.exception_is_4xx)
     def _request(self, method, url, endpoint_name=None, stream=False, **kwargs):
@@ -168,7 +181,7 @@ class Client:
         req = requests.Request(method, url, headers=headers, **kwargs).prepare()
         singer.log_info("%s: %s", method, req.url)
         with singer.metrics.http_request_timer(endpoint_name):
-            resp = self._session.send(req, stream=stream)
+            resp = self._session.send(req, stream=stream, timeout=self.request_timeout)
 
         resp.raise_for_status()
         return resp
