@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.4.4
+  * Implement Request TimeOut [#78](https://github.com/singer-io/tap-marketo/pull/78)
+
 ## 2.4.3
   * Remove CR characters as CSV chunks are being written [#73](https://github.com/singer-io/tap-marketo/pull/73)
 
