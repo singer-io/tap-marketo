@@ -94,10 +94,11 @@ class Client:
         self.job_timeout = job_timeout
         self.poll_interval = poll_interval
 
+        # if request_timeout is other than 0,"0" or "" then use request_timeout
         if request_timeout and float(request_timeout):
             self.request_timeout = float(request_timeout)
-        else:
-            self.request_timeout = REQUEST_TIMEOUT # If value is 0,"0" or "" then set default to 300 seconds.
+        else: # If value is 0,"0" or "" then set default to 300 seconds.
+            self.request_timeout = REQUEST_TIMEOUT
 
         self.token_expires = None
         self.access_token = None
