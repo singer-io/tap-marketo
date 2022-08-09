@@ -8,6 +8,9 @@ from singer import metadata
 from singer import bookmarks
 from singer import utils
 from tap_marketo.client import ExportFailed, ApiQuotaExceeded
+from tap_marketo.streams import STREAMS
+
+LOGGER = singer.get_logger()
 
 # We can request up to 30 days worth of activities per export.
 MAX_EXPORT_DAYS = 30
@@ -239,7 +242,7 @@ def flatten_activity(row, stream):
 
     # Add the primary attribute name
     # This name is the human readable name/description of the
-    # pimaryAttribute
+    # primaryAttribute
     mdata = metadata.to_map(stream['metadata'])
     pan_field = metadata.get(mdata, (), 'marketo.primary-attribute-name')
     if pan_field:
@@ -453,60 +456,62 @@ def sync_activity_types(client, state, stream):
     return state, record_count
 
 
-def sync(client, catalog, config, state):
-    starting_stream = bookmarks.get_currently_syncing(state)
-    if starting_stream:
-        singer.log_info("Resuming sync from %s", starting_stream)
-    else:
-        singer.log_info("Starting sync")
+def get_selected_streams(catalog):
+    '''
+    Gets selected streams. Checks schema's 'selected'
+    first -- and then checks metadata, looking for an empty
+    breadcrumb and metadata with a 'selected' entry
+    '''
+    selected_streams = []
+    for stream in catalog['streams']:
+        stream_metadata = stream['metadata']
+        for entry in stream_metadata:
+            # Stream metadata will have an empty breadcrumb
+            if not entry['breadcrumb'] and entry['metadata'].get('selected',None):
+                selected_streams.append(stream['tap_stream_id'])
 
-    for stream in catalog["streams"]:
-        # Skip unselected streams.
-        mdata = metadata.to_map(stream['metadata'])
+    return selected_streams
 
-        if not metadata.get(mdata, (), 'selected'):
-            singer.log_info("%s: not selected", stream["tap_stream_id"])
-            continue
+def write_schemas(stream_id, catalog, selected_streams):
+    """
+    Write the schemas for the selected parent and its child stream.
+    """
 
-        # Skip streams that have already be synced when resuming.
-        if starting_stream and stream["tap_stream_id"] != starting_stream:
-            singer.log_info("%s: already synced", stream["tap_stream_id"])
-            continue
+    if stream_id in selected_streams:
+        # Get catalog object for particular stream.
+        stream = [cat for cat in catalog['streams'] if cat['tap_stream_id'] == stream_id ][0]
+        singer.write_schema(stream_id, stream['schema'], stream['key_properties'])
 
-        singer.log_info("%s: starting sync", stream["tap_stream_id"])
 
-        # Now that we've started, there's no more "starting stream". Set
-        # the current stream to resume on next run.
-        starting_stream = None
-        state = bookmarks.set_currently_syncing(state, stream["tap_stream_id"])
-        singer.write_state(state)
+def sync(client, config, state, catalog):
+    """
+    sync selected streams.
+    """
 
-        # Sync stream based on type.
-        if stream["tap_stream_id"] == "activity_types":
-            state, record_count = sync_activity_types(client, state, stream)
-        elif stream["tap_stream_id"] == "leads":
-            state, record_count = sync_leads(client, state, stream, config)
-        elif stream["tap_stream_id"].startswith("activities_"):
-            state, record_count = sync_activities(client, state, stream, config)
-        elif stream["tap_stream_id"] in ["campaigns", "lists"]:
-            state, record_count = sync_paginated(client, state, stream)
-        elif stream["tap_stream_id"] == "programs":
-            state, record_count = sync_programs(client, state, stream)
-        else:
-            raise Exception("Stream %s not implemented" % stream["tap_stream_id"])
+    start_date = config['start_date']
 
-        # Emit metric for record count.
-        counter = singer.metrics.record_counter(stream["tap_stream_id"])
-        counter.value = record_count
-        counter._pop()  # pylint: disable=protected-access
+    # Get selected streams, make sure stream dependencies are met
+    selected_stream_ids = get_selected_streams(catalog)
+    LOGGER.info('Sync stream %s', selected_stream_ids)
 
-        # Unset current stream.
-        state = bookmarks.set_currently_syncing(state, None)
-        singer.write_state(state)
-        singer.log_info("%s: finished sync", stream["tap_stream_id"])
+    # state = translate_state(state, catalog, repositories)
+    singer.write_state(state)
 
-    # If Corona is not supported, log a warning near the end of the tap
-    # log with instructions on how to get Corona supported.
-    singer.log_info("Finished sync.")
-    if not client.use_corona:
-        singer.log_warning(NO_CORONA_WARNING)
+    # pylint: disable=too-many-nested-blocks
+    for stream in catalog['streams']:
+        stream_id = stream['tap_stream_id']
+        stream_obj = STREAMS[stream_id]()
+
+        # If it is a "sub_stream", it will be synced as part of parent stream
+        if stream_id in selected_stream_ids:
+            write_schemas(stream_id, catalog, selected_stream_ids)
+
+            state = stream_obj.sync_endpoint(client = client,
+                                            state = state,
+                                            catalog = catalog['streams'],
+                                            start_date = start_date,
+                                            selected_stream_ids = selected_stream_ids
+                                            )
+
+            singer.write_state(state)
+

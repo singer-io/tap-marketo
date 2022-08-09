@@ -4,6 +4,7 @@ import sys
 
 import singer
 from singer import metadata
+from tap_marketo.schema import get_schemas
 
 STRING_TYPES = [
     'string',
@@ -175,41 +176,69 @@ def discover_leads(client):
     }
 
 
-def discover_catalog(name, automatic_inclusion, **kwargs):
-    unsupported = kwargs.get("unsupported", frozenset([]))
-    stream_automatic_inclusion = kwargs.get("stream_automatic_inclusion", False)
-    root = os.path.dirname(os.path.realpath(__file__))
-    path = os.path.join(root, 'schemas/{}.json'.format(name))
-    mdata = metadata.new()
+# def discover_catalog(name, automatic_inclusion, **kwargs):
+#     unsupported = kwargs.get("unsupported", frozenset([]))
+#     stream_automatic_inclusion = kwargs.get("stream_automatic_inclusion", False)
+#     root = os.path.dirname(os.path.realpath(__file__))
+#     path = os.path.join(root, 'schemas/{}.json'.format(name))
+#     mdata = metadata.new()
 
-    with open(path, "r") as f:
-        discovered_schema = json.load(f)
+#     with open(path, "r") as f:
+#         discovered_schema = json.load(f)
 
-        for field in discovered_schema["schema"]["properties"]:
-            if field in automatic_inclusion:
-                mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'automatic')
-            elif field in unsupported:
-                mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'unsupported')
-            else:
-                mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'available')
+#         for field in discovered_schema["schema"]["properties"]:
+#             if field in automatic_inclusion:
+#                 mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'automatic')
+#             elif field in unsupported:
+#                 mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'unsupported')
+#             else:
+#                 mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'available')
 
-        if stream_automatic_inclusion:
-            mdata = metadata.write(mdata, (), 'inclusion', 'automatic')
+#         if stream_automatic_inclusion:
+#             mdata = metadata.write(mdata, (), 'inclusion', 'automatic')
 
-        # The steams using discover_catalog all use "id" as the key_properties
-        mdata = metadata.write(mdata, (), 'table-key-properties', ['id'])
+#         # The steams using discover_catalog all use "id" as the key_properties
+#         mdata = metadata.write(mdata, (), 'table-key-properties', ['id'])
 
-        discovered_schema["metadata"] = metadata.to_list(mdata)
-        return discovered_schema
+#         discovered_schema["metadata"] = metadata.to_list(mdata)
+#         return discovered_schema
+
+# def discover(client):
+#     singer.log_info("Starting discover")
+#     streams = []
+#     # streams.append(discover_leads(client))
+#     streams.append(discover_catalog("activity_types", ACTIVITY_TYPES_AUTOMATIC_INCLUSION, unsupported=ACTIVITY_TYPES_UNSUPPORTED, stream_automatic_inclusion=True))
+#     # streams.extend(discover_activities(client))
+#     streams.append(discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION))
+#     streams.append(discover_catalog("lists", LISTS_AUTOMATIC_INCLUSION))
+#     streams.append(discover_catalog("programs", PROGRAMS_AUTOMATIC_INCLUSION))
+#     json.dump({"streams": streams}, sys.stdout, indent=2)
+#     singer.log_info("Finished discover")
+
 
 def discover(client):
+    """
+    Run the discovery mode, prepare the catalog file and return catalog.
+    """
     singer.log_info("Starting discover")
-    streams = []
-    streams.append(discover_leads(client))
-    streams.append(discover_catalog("activity_types", ACTIVITY_TYPES_AUTOMATIC_INCLUSION, unsupported=ACTIVITY_TYPES_UNSUPPORTED, stream_automatic_inclusion=True))
-    streams.extend(discover_activities(client))
-    streams.append(discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION))
-    streams.append(discover_catalog("lists", LISTS_AUTOMATIC_INCLUSION))
-    streams.append(discover_catalog("programs", PROGRAMS_AUTOMATIC_INCLUSION))
-    json.dump({"streams": streams}, sys.stdout, indent=2)
-    singer.log_info("Finished discover")
+    schemas, field_metadata = get_schemas()
+    catalog = Catalog([])
+
+    for stream_name, schema_dict in schemas.items():
+        try:
+            schema = Schema.from_dict(schema_dict)
+            mdata = field_metadata[stream_name]
+        except Exception as err:
+            LOGGER.error(err)
+            LOGGER.error('stream_name: %s', stream_name)
+            LOGGER.error('type schema_dict: %s', type(schema_dict))
+            raise err
+
+        key_properties = mdata[0]['metadata'].get('table-key-properties')
+        catalog.streams.append(CatalogEntry(
+            stream=stream_name,
+            tap_stream_id=stream_name,
+            key_properties= key_properties,
+            schema=schema,
+            metadata=mdata
+        ))

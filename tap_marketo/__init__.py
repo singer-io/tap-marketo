@@ -2,13 +2,16 @@
 
 # Marketo Docs are located at http://developers.marketo.com/rest-api/
 
+import json
+import sys
 import pendulum
 import singer
 from singer import bookmarks
 
 from tap_marketo.client import Client
-from tap_marketo.discover import discover
-from tap_marketo.sync import sync, determine_replication_key
+from tap_marketo.discover import discover as _discover
+from tap_marketo.sync import sync as _sync
+from tap_marketo.sync import determine_replication_key
 from singer.bookmarks import (
     get_bookmark,
     write_bookmark,
@@ -32,51 +35,34 @@ REQUIRED_CONFIG_KEYS = [
 ]
 
 
-def validate_state(config, catalog, state):
-    for stream in catalog["streams"]:
-        for mdata in stream['metadata']:
-            if mdata['breadcrumb'] == [] and mdata['metadata'].get('selected') != True:
-                # If a stream is deselected while it's the current stream, unset the
-                # current stream.
-                if stream["tap_stream_id"] == get_currently_syncing(state):
-                    set_currently_syncing(state, None)
-                break
-
-        replication_key = determine_replication_key(stream['tap_stream_id'])
-        if not replication_key:
-            continue
-
-        # If there's no bookmark for a stream (new integration, newly selected,
-        # reset, etc) we need to use the default start date from the config.
-        bookmark = get_bookmark(state,
-                                stream["tap_stream_id"],
-                                replication_key)
-        if bookmark is None:
-            state = write_bookmark(state,
-                                   stream["tap_stream_id"],
-                                   replication_key,
-                                   config["start_date"])
-
-    singer.write_state(state)
-    return state
-
-def _main(config, properties, state, discover_mode=False):
-    client = Client(**config)
-    if discover_mode:
-        discover(client)
-    elif properties:
-        state = validate_state(config, properties, state)
-        sync(client, properties, config, state)
+def do_discover(client):
+    """
+    Call the discovery function.
+    """
+    catalog = _discover(client)
+    # Dump catalog
+    json.dump(catalog, sys.stdout, indent=2)
 
 
 def main():
+    """
+    Run discover mode or sync mode.
+    """
     args = singer.utils.parse_args(REQUIRED_CONFIG_KEYS)
 
-    try:
-        _main(args.config, args.properties or args.catalog, args.state, args.discover)
-    except Exception as e:
-        singer.log_critical(e)
-        raise e
+    config = args.config
+
+    client = Client(config)
+
+    state = {}
+    if args.state:
+        state = args.state
+
+    if args.discover:
+        do_discover(client)
+    else:
+        catalog = args.properties if args.properties else _discover(client)
+        _sync(client, config, state, catalog)
 
 
 if __name__ == "__main__":
