@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.5.0
+  * Add campaignId field to activities streams [#82](https://github.com/singer-io/tap-marketo/pull/82)
+
 ## 2.4.4
   * Implement Request TimeOut [#78](https://github.com/singer-io/tap-marketo/pull/78)
 
