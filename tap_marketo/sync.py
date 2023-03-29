@@ -17,6 +17,7 @@ BASE_ACTIVITY_FIELDS = [
     "leadId",
     "activityDate",
     "activityTypeId",
+    "campaignId",
 ]
 
 ACTIVITY_FIELDS = BASE_ACTIVITY_FIELDS + [

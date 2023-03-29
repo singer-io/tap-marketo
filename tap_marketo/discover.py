@@ -57,15 +57,16 @@ def get_schema_for_type(typ, breadcrumb, mdata, null=False):
 
 
 def get_activity_type_stream(activity):
-    # Activity streams have 6 attributes:
+    # Activity streams have 7 attributes:
     # - marketoGUID
     # - leadId
     # - activityDate
     # - activityTypeId
     # - primaryAttribute
     # - attributes
+    # - campaignId
     #
-    # marketoGUID, leadId, activityDate, and activityTypeId are simple
+    # marketoGUID, leadId, activityDate, activityTypeId, and campaignId are simple
     # fields. primaryAttribute has a name and type which define an
     # automatically included field on the record. Attributes is an array
     # of attribute names and types that become available fields.
@@ -79,7 +80,8 @@ def get_activity_type_stream(activity):
         "marketoGUID": {"type": ["null", "string"]},
         "leadId": {"type": ["null", "integer"]},
         "activityDate": {"type": ["null", "string"], "format": "date-time"},
-        "activityTypeId": {"type": ["null", "integer"]}
+        "activityTypeId": {"type": ["null", "integer"]},
+        "campaignId": {"type": ["null", "integer"]},
     }
 
     for prop in properties:
