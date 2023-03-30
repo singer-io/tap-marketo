@@ -64,6 +64,12 @@ class TestDiscover(unittest.TestCase):
                 },
                 {
                     "metadata" : {
+                        "inclusion": "available"
+                    },
+                    "breadcrumb" : ("properties", 'campaignId')
+                },
+                {
+                    "metadata" : {
                         "inclusion": "automatic"
                     },
                     "breadcrumb" : ("properties", 'primary_attribute_name')
@@ -110,6 +116,9 @@ class TestDiscover(unittest.TestCase):
                     "activityTypeId": {
                         "type": ["null", "integer"],
                     },
+                    "campaignId": {
+                        "type": ["null", "integer"],
+                    },
                     "primary_attribute_name": {
                         "type": ["null", "string"],
                     },
@@ -138,7 +147,7 @@ class TestDiscover(unittest.TestCase):
         self.assertDictEqual(stream, result)
         self.assertEqual(sorted(result_metadata, key=lambda x: x['breadcrumb']),
                          sorted(stream_metadata, key=lambda x: x['breadcrumb']))
-        self.assertEqual(10, len(result_metadata))
+        self.assertEqual(11, len(result_metadata))
         self.assertEqual(7,automatic_count)
 
     def test_discover_leads(self):
