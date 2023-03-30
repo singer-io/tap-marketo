@@ -85,7 +85,11 @@ def get_activity_type_stream(activity):
     }
 
     for prop in properties:
-        mdata = metadata.write(mdata, ('properties', prop), 'inclusion', 'automatic')
+        # Not every activity will have an associated campaignId, hence the option to select.
+        if prop == "campaignId":
+            mdata = metadata.write(mdata, ('properties', prop), 'inclusion', 'available')
+        else:
+            mdata = metadata.write(mdata, ('properties', prop), 'inclusion', 'automatic')
 
     if "primaryAttribute" in activity:
         properties["primary_attribute_value"] = {"type": ["null", "string"]}
