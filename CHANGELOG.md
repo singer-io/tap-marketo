@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.5.1
+  * Dependabot update [#83](https://github.com/singer-io/tap-marketo/pull/83)
+
 ## 2.5.0
   * Add campaignId field to activities streams [#82](https://github.com/singer-io/tap-marketo/pull/82)
 
