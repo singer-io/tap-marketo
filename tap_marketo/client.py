@@ -89,7 +89,13 @@ class Client:
         self.domain = extract_domain(endpoint)
         self.client_id = client_id
         self.client_secret = client_secret
-        self.max_daily_calls = int(max_daily_calls or MAX_DAILY_CALLS)
+        try:
+            self.max_daily_calls = int(max_daily_calls or MAX_DAILY_CALLS)
+        except (ValueError, TypeError):
+            # Raises TypeError for None / Null Value
+            # Raises ValueError for "" / bool value
+            self.max_daily_calls = int(MAX_DAILY_CALLS)
+
         self.user_agent = user_agent
         self.job_timeout = job_timeout
         self.poll_interval = poll_interval
