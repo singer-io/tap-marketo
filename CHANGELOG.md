@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.5.1
+  * Fixed Validation Error for `max_daily_calls` [#84](https://github.com/singer-io/tap-marketo/pull/84)
+
 ## 2.5.0
   * Add campaignId field to activities streams [#82](https://github.com/singer-io/tap-marketo/pull/82)
 
