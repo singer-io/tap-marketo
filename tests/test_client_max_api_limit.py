@@ -32,7 +32,7 @@ class TestmaxdailycallsConfig(unittest.TestCase):
 
     def test_maxdailycalls_default_num_val(self):
         """
-            Verify that api_limit is 0 if 0 value is passed
+            Verify that api_limit is default if 0 value is passed
         """
         # Initialize Client object
         client = Client(**{'endpoint': "123-ABC-789",'client_id':'ABC-123','client_secret':'123-QRT',"max_daily_calls":0})
@@ -54,3 +54,39 @@ class TestmaxdailycallsConfig(unittest.TestCase):
         client = Client(**{'endpoint': "123-ABC-789",'client_id':'ABC-123','client_secret':'123-QRT',"max_daily_calls":3})
 
         self.assertEqual(client.max_daily_calls, 3)
+
+    def test_maxdailycalls_failed_comma_val(self):
+        """
+            Verify that exception is raised if invalid input value is passed
+        """
+        params = {'endpoint': "123-ABC-789",'client_id':'ABC-123','client_secret':'123-QRT',"max_daily_calls":"30,000"}
+        # Initialize Client object
+        with self.assertRaises(ValueError):
+            Client(**params)
+
+    def test_maxdailycalls_failed_decimal_val(self):
+        """
+            Verify that api_limit is set appropriately if num value is passed
+        """
+        # Initialize Client object
+        params = {'endpoint': "123-ABC-789",'client_id':'ABC-123','client_secret':'123-QRT',"max_daily_calls":"3700.15"}
+        with self.assertRaises(ValueError):
+            Client(**params)
+
+    def test_maxdailycalls_failed_negative_val(self):
+        """
+            Verify that api_limit is set appropriately if num value is passed
+        """
+        # Initialize Client object
+        params = {'endpoint': "123-ABC-789",'client_id':'ABC-123','client_secret':'123-QRT',"max_daily_calls":"-522"}
+        with self.assertRaises(ValueError):
+            Client(**params)
+
+    def test_maxdailycalls_default_str_zero_val(self):
+        """
+            Verify that api_limit is default if "0" value is passed
+        """
+        # Initialize Client object
+        params = {'endpoint': "123-ABC-789",'client_id':'ABC-123','client_secret':'123-QRT',"max_daily_calls":"0"}
+        with self.assertRaises(ValueError):
+            Client(**params)

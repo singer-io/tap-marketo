@@ -91,11 +91,11 @@ class Client:
         self.client_secret = client_secret
         try:
             self.max_daily_calls = int(max_daily_calls or MAX_DAILY_CALLS)
-        except (ValueError, TypeError):
-            # Raises TypeError for None / Null Value
-            # Raises ValueError for "" / bool value
-            self.max_daily_calls = int(MAX_DAILY_CALLS)
-            singer.log_critical(f"Invalid Value passed for max_daily_calls :{max_daily_calls}, using default value {self.max_daily_calls}")
+            if self.max_daily_calls <= 0:
+                raise ValueError("Limit Cannot be Negative or Zero")
+        except (ValueError, TypeError) as err:
+            singer.log_critical(f"Invalid Value passed for max_daily_calls: {max_daily_calls}")
+            raise err
 
         self.user_agent = user_agent
         self.job_timeout = job_timeout
