@@ -1,21 +1,20 @@
 import unittest
-from datetime import datetime,timedelta
 from tap_marketo.client import Client, MAX_DAILY_CALLS
 
-class TestDateWindowConfig(unittest.TestCase):
+class TestmaxdailycallsConfig(unittest.TestCase):
     
-    def test_datewindow_disabled_no_val(self):
+    def test_maxdailycalls_default_no_val(self):
         """
-            Verify that daily_calls_limit is default if no value is passed
+            Verify that max_daily_calls is default if no value is passed
         """
         # Initialize Client object
         client = Client(**{'endpoint': "123-ABC-789",'client_id':'ABC-123','client_secret':'123-QRT'})
         
         self.assertEqual(client.max_daily_calls, MAX_DAILY_CALLS)
     
-    def test_datewindow_disabled_empty_str(self):
+    def test_maxdailycalls_default_empty_str(self):
         """
-            Verify that daily_calls_limit is default if empty string value is passed
+            Verify that max_daily_calls is default if empty string value is passed
             Verify no Exception is raised for typecasting error between str to num
         """
         # Initialize Client object
@@ -23,15 +22,15 @@ class TestDateWindowConfig(unittest.TestCase):
         
         self.assertEqual(client.max_daily_calls, MAX_DAILY_CALLS)
 
-    def test_datewindow_disabled_bool_val(self):
+    def test_maxdailycalls_default_bool_val(self):
         """
-            Verify that daily_calls_limit is default if bool value is passed
+            Verify that max_daily_calls is default if bool value is passed
         """
         # Initialize Client object
         client = Client(**{'endpoint': "123-ABC-789",'client_id':'ABC-123','client_secret':'123-QRT','max_daily_calls':False})
         self.assertEqual(client.max_daily_calls ,MAX_DAILY_CALLS)
 
-    def test_datewindow_disabled_num_val(self):
+    def test_maxdailycalls_default_num_val(self):
         """
             Verify that api_limit is 0 if 0 value is passed
         """
@@ -39,7 +38,7 @@ class TestDateWindowConfig(unittest.TestCase):
         client = Client(**{'endpoint': "123-ABC-789",'client_id':'ABC-123','client_secret':'123-QRT',"max_daily_calls":0})
         self.assertEqual(client.max_daily_calls, MAX_DAILY_CALLS)
 
-    def test_datewindow_disabled_none_val(self):
+    def test_maxdailycalls_default_none_val(self):
         """
             Verify that api_limit is default if None value is passed
         """
@@ -47,7 +46,7 @@ class TestDateWindowConfig(unittest.TestCase):
         client = Client(**{'endpoint': "123-ABC-789",'client_id':'ABC-123','client_secret':'123-QRT',"max_daily_calls":None})
         self.assertEqual(client.max_daily_calls, MAX_DAILY_CALLS)
 
-    def test_datewindow_enabled_num_val(self):
+    def test_maxdailycalls_enabled_num_val(self):
         """
             Verify that api_limit is set appropriately if num value is passed
         """
