@@ -21,7 +21,7 @@ jobs:
           name: 'JSON Validator'
           command: |
             source /usr/local/share/virtualenvs/tap-tester/bin/activate
-            stitch-validate-json ~/.virtualenvs/tap-marketo/lib/python3.5/site-packages/tap_marketo/schemas/*.json
+            stitch-validate-json tap_marketo/schemas/*.json
       - run:
           name: 'Unit Tests'
           command: |
