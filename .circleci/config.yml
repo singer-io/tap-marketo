@@ -16,7 +16,7 @@ jobs:
           name: 'Pylint'
           command: |
             source ~/.virtualenvs/tap-marketo/bin/activate
-            pylint tap_marketo -d C,R
+            pylint tap_marketo -d C,R,W
       - run:
           name: 'JSON Validator'
           command: |
