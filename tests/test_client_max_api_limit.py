@@ -22,7 +22,7 @@ class TestmaxdailycallsConfig(unittest.TestCase):
         
         self.assertEqual(client.max_daily_calls, MAX_DAILY_CALLS)
 
-    def test_maxdailycalls_default_bool_val(self):
+    def test_maxdailycalls_default_bool_false_val(self):
         """
             Verify that max_daily_calls is default if bool value is passed
         """
@@ -40,7 +40,7 @@ class TestmaxdailycallsConfig(unittest.TestCase):
             try:
                 Client(**params)
             except Exception as err:
-                self.assertEqual(err.__str__(),"Limit Cannot be Negative or Zero")
+                self.assertEqual(str(err),"Limit Cannot be Negative or Zero")
                 raise err
 
     def test_maxdailycalls_default_zero_val(self):
@@ -96,7 +96,7 @@ class TestmaxdailycallsConfig(unittest.TestCase):
             try:
                 Client(**params)
             except Exception as err:
-                self.assertEqual(err.__str__(),"Limit Cannot be Negative or Zero")
+                self.assertEqual(str(err),"Limit Cannot be Negative or Zero")
                 raise err
 
     def test_maxdailycalls_default_str_zero_val(self):
@@ -109,5 +109,5 @@ class TestmaxdailycallsConfig(unittest.TestCase):
             try:
                 Client(**params)
             except Exception as err:
-                self.assertEqual(err.__str__(),"Limit Cannot be Negative or Zero")
+                self.assertEqual(str(err),"Limit Cannot be Negative or Zero")
                 raise err
