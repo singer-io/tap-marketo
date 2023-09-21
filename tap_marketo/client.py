@@ -26,7 +26,7 @@ SHORT_TERM_QUOTA_EXCEEDED_MESSAGE = "Marketo API returned error(s): {}. This is 
 # Marketo limits REST requests to 50000 per day with a rate limit of 100
 # calls per 20 seconds.
 # http://developers.marketo.com/rest-api/
-MAX_DAILY_CALLS = int(50000 * 0.8)
+MAX_DAILY_CALLS = 50000 * 0.8
 RATE_LIMIT_CALLS = 100
 RATE_LIMIT_SECONDS = 20
 
@@ -80,7 +80,7 @@ def raise_for_rate_limit(data):
 class Client:
     # pylint: disable=unused-argument
     def __init__(self, endpoint, client_id, client_secret,
-                 max_daily_calls=MAX_DAILY_CALLS,
+                 max_daily_calls=None,
                  user_agent=DEFAULT_USER_AGENT,
                  job_timeout=JOB_TIMEOUT,
                  poll_interval=POLL_INTERVAL,
@@ -89,7 +89,14 @@ class Client:
         self.domain = extract_domain(endpoint)
         self.client_id = client_id
         self.client_secret = client_secret
-        self.max_daily_calls = int(max_daily_calls)
+        try:
+            self.max_daily_calls = int(max_daily_calls or MAX_DAILY_CALLS)
+            if self.max_daily_calls <= 1:
+                raise ValueError("Limit Cannot be Negative or Zero")
+        except (ValueError, TypeError) as err:
+            singer.log_critical(f"Invalid Value passed for max_daily_calls: {max_daily_calls}")
+            raise err
+
         self.user_agent = user_agent
         self.job_timeout = job_timeout
         self.poll_interval = poll_interval
