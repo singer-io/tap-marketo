@@ -94,7 +94,7 @@ class Client:
             if self.max_daily_calls <= 1:
                 raise ValueError("Limit Cannot be Negative or Zero")
         except (ValueError, TypeError) as err:
-            singer.log_critical(f"Invalid Value passed for max_daily_calls: {max_daily_calls}")
+            singer.log_critical("Invalid Value passed for max_daily_calls: %s", max_daily_calls)
             raise err
 
         self.user_agent = user_agent
