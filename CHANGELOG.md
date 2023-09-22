@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.5.2
+  * Fixed singer logging error in V2.5.1 [#86](https://github.com/singer-io/tap-marketo/pull/86)
+
 ## 2.5.1
   * Fixed Validation Error for `max_daily_calls` [#84](https://github.com/singer-io/tap-marketo/pull/84)
 
