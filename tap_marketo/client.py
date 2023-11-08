@@ -5,7 +5,7 @@ import backoff
 import pendulum
 import requests
 import singer
-
+import json
 
 # By default, jobs will run for 3 hours and be polled every 5 minutes.
 JOB_TIMEOUT = 60 * 180
@@ -244,7 +244,7 @@ class Client:
 
         endpoint = self.get_bulk_endpoint(stream_type, "create")
         endpoint_name = "{}_create".format(stream_type)
-        singer.log_info('Scheduling export job with query %s', query)
+        singer.log_info('Scheduling export job for %s with query %s', stream_type, json.dumps(query))
         data = self.request("POST", endpoint, endpoint_name=endpoint_name, json=payload)
         return data["result"][0]["exportId"]
 
@@ -313,7 +313,24 @@ class Client:
         # exceeds the job timeout time.
         timeout_time = pendulum.utcnow().add(seconds=self.job_timeout)
         while pendulum.utcnow() < timeout_time:
-            status = self.poll_export(stream_type, export_id)
+            export_status = self.get_export_status(stream_type, export_id)["result"][0]
+            status = export_status["status"]
+
+            if status == "Completed":
+                size_mb = export_status["fileSize"] / (1024 * 1024)
+                rows = export_status["numberOfRecords"]
+                wait_sec = pendulum.parse(export_status["startedAt"]) - pendulum.parse(export_status["queuedAt"])
+                prep_sec = pendulum.parse(export_status["finishedAt"]) - pendulum.parse(export_status["startedAt"])
+                summary = {
+                    "file_size": "{size_mb:.2f} MB".format(size_mb=size_mb),
+                    "num_records": rows, 
+                    "export_prep_time_sec": round(prep_sec.total_seconds()),
+                    "export_wait_time_sec": round(wait_sec.total_seconds())
+                    }
+                msg = 'export %s status is %s with statistics %s'
+                singer.log_info(msg, export_id, status, json.dumps(summary))
+                return True
+            
             singer.log_info("export %s status is %s", export_id, status)
 
             if status == "Created":
@@ -324,9 +341,6 @@ class Client:
             elif status in ["Cancelled", "Failed"]:
                 # Cancelled and failed exports fail the current sync.
                 raise ExportFailed(status)
-
-            elif status == "Completed":
-                return True
 
             time.sleep(self.poll_interval)
 
