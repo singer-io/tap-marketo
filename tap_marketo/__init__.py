@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 # Marketo Docs are located at http://developers.marketo.com/rest-api/
+import itertools
+import re
 
 import pendulum
 import singer
@@ -32,6 +34,42 @@ REQUIRED_CONFIG_KEYS = [
 ]
 
 
+ATTRIBUTION_WINDOW_README = """
+`attribution_window` may be specified by a combination of days, hours and minutes. This parameter is 
+quite useful in a moderate frequency incremental bulk extracts (e.g. once an hour)
+to allow users a way to avoid extracting all leads updated 1 day prior (i.e. default attribution window)
+examples of valid attribution_windows: 1d, 12h, 1h30m, 1d6h55m
+"""
+ATTRIBUTION_WINDOW_SPEC_RE_ATOMS = [r'\d{1,2}d', r'\d{1,2}h', r'\d{1,2}m']
+ATTRIBUTION_WINDOW_ALLOWED_RE = [
+    re.compile(''.join(x))
+    for i in range(1, 4)
+    for x in itertools.combinations(ATTRIBUTION_WINDOW_SPEC_RE_ATOMS, i)
+    ]
+
+
+def parse_attribution_window(attribution_window_string):
+    f"""
+    Parse optional config parameter `attribution_window`.
+
+    Attribution window is used to set an earlier export_start
+    for incremental replication of of the leads stream.
+    
+    {ATTRIBUTION_WINDOW_README}
+    """
+    aw = attribution_window_string.lower().strip()
+    if not any(p.match(aw) for p in ATTRIBUTION_WINDOW_ALLOWED_RE):
+        raise ValueError(
+            f"Invalid attribution window string: {attribution_window_string}."
+            f"{ATTRIBUTION_WINDOW_README}"
+            )
+    window_code_name_map = {'d': 'days', 'h': 'hours', 'm': 'minutes'}
+    return {
+        window_code_name_map[y]: int(x)
+        for x, y in re.findall(r'(\d{1,2})([dhm])', aw)
+        }
+
+
 def validate_state(config, catalog, state):
     for stream in catalog["streams"]:
         for mdata in stream['metadata']:
@@ -61,6 +99,9 @@ def validate_state(config, catalog, state):
     return state
 
 def _main(config, properties, state, discover_mode=False):
+    if 'attribution_window' in config:
+        config['attribution_window'] = parse_attribution_window(config['attribution_window'])
+
     client = Client(**config)
     if discover_mode:
         discover(client)
