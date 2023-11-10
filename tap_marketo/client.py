@@ -298,10 +298,6 @@ class Client:
         endpoint_name = "{}_poll".format(stream_type)
         return self.request("GET", endpoint, endpoint_name=endpoint_name)
 
-    def poll_export(self, stream_type, export_id):
-        # http://developers.marketo.com/rest-api/bulk-extract/#polling_job_status
-        return self.get_export_status(stream_type, export_id)["result"][0]["status"]
-
     def stream_export(self, stream_type, export_id):
         # http://developers.marketo.com/rest-api/bulk-extract/#retrieving_your_data
         endpoint = self.get_bulk_endpoint(stream_type, "file", export_id)
