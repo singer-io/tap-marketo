@@ -91,17 +91,17 @@ class TestMarketoExport(unittest.TestCase):
                 }
             },
             "metadata": [
-                {"breadcrumb": ["leads", "id"], "metadata": {"inclusion": "automatic"}},
-                {"breadcrumb": ["leads", "email"], "metadata": {"selected": False}},
-                {"breadcrumb": ["leads", "firstName"], "metadata": {"selected": True}},
-                {"breadcrumb": ["leads", "lastName"], "metadata": {"selected": True}},
-                {"breadcrumb": ["leads", "title"], "metadata": {"selected": True}},
-                {"breadcrumb": ["leads", "company"], "metadata": {"selected": True}},
-                {"breadcrumb": ["leads", "probConvert"], "metadata": {"selected": True}},
-                {"breadcrumb": ["leads", "createdAt"], "metadata": {"inclusion": "automatic"}},
-                {"breadcrumb": ["leads", "updatedAt"], "metadata": {"inclusion": "automatic"}},
-                {"breadcrumb": ["leads", "updatedAt"], "metadata": {"selected": False}},
-                {"breadcrumb": ["leads", "hasSignedUp"], "metadata": {"selected": "True"}}
+                {"breadcrumb": ["properties", "id"], "metadata": {"inclusion": "automatic"}},
+                {"breadcrumb": ["properties", "email"], "metadata": {"selected": False}},
+                {"breadcrumb": ["properties", "firstName"], "metadata": {"selected": True}},
+                {"breadcrumb": ["properties", "lastName"], "metadata": {"selected": True}},
+                {"breadcrumb": ["properties", "title"], "metadata": {"selected": True}},
+                {"breadcrumb": ["properties", "company"], "metadata": {"selected": True}},
+                {"breadcrumb": ["properties", "probConvert"], "metadata": {"selected": True}},
+                {"breadcrumb": ["properties", "createdAt"], "metadata": {"inclusion": "automatic"}},
+                {"breadcrumb": ["properties", "updatedAt"], "metadata": {"inclusion": "automatic"}},
+                {"breadcrumb": ["properties", "updatedAt"], "metadata": {"selected": False}},
+                {"breadcrumb": ["properties", "hasSignedUp"], "metadata": {"selected": "True"}}
             ],
             "key_properties": ["id"],
         }

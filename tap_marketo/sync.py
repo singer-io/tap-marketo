@@ -75,7 +75,7 @@ def format_value(value, schema):
         integer
         float
         boolean
-        string 
+        string
         compoud data structure, dict / list: default last option
     """
     if value is None:
@@ -87,7 +87,7 @@ def format_value(value, schema):
         if "boolean" in field_type:
             return value.lower() == "true"
         if "integer" in field_type:
-            return int(float(value))
+            return int(float(value)) 
         if schema.get("format") == "date-time":
             return pendulum.parse(value).isoformat()
         if "string" in field_type:
