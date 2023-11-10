@@ -14,8 +14,195 @@ from tap_marketo.discover import (discover_catalog,
 from tap_marketo.sync import *
 
 
+SAMPLE_LEADS_CSV = """
+"""
+
 def parse_params(request):
     return dict(urllib.parse.parse_qsl(request.query))
+
+
+def fake_stream_rows(client, stream_id, export_id):
+    for i in range(1000):
+        yield {
+            "id": str(i),
+            "email": "test@email.com",
+            "firstName": "John",
+            "lastName": "Doe",
+            "title": "Corpse",
+            "company": "Morgue",
+            "probConvert": "54",
+            "createdAt": "2020-02-02T00:00:00Z",
+            "updatedAt": "2021-02-02T00:00:00Z",
+            "signedUpAt": "2020-12-02T00:00:00Z",
+            "hasSignedUp": "TRUE"
+        }
+
+
+def fake_get_or_create_export_for_leads(
+        client,
+        state,
+        stream,
+        export_start,
+        config
+    ): 
+    return (
+        'xxx',
+        min(export_start.add(days=30),
+            pendulum.utcnow()
+        ).replace(microsecond=0)
+    )
+
+
+class TestMarketoExport(unittest.TestCase):
+    def setUp(self):
+        self.client = Client("123-ABC-789", "id", "secret")
+        self.client._use_corona = True
+        self.sample_leads_csv = SAMPLE_LEADS_CSV
+        self.mock_status_completed = {
+            "result": [
+                {
+                    "exportId": "123",
+                    "status": "Completed",
+                    "createdAt": "2017-01-21T11:47:30-08:00",
+                    "queuedAt": "2017-01-21T11:48:30-08:00",
+                    "startedAt": "2017-01-21T11:51:30-08:00",
+                    "finishedAt": "2017-01-21T12:59:30-08:00",
+                    "format": "CSV",
+                    "numberOfRecords": 3,
+                    "fileSize": 123424,
+                }
+            ]
+            }
+        self.stream_leads = {
+            "tap_stream_id": "leads",
+            "schema": {
+                "properties": {
+                    "id": {"type": "integer"},
+                    "email": {"type": ["null", "string"]},
+                    "firstName": {"type": ["null", "string"]},
+                    "lastName": {"type": ["null", "string"]},
+                    "title": {"type": ["null", "string"]},
+                    "company": {"type": ["null", "string"]},
+                    "probConvert": {"type": ["null", "integer"]},
+                    "createdAt": {"type": ["null", "string"], "format": "date-time"},
+                    "updatedAt": {"type": ["null", "string"], "format": "date-time"},
+                    "signedUpAt": {"type": ["null", "string"], "format": "date-time"},
+                    "hasSignedUp": {"type": "boolean"}
+                }
+            },
+            "metadata": [
+                {"breadcrumb": ["leads", "id"], "metadata": {"inclusion": "automatic"}},
+                {"breadcrumb": ["leads", "email"], "metadata": {"selected": False}},
+                {"breadcrumb": ["leads", "firstName"], "metadata": {"selected": True}},
+                {"breadcrumb": ["leads", "lastName"], "metadata": {"selected": True}},
+                {"breadcrumb": ["leads", "title"], "metadata": {"selected": True}},
+                {"breadcrumb": ["leads", "company"], "metadata": {"selected": True}},
+                {"breadcrumb": ["leads", "probConvert"], "metadata": {"selected": True}},
+                {"breadcrumb": ["leads", "createdAt"], "metadata": {"inclusion": "automatic"}},
+                {"breadcrumb": ["leads", "updatedAt"], "metadata": {"inclusion": "automatic"}},
+                {"breadcrumb": ["leads", "updatedAt"], "metadata": {"selected": False}},
+                {"breadcrumb": ["leads", "hasSignedUp"], "metadata": {"selected": "True"}}
+            ],
+            "key_properties": ["id"],
+        }
+
+    def test_format_value(self):
+        test_cases = [
+            ('', {"type": {"null", "string"}}, None),
+            ('null', {"type": {"null", "string"}}, None),
+            ("True", {"type": {"null", "boolean"}}, True),
+            ("123", {"type": {"null", "string"}}, "123"),
+            ("123.123", {"type": {"null", "integer"}}, 123),
+            ("123", {"type": {"null", "integer"}}, 123),
+            ("12.3", {"type": {"null", "number"}}, 12.3),
+            ("123", {"type": {"null", "number"}}, 123.0)
+        ]
+        for input_value, input_type, expected_output_value in test_cases:
+            self.assertEqual(expected_output_value, format_value(input_value, input_type))
+
+    def test_format_values(self):
+        """Test format_values converts types & filters allowed attributes"""
+        expected = {
+            "id": 1,
+            "firstName": "John",
+            "lastName": "Doe",
+            "title": "Corpse",
+            "company": "Morgue",
+            "probConvert": 54,
+            "createdAt": "2020-02-02T00:00:00+00:00",
+            "updatedAt": "2021-02-02T00:00:00+00:00",
+            "hasSignedUp": True
+        }
+        row = {
+            "id": "1",
+            "email": "test@email.com",
+            "firstName": "John",
+            "lastName": "Doe",
+            "title": "Corpse",
+            "company": "Morgue",
+            "probConvert": "54",
+            "createdAt": "2020-02-02T00:00:00Z",
+            "updatedAt": "2021-02-02T00:00:00Z",
+            "signedUpAt": "2020-12-02T00:00:00Z",
+            "hasSignedUp": "TRUE"
+        }
+        output_schema = get_output_schema(self.stream_leads)
+
+        actual = format_values(output_schema, row)
+        self.assertEqual(expected, actual)
+        
+    def test_get_output_schema(self):
+        """Test get expected schema filters only selected/automatic fields & puts type in a list"""
+        actual = get_output_schema(self.stream_leads)
+        expected = {
+                "id": {"type": ["integer"]},
+                "firstName": {"type": ["null", "string"]},
+                "lastName": {"type": ["null", "string"]},
+                "title": {"type": ["null", "string"]},
+                "company": {"type": ["null", "string"]},
+                "probConvert": {"type": ["null", "integer"]},
+                "createdAt": {"type": ["null", "string"], "format": "date-time"},
+                "updatedAt": {"type": ["null", "string"], "format": "date-time"},
+                "hasSignedUp": {"type": ["boolean"]}
+            }
+        self.assertEqual(str(actual), str(expected))
+
+    @unittest.mock.patch("singer.bookmarks.get_bookmark")
+    @unittest.mock.patch("tap_marketo.sync.wait_for_export")
+    @unittest.mock.patch("tap_marketo.sync.update_state_with_export_info")
+    @unittest.mock.patch("singer.write_schema")
+    @unittest.mock.patch("singer.write_record")
+    def test_sync_leads_creates_2_export_jobs(
+        self,
+        write_record,
+        write_schema,
+        update_state_with_export_info,
+        wait_for_export,
+        get_bookmark
+        ):
+        """Test sync leads creates only 2 jobs / extracts 2000 rows"""
+
+        get_bookmark.side_effect = [
+            pendulum.now('UTC').subtract(days=40).isoformat(),
+            pendulum.now('UTC').subtract(days=40).isoformat()
+        ]
+
+        state = "foobar"
+        config = {}
+        with unittest.mock.patch(
+            'tap_marketo.sync.get_or_create_export_for_leads',
+            wraps=fake_get_or_create_export_for_leads
+        ), unittest.mock.patch(
+            'tap_marketo.sync.stream_rows',
+            wraps=fake_stream_rows
+        ):
+            state, record_count = sync_leads(
+                self.client,
+                state,
+                self.stream_leads,
+                config
+            )
+            self.assertEqual(record_count, 2000)
 
 
 class MockResponse:
