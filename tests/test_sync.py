@@ -44,12 +44,11 @@ def fake_get_or_create_export_for_leads(
         stream,
         export_start,
         config
-    ): 
+    ):
     return (
         'xxx',
         min(export_start.add(days=30),
-            pendulum.utcnow()
-        ).replace(microsecond=0)
+            pendulum.utcnow()).replace(microsecond=0)
     )
 
 
@@ -108,14 +107,14 @@ class TestMarketoExport(unittest.TestCase):
 
     def test_format_value(self):
         test_cases = [
-            ('', {"type": {"null", "string"}}, None),
-            ('null', {"type": {"null", "string"}}, None),
-            ("True", {"type": {"null", "boolean"}}, True),
-            ("123", {"type": {"null", "string"}}, "123"),
-            ("123.123", {"type": {"null", "integer"}}, 123),
-            ("123", {"type": {"null", "integer"}}, 123),
-            ("12.3", {"type": {"null", "number"}}, 12.3),
-            ("123", {"type": {"null", "number"}}, 123.0)
+            ('', "string", None),
+            ('null', "string", None),
+            ("True", "boolean", True),
+            ("123", "string", "123"),
+            ("123.123", "integer", 123),
+            ("123", "integer", 123),
+            ("12.3", "number", 12.3),
+            ("123", "number", 123.0)
         ]
         for input_value, input_type, expected_output_value in test_cases:
             self.assertEqual(expected_output_value, format_value(input_value, input_type))
@@ -146,24 +145,24 @@ class TestMarketoExport(unittest.TestCase):
             "signedUpAt": "2020-12-02T00:00:00Z",
             "hasSignedUp": "TRUE"
         }
-        output_schema = get_output_schema(self.stream_leads)
+        output_typemap = get_output_typemap(self.stream_leads)
 
-        actual = format_values(output_schema, row)
+        actual = format_values(output_typemap, row)
         self.assertEqual(expected, actual)
         
-    def test_get_output_schema(self):
+    def test_get_output_typemap(self):
         """Test get expected schema filters only selected/automatic fields & puts type in a list"""
-        actual = get_output_schema(self.stream_leads)
+        actual = get_output_typemap(self.stream_leads)
         expected = {
-                "id": {"type": ["integer"]},
-                "firstName": {"type": ["null", "string"]},
-                "lastName": {"type": ["null", "string"]},
-                "title": {"type": ["null", "string"]},
-                "company": {"type": ["null", "string"]},
-                "probConvert": {"type": ["null", "integer"]},
-                "createdAt": {"type": ["null", "string"], "format": "date-time"},
-                "updatedAt": {"type": ["null", "string"], "format": "date-time"},
-                "hasSignedUp": {"type": ["boolean"]}
+                "id": "integer",
+                "firstName": "string",
+                "lastName": "string",
+                "title": "string",
+                "company": "string",
+                "probConvert": "integer",
+                "createdAt": "date-time",
+                "updatedAt": "date-time",
+                "hasSignedUp": "boolean"
             }
         self.assertEqual(str(actual), str(expected))
 
