@@ -1,9 +1,10 @@
+from datetime import timedelta
 import unittest
 
 import pendulum
 import requests_mock
 
-from tap_marketo import validate_state
+from tap_marketo import validate_state, parse_attribution_window
 from tap_marketo.sync import determine_replication_key
 
 class TestValidateState(unittest.TestCase):
@@ -268,3 +269,29 @@ class TestValidateState(unittest.TestCase):
 
         self.assertDictEqual(validate_state(mock_config, mock_catalog, mock_state_2),
                              expected_state_2)
+
+    def test_parse_attribution_window_parses(self):
+        """Verify attribution window is successfully parsed for valid patterns."""
+        
+        aw1 = '3 day 20:00:00'
+        aw2 = '1 days'
+        aw3 = '10:10:10'
+        res1 = parse_attribution_window(aw1)
+        res2 = parse_attribution_window(aw2)
+        res3 = parse_attribution_window(aw3)
+        assert res1 == timedelta(days=3, hours=20)
+        assert res2 == timedelta(days=1)
+        assert res3 == timedelta(hours=10, minutes=10, seconds=10)
+
+    def test_parse_attribution_window_raises(self):
+        """Verify parse_attribution_window raised ValueError for invalid patterns."""
+
+        aw1 = 'foobar 3 day 20:00:00'
+        aw2 = '3 day 1:00:00'
+        aw3 = '10:00:00 foobar'
+        with self.assertRaises(ValueError):
+            parse_attribution_window(aw1)        
+        with self.assertRaises(ValueError):
+            parse_attribution_window(aw2)
+        with self.assertRaises(ValueError):
+            parse_attribution_window(aw3)

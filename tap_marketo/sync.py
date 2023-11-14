@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import csv
 import json
 import pendulum
@@ -307,8 +309,11 @@ def sync_leads(client, state, stream, config):
     initial_bookmark = pendulum.parse(bookmarks.get_bookmark(state, "leads", replication_key))
     export_start = pendulum.parse(bookmarks.get_bookmark(state, "leads", replication_key))
     if client.use_corona:
-        attribution_window = config.get('attribution_window', {'days': ATTRIBUTION_WINDOW_DAYS})
-        export_start = export_start.subtract(**attribution_window)
+        aw = config.get(
+            'attribution_window',
+            timedelta(days=ATTRIBUTION_WINDOW_DAYS)
+        )
+        export_start = export_start.subtract(days=aw.days, seconds=aw.seconds)
     
     # job_started is truncated to the microsecond 
     # in get_export_end the field export_end is also truncated to the microsecond

@@ -14,9 +14,6 @@ from tap_marketo.discover import (discover_catalog,
 from tap_marketo.sync import *
 
 
-SAMPLE_LEADS_CSV = """
-"""
-
 def parse_params(request):
     return dict(urllib.parse.parse_qsl(request.query))
 
@@ -56,7 +53,6 @@ class TestMarketoExport(unittest.TestCase):
     def setUp(self):
         self.client = Client("123-ABC-789", "id", "secret")
         self.client._use_corona = True
-        self.sample_leads_csv = SAMPLE_LEADS_CSV
         self.mock_status_completed = {
             "result": [
                 {

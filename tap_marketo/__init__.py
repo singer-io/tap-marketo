@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 # Marketo Docs are located at http://developers.marketo.com/rest-api/
+
+from datetime import datetime, timedelta
 import itertools
 import re
 
@@ -35,39 +37,40 @@ REQUIRED_CONFIG_KEYS = [
 
 
 ATTRIBUTION_WINDOW_README = """
-`attribution_window` may be specified by a combination of days, hours and minutes. This parameter is 
+`attribution_window` may be specified by a combination of days, hours and minutes seconds. This parameter is 
 quite useful in a moderate frequency incremental bulk extracts (e.g. once an hour)
 to allow users a way to avoid extracting all leads updated 1 day prior (i.e. default attribution window)
-examples of valid attribution_windows: 1d, 12h, 1h30m, 1d6h55m
+examples of valid attribution_windows: `1 day`, `1 days`, `2 day`, `10 days`, `10:00:00`, `1 day 05:00:00`
 """
-ATTRIBUTION_WINDOW_SPEC_RE_ATOMS = [r'\d{1,2}d', r'\d{1,2}h', r'\d{1,2}m']
-ATTRIBUTION_WINDOW_ALLOWED_RE = [
-    re.compile(''.join(x))
-    for i in range(1, 4)
-    for x in itertools.combinations(ATTRIBUTION_WINDOW_SPEC_RE_ATOMS, i)
-    ]
-
 
 def parse_attribution_window(attribution_window_string):
     f"""
     Parse optional config parameter `attribution_window`.
-
     Attribution window is used to set an earlier export_start
     for incremental replication of of the leads stream.
     
     {ATTRIBUTION_WINDOW_README}
     """
-    aw = attribution_window_string.lower().strip()
-    if not any(p.match(aw) for p in ATTRIBUTION_WINDOW_ALLOWED_RE):
-        raise ValueError(
-            f"Invalid attribution window string: {attribution_window_string}."
-            f"{ATTRIBUTION_WINDOW_README}"
-            )
-    window_code_name_map = {'d': 'days', 'h': 'hours', 'm': 'minutes'}
-    return {
-        window_code_name_map[y]: int(x)
-        for x, y in re.findall(r'(\d{1,2})([dhm])', aw)
-        }
+    errstr = f"`{attribution_window_string}` is not a valid attribution window."
+    pat = '^((?P<day>^\d+)\s+days?)?(\s+)?(?P<time>(\d{2}:\d{2}:\d{2}))?$'
+    match = re.match(pat, attribution_window_string)
+    if not match:
+        raise ValueError(errstr)
+    groups = match.groupdict()
+    delta_day = groups["day"] or '0'
+    delta_time = groups["time"] or '00:00:00'
+    try:
+        parsed_time = datetime.strptime(delta_time, '%H:%M:%S')
+        return timedelta(
+            days=int(delta_day) if delta_day else 0,
+            hours=parsed_time.hour,
+            minutes=parsed_time.minute,
+            seconds=parsed_time.second
+        )
+    except ValueError as e:
+        raise ValueError(errstr)
+    
+
 
 
 def validate_state(config, catalog, state):
