@@ -52,10 +52,10 @@ This tap:
 
     `attribution_window` may be specified by a combination of days, hours and minutes. this parameter is quite useful in a moderate frequency incremental bulk extracts (e.g. once an hour) to allow users a way to avoid extracting all leads updated 1 day prior (i.e. default attribution window)
     examples of valid attribution_windows:
-      * 1d
-      * 12h
-      * 1h30m
-      * 1d6h55m
+      * 1 day
+      * 12:00:00
+      * 01:30:00
+      * 1 day 06:55:00
 
     attribution_window defaults to 1 Day if not specified.
     ```json
@@ -95,7 +95,7 @@ This tap:
 | start_date | the earliest date to use as filter for the replication key during the initial sync or a full refresh | 2020-01-01T00:00:00Z | required |
 | client_id | The client id used to authenticate with the marketo rest api, generated through their web UI by your marketo admin (random dash separated alpha-numeric string) | a134dakfj-kldjk-39487fh3-ad834bi30 (note: actual length may differ) | required |
 | client_secret | The client secret used to authenticate with the marketo rest api generated through their web UI by your marketo admin (random alpha-numeric string) | akdj498abalj314klja934 (note: actual length may differ) | required |
-| attribution_window | a string specifying a duration of time (combination of days, hours & minutes) to subtract from the latest `updatedAt` value for the leads stream stored in the state | 1d, 10h, 1d1h, 1d1h30m, 20m | optional |
+| attribution_window | a string specifying a duration of time (combination of days, hours & minutes) to subtract from the latest `updatedAt` value for the leads stream stored in the state | 1 day, 12:00:00, 01:30:00, 1 day 06:55:00, 00:20:00 | optional |
 ---
 
 Copyright &copy; 2017 Stitch
