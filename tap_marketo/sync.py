@@ -3,6 +3,7 @@ import json
 import pendulum
 import tempfile
 
+import os
 import singer
 from singer import metadata
 from singer import bookmarks
@@ -135,17 +136,31 @@ MEGABYTE_IN_BYTES = 1024 * 1024
 CHUNK_SIZE_MB = 10
 CHUNK_SIZE_BYTES = MEGABYTE_IN_BYTES * CHUNK_SIZE_MB
 
+def generate_chunk_params(bytes_downloaded, total_bytes):
+    chunk_params = []
+    start_offset = int(bytes_downloaded + 1)
+    end_offset = bytes_downloaded
+
+    while end_offset < total_bytes:
+        start_offset = int(end_offset + 1)
+        end_offset = int(min(start_offset + CHUNK_SIZE_BYTES - 1, total_bytes))
+        chunk_params.append({"Range":f"bytes={start_offset}-{end_offset}"})
+
+    return chunk_params
+
 # This function has an issue with UTF-8 data most likely caused by decode_unicode=True
 # See https://github.com/singer-io/tap-marketo/pull/51/files
 def stream_rows(client, stream_type, export_id):
     with tempfile.NamedTemporaryFile(mode="w+", encoding="utf8") as csv_file:
         singer.log_info("Download starting.")
-        resp = client.stream_export(stream_type, export_id)
-        for chunk in resp.iter_content(chunk_size=CHUNK_SIZE_BYTES, decode_unicode=True):
-            if chunk:
-                # Replace CR
-                chunk = chunk.replace('\r', '')
-                csv_file.write(chunk)
+        bytes_downloaded = -1
+        total_bytes = client.get_export_status(stream_type, export_id)["result"][0]["fileSize"]
+
+        chunk_params = generate_chunk_params(bytes_downloaded, total_bytes)
+        for chunk in chunk_params:
+            endpoint = client.get_bulk_endpoint(stream_type, "file", export_id)
+            resp = client.request("GET", endpoint, endpoint_name=f"{endpoint}+{chunk}", stream=True, headers=chunk)
+            csv_file.write(resp.text)
 
         singer.log_info("Download completed. Begin streaming rows.")
         csv_file.seek(0)
