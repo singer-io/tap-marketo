@@ -7,7 +7,10 @@ import singer
 from singer import metadata
 from singer import bookmarks
 from singer import utils
+from singer import logger
 from tap_marketo.client import ExportFailed, ApiQuotaExceeded
+
+LOGGER = singer.get_logger()
 
 # We can request up to 30 days worth of activities per export.
 MAX_EXPORT_DAYS = 30
@@ -278,7 +281,13 @@ def sync_leads(client, state, stream, config):
             time_extracted = utils.now()
 
             record = format_values(stream, row)
-            record_bookmark = pendulum.parse(record[replication_key])
+
+            if record.get(replication_key):
+                record_bookmark = pendulum.parse(record[replication_key])
+            else:
+                primary_key = stream["key_properties"][0]
+                LOGGER.fatal("Found record %s with null %s value", record[primary_key], replication_key)
+                raise ValueError(f"Retrieval of export_id {export_id} failed: Found record {record[primary_key]} with null {replication_key} value")
 
             if client.use_corona:
                 max_bookmark = export_end
