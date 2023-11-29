@@ -144,7 +144,7 @@ def generate_chunk_params(bytes_downloaded, total_bytes):
     while end_offset < total_bytes:
         start_offset = int(end_offset + 1)
         end_offset = int(min(start_offset + CHUNK_SIZE_BYTES - 1, total_bytes))
-        chunk_params.append({"Range":f"bytes={start_offset}-{end_offset}"})
+        chunk_params.append({"Range":"bytes={}-{}".format(start_offset, end_offset)})
 
     return chunk_params
 
@@ -159,7 +159,7 @@ def stream_rows(client, stream_type, export_id):
         chunk_params = generate_chunk_params(bytes_downloaded, total_bytes)
         for chunk in chunk_params:
             endpoint = client.get_bulk_endpoint(stream_type, "file", export_id)
-            resp = client.request("GET", endpoint, endpoint_name=f"{endpoint}+{chunk}", stream=True, headers=chunk)
+            resp = client.request("GET", endpoint, endpoint_name="{}+{}".format(endpoint, chunk), stream=True, headers=chunk)
             csv_file.write(resp.text)
 
         singer.log_info("Download completed. Begin streaming rows.")
@@ -302,7 +302,7 @@ def sync_leads(client, state, stream, config):
             else:
                 primary_key = stream["key_properties"][0]
                 LOGGER.fatal("Found record %s with null %s value", record[primary_key], replication_key)
-                raise ValueError(f"Retrieval of export_id {export_id} failed: Found record {record[primary_key]} with null {replication_key} value")
+                raise ValueError("Retrieval of export_id {} failed: Found record {} with null {} value".format(export_id, record[primary_key], replication_key))
 
             if client.use_corona:
                 max_bookmark = export_end
