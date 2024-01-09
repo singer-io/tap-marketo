@@ -1,0 +1,2170 @@
+{
+    "tap_stream_id": "leads",
+    "stream": "leads",
+    "key_properties": [
+        "id"
+    ],
+    "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "company": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "billingStreet": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "billingCity": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "billingState": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "billingCountry": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "website": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "mainPhone": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "numberOfEmployees": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "industry": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "sicCode": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "sfdcAccountId": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "externalCompanyId": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "id": {
+                "type": "integer"
+            },
+            "mktoName": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "isLead": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "mktoIsCustomer": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "isAnonymous": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "firstName": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "lastName": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "email": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "phone": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "mobilePhone": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "title": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "contactCompany": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "address": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "city": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "state": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "country": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "postalCode": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "originalSourceType": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "originalSourceInfo": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "originalReferrer": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "emailInvalid": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "emailInvalidCause": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "unsubscribed": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "doNotCall": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "mktoDoNotCallCause": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "doNotCallReason": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "marketingSuspended": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "marketingSuspendedCause": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "blackListed": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "blackListedCause": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "mktoPersonNotes": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "sfdcType": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "sfdcContactId": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "anonymousIP": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "inferredCompany": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "inferredCountry": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "inferredCity": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "inferredStateRegion": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "emailSuspended": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "emailSuspendedCause": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "emailSuspendedAt": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "sfdcId": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "createdAt": {
+                "type": "string",
+                "format": "date-time"
+            },
+            "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+            },
+            "cookies": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "externalSalesPersonId": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "leadRole": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "leadSource": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "leadStatus": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "leadScore": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "urgency": {
+                "type": [
+                    "number",
+                    "null"
+                ]
+            },
+            "sfdcLeadId": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "sfdcLeadOwnerId": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "leadPartitionId": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "acquisitionProgramId": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "mktoAcquisitionDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "sGCompany": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "sGMonthlyEmailVolume": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "snowflakeCompoundKey": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "sGBlogSubscription": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "sGUnsubscribe90DayPause": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "formComments": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "RecordTypeId": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "StateCode": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "CountryCode": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Address_lead": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "EmailBouncedReason": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "EmailBouncedDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "Last_Digital_Activity_Date__c": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "Last_Digital_Activity_Type__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Email_Domain__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Last_Email_Activity__c": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "Do_Not_Sync_with_Eloqua__c": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "Is_Freemail__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "UTM_Term_OG__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Company_Phone__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Twilio_Persona__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "SFDC_Domain_Search__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Job_Role2__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Inferred_Company_Name__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "UTM_Campaign_OG__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "UTM_Content_OG__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "UTM_Medium_OG__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "UTM_Source_OG__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Preferred_Email__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Account_Type__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "SFDC_Original_Lead_Source__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Last_Lead_Source__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Lead_18_ID__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "ISO_Country_Code__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Preferred_Language__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Actively_being_sequenced__c": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "Account_ID__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "zisf__ZoomInfo_Industry__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Email_Specialist__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Lead_Score__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "RecordTypeId_account": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "BillingCountryCode": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "BillingAddress": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "ShippingStateCode": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "ShippingCountryCode": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "ShippingAddress": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "IsPartner": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "SicDesc": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "SFDC_Country__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "SFDC_State__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "SFDC_ZipCode__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Account_Owner_ID__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Number_of_Open_Opportunities__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "Region__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Employee_Size__c_account": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Account_18_ID__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "SendGrid_Specialist__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Number_of_Contacts__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "Sub_Industry__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Account_Owner_Full_Name__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "FY_16_Role_Team__c_account": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Number_of_Account_SIDs__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "zisf__ZoomInfo_Industry__c_account": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Account_Owner_Role__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Current_ARR_Based_on_Last_6_Months__c": {
+                "type": [
+                    "number",
+                    "null"
+                ]
+            },
+            "Number_of_Closed_Won_Opportunities__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "MailingStateCode": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "MailingCountryCode": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "MailingAddress": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "IsEmailBounced": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "Inactive__c": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "Contact_Type__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Contact_18_ID__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Contact_Status__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Account_Name__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "FY_17_Key_AE_Contact__c": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "Full_Name__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Account_18_ID__c_contact": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "ZoomInfo_Management_Level__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "ZoomInfo_Job_Function__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "inCoreCountry": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "previousPage": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "assetPage": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "heapID": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "gCLID": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "gCLIDURL": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customField1InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customField2InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customField3InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customField4InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customField5InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customField6InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "uTMCampaignInquiry": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "uTMContentInquiry": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "uTMMediumInquiry": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "uTMSourceInquiry": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "uTMTermInquiry": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "tWUnsubscribeSIGNAL": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "tWUnsubscribeProductandServices": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "tWUnsubscribeOnboardingNurture": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "tWUnsubscribeContent": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "tWUnsubscribeDeveloperDigest": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "tWUnsubscribeEvents": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "tWUnsubscribeTwilioorg": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "customField5shortInquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customFieldshort6InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "clearbitEnrichedAt": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "tWSubscribedtoContent": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "tWSubscribedtoProductandServices": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "tWSubscribedtoTwilioorg": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "tWUnsubscribeResearchDepartment": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "tWUnsubscribeSalesEmail": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "underSendGridPrivacyPolicy": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "underTwilioPrivacyPolicy": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "firstNameCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "lastNameCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "phoneCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "countryCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "stateProvinceCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "cityCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "titleCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "roleCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "fuzzyCB": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "companyCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "sectorCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "industryGroupCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "industryCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "subIndustryCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "fundingRaisedCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "annualRevenueCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customField7InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customField8InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customField9InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customField10InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customField12InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "tWDoubleOptInDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "employeeSizeCB1": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "marketoCookie": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Engagement_Score__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "Lead_Score_sum__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "Created_Date_Time__c": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "technologyUsedCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customField11InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "resultverdictemailvalidation": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "resultscoreemailvalidation": {
+                "type": [
+                    "number",
+                    "null"
+                ]
+            },
+            "resultlocalemailvalidation": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "resulthostemailvalidation": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "resultvalidaddresssyntaxemailvalidation": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "resultsuspecteddisposableemailvalidation": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "resultknownbouncesemailvalidation": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "resultsuspectedbouncesemailvalidation": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "resultmxonrecordemailvalidation": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Industry_Category__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Industry_Sub_Category__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "flexSpend": {
+                "type": [
+                    "number",
+                    "null"
+                ]
+            },
+            "aEName": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "aEEmail": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "flexAccount": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "sFContactID": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "sFLeadID": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "sFAccountSID": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "regionMarketing": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Propensity_Score__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "emailLinkClickSMS": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Parent_18_ID__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customField13InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customField14InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "tWSubscribedtoTwilioorgWePledge": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "reOptInDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "tWSubscribedtoThoughtLeadership": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "customField15InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customFieldLong3InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customField16InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "productInterestLeadForm": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "interestedinSegment": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "ahoyBuildUseCase": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "seniorityCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Seniority_CB__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "sMSOptIn": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "Presumed_Consent__c": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "Presumed_Consent_Date__c": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "mkto_si__HideDate__c": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "mkto_si__MSIContactId__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "mkto_si__Mkto_Lead_Score__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "Employee_Count__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "Personal_Account__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "subRoleCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "technologyCategoryCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Account_Owner_Region__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "companyTypeCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Contact_Source__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "eARR_Trailing_365_Days__c": {
+                "type": [
+                    "number",
+                    "null"
+                ]
+            },
+            "eARR_All_Time_Revenue__c": {
+                "type": [
+                    "number",
+                    "null"
+                ]
+            },
+            "eARR_Previous_Year_Revenue__c": {
+                "type": [
+                    "number",
+                    "null"
+                ]
+            },
+            "marketingEmailOptin": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "email2": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customFieldLong4InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "customFieldLong5InquiryWebhook": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "SMS_Opt_In__c": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "SMS_Opt_Out__c": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "monthlytrafficusers_CB": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "mobilecb": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "alexaRankCB": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "companyMetricsRaisedCB": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "nAICSCodeCB": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "companyTagsCB": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "segmentProgramName": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "segmentProgramStatus": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "cam_account_sid": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "cam_msg_nousage_total_wks": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "cam_msg_prototype_total_wks": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "cam_msg_beta_total_wks": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "cam_msg_production_total_wks": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "cam_msg_current_stage_wks": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "cam_msg_current_stage": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "cam_msg_previous_stage": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "cam_msg_highest_stage": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "cam_voice_nousage_total_wks": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "cam_voice_prototype_total_wks": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "cam_voice_beta_total_wks": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "cam_voice_production_total_wks": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "cam_voice_current_stage_wks": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "cam_voice_current_stage": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "cam_voice_previous_stage": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "cam_voice_highest_stage": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "cam_verify_nousage_total_wks": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "cam_verify_prototype_total_wks": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "cam_verify_beta_total_wks": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "cam_verify_production_total_wks": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "cam_verify_current_stage_wks": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "cam_verify_current_stage": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "cam_verify_previous_stage": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "cam_verify_highest_stage": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "cam_ispartner": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "cam_first_upgrade_date": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "cam_data_load_date": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "Status_Marketing__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Auto_Convert_Complete__c": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "X6sense_Lead_Intent_Score_Core__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "X6sense_Lead_Intent_Score_Flex__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "X6sense_Lead_Profile_Fit_Core__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "X6sense_Lead_Profile_Fit_Flex__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "X6sense_Contact_Intent_Score_Core__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "X6sense_Contact_Intent_Score_Flex__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "X6sense_Contact_Profile_Fit_Core__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "X6sense_Contact_Profile_Fit_Flex__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "X6Sense_Account_Buying_Stage_Core__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "X6Sense_Account_Buying_Stage_Flex__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "X6Sense_Account_Intent_Score_Core__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "X6Sense_Account_Intent_Score_Flex__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "X6Sense_Account_Profile_Fit_Core__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "X6Sense_Account_Profile_Fit_Flex__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "cam_user_sid": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "FSN_TW_UserRole": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "FSN_TW_AccountSID": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "FSN_TW_IsPrimaryAccount": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "FSN_TW_IsSubAccount": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "FSN_TW_UpgradeDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "FSN_TW_AccountStatus": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "FSN_TW_SignUpProductPreference": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "FSN_TW_SignUpUseCase": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "FSN_TW_SignUpBuildResources": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "FSN_TW_SignUpGoal": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "FSN_TW_SignUpStartDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "FSN_TW_SignUpCompleteDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "FSN_TW_SIDBillingCountry": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "FSN_TW_VoiceActiveDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "FSN_TW_VerifyActiveDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "FSN_TW_AuthyActiveDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "FSN_TW_LookupActiveDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "FSN_TW_MSGActiveDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "FSN_TW_WhatsAppActiveDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "FSN_TW_ConversationActiveDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "FSN_TW_WhatsAppSpendLast30": {
+                "type": [
+                    "number",
+                    "null"
+                ]
+            },
+            "FSN_TW_WhatsAppSpendLast60": {
+                "type": [
+                    "number",
+                    "null"
+                ]
+            },
+            "FSN_TW_IsOTPEnabled": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "FSN_TW_IsFraudGuardEnabled": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "FSN_TW_SIDSuspendDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "FSN_TW_SIDDeleteDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "FSN_TW_SIDUnsuspendDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "FSN_TW_LastUpdatedDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "FSN_TW_MSGPotentialRev12Mos": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "FSN_TW_AcctSecPotentialRev12Mos": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "optedOutCPNI": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "TwilioProgramName": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "TwilioProgramStatus": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "cPNIOptOut": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "cPNIOptOutDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            }
+        }
+    }
+}
