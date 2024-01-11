@@ -4,6 +4,7 @@ import pendulum
 import tempfile
 
 import singer
+from singer.catalog import Catalog
 from singer import metadata
 from singer import bookmarks
 from singer import utils
@@ -461,6 +462,8 @@ def sync(client, catalog, config, state):
     else:
         singer.log_info("Starting sync")
 
+    if isinstance(catalog, Catalog):
+        catalog = catalog.to_dict()
     for stream in catalog["streams"]:
         # Skip unselected streams.
         mdata = metadata.to_map(stream['metadata'])
