@@ -2,6 +2,10 @@
 
 # Marketo Docs are located at http://developers.marketo.com/rest-api/
 
+from datetime import datetime, timedelta
+import itertools
+import re
+
 import pendulum
 import singer
 from singer import bookmarks
@@ -31,6 +35,43 @@ REQUIRED_CONFIG_KEYS = [
     "client_id",
     "client_secret",
 ]
+
+
+ATTRIBUTION_WINDOW_README = """
+`attribution_window` may be specified by a combination of days, hours and minutes seconds. This parameter is 
+quite useful in a moderate frequency incremental bulk extracts (e.g. once an hour)
+to allow users a way to avoid extracting all leads updated 1 day prior (i.e. default attribution window)
+examples of valid attribution_windows: `1 day`, `1 days`, `2 day`, `10 days`, `10:00:00`, `1 day 05:00:00`
+"""
+
+def parse_attribution_window(attribution_window_string):
+    f"""
+    Parse optional config parameter `attribution_window`.
+    Attribution window is used to set an earlier export_start
+    for incremental replication of of the leads stream.
+    
+    {ATTRIBUTION_WINDOW_README}
+    """
+    errstr = f"`{attribution_window_string}` is not a valid attribution window."
+    pat = '^((?P<day>^\d+)\s+days?)?(\s+)?(?P<time>(\d{2}:\d{2}:\d{2}))?$'
+    match = re.match(pat, attribution_window_string)
+    if not match:
+        raise ValueError(errstr)
+    groups = match.groupdict()
+    delta_day = groups["day"] or '0'
+    delta_time = groups["time"] or '00:00:00'
+    try:
+        parsed_time = datetime.strptime(delta_time, '%H:%M:%S')
+        return timedelta(
+            days=int(delta_day) if delta_day else 0,
+            hours=parsed_time.hour,
+            minutes=parsed_time.minute,
+            seconds=parsed_time.second
+        )
+    except ValueError as e:
+        raise ValueError(errstr)
+    
+
 
 
 def validate_state(config, catalog, state):
@@ -65,6 +106,9 @@ def validate_state(config, catalog, state):
     return state
 
 def _main(config, properties, state, discover_mode=False):
+    if 'attribution_window' in config:
+        config['attribution_window'] = parse_attribution_window(config['attribution_window'])
+
     client = Client(**config)
     if discover_mode:
         discover(client)

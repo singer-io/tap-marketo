@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import csv
 import json
 import pendulum
@@ -27,21 +29,24 @@ ACTIVITY_FIELDS = BASE_ACTIVITY_FIELDS + [
     "attributes",
 ]
 
+
+STREAMS_WITH_UPDATED_AT_REPLICATION_KEY = {
+    "leads",
+    "lists",
+    "campaigns",
+    "programs",
+    "emails",
+}
+
+
 def determine_replication_key(tap_stream_id):
     if tap_stream_id.startswith("activities_"):
         return 'activityDate'
-    elif tap_stream_id == 'activity_types':
+    if tap_stream_id == 'activity_types':
         return None
-    elif tap_stream_id == 'leads':
+    if tap_stream_id in STREAMS_WITH_UPDATED_AT_REPLICATION_KEY:
         return 'updatedAt'
-    elif tap_stream_id == 'lists':
-        return 'updatedAt'
-    elif tap_stream_id == 'campaigns':
-        return 'updatedAt'
-    elif tap_stream_id == 'programs':
-        return 'updatedAt'
-    else:
-        return None
+    return None
 
 
 NO_ASSET_MSG = "No assets found for the given search criteria."
@@ -55,50 +60,65 @@ ITER_CHUNK_SIZE = 512
 ATTRIBUTION_WINDOW_DAYS = 1
 
 
-def format_value(value, schema):
-    if not isinstance(schema["type"], list):
-        field_type = [schema["type"]]
-    else:
-        field_type = schema["type"]
+def format_value(value, _type):
+    """
+    Conform the field's value with its type (for json-schema basic types)
 
-    if value in [None, "", 'null']:
+    NOTES: 
+    * This function gets called on each field of each row, and is thus its performance
+    is critical to processing the downloaded csv file.
+    * This function does not handle object or array types, nor type unions which are 
+      still valid jsonschemas (e.g. {"type": ["string", "integer"]})
+    Returns any of:
+        None
+        datetime-string
+        integer
+        float
+        boolean
+        string
+        compoud data structure, dict / list: default last option
+    """
+    if value is None or value == '' or value == 'null':
         return None
-    elif schema.get("format") == "date-time":
-        return pendulum.parse(value).isoformat()
-    elif "integer" in field_type:
-        if isinstance(value, int):
-            return value
-
-        # Custom Marketo percent type fields can have decimals, so we drop them
-        decimal_index = value.find('.')
-        if decimal_index > 0:
-            singer.log_warning("Dropping decimal from integer type. Original Value: %s", value)
-            value = value[:decimal_index]
-        return int(value)
-    elif "string" in field_type:
+    if _type == "string":
         return str(value)
-    elif "number" in field_type:
+    if _type == "date-time":
+        return pendulum.parse(value).isoformat()
+    if _type == "integer":
+        return int(float(value))
+    if _type == "number":
         return float(value)
-    elif "boolean" in field_type:
-        if isinstance(value, bool):
-            return value
-        return value.lower() == "true"
-
+    if _type == "boolean":
+        return str(value).lower() == "true"
     return value
 
 
-def format_values(stream, row):
-    rtn = {}
+def format_values(output_typemap, row):
+    """
+    Conform the row's values with their type signature and 
+    filter out fields not included in the output record.
 
-    available_fields = []
-    for entry in stream['metadata']:
-        if len(entry['breadcrumb']) > 0 and (entry['metadata'].get('selected') or entry['metadata'].get('inclusion') == 'automatic'):
-            available_fields.append(entry['breadcrumb'][-1])
+    `output_typemap`: dictionary with output fields and their types
+    `row`: the data record.
+    """
+    return {
+        field: format_value(row.get(field), field_type)
+        for field, field_type in output_typemap.items()
+    }
 
-    for field, schema in stream["schema"]["properties"].items():
-        if field in available_fields:
-            rtn[field] = format_value(row.get(field), schema)
-    return rtn
+
+def get_stream_fields(stream):
+    """Get the list of fields selected in the stream."""
+    fields = [
+        entry['breadcrumb'][-1] for entry in stream['metadata']
+        if len(entry['breadcrumb']) > 0 and (
+            entry['metadata'].get('selected')
+            or entry['metadata'].get('inclusion') == 'automatic')
+    ]
+    msg = ("following fields are selected in stream "
+           f"{stream['tap_stream_id']}: {fields}")
+    singer.log_info(msg)
+    return fields
 
 
 def update_state_with_export_info(state, stream, bookmark=None, export_id=None, export_end=None):
@@ -142,16 +162,15 @@ def stream_rows(client, stream_type, export_id):
         for chunk in resp.iter_content(chunk_size=CHUNK_SIZE_BYTES, decode_unicode=True):
             if chunk:
                 # Replace CR
-                chunk = chunk.replace('\r', '')
+                chunk = chunk.replace('\r', '').replace('\0', '')
                 csv_file.write(chunk)
 
         singer.log_info("Download completed. Begin streaming rows.")
         csv_file.seek(0)
 
-        reader = csv.reader((line.replace('\0', '') for line in csv_file), delimiter=',', quotechar='"')
-        headers = next(reader)
-        for line in reader:
-            yield dict(zip(headers, line))
+        reader = csv.DictReader(csv_file, delimiter=',', quotechar='"')
+        for line_dict in reader:
+            yield line_dict
 
 
 def get_or_create_export_for_leads(client, state, stream, export_start, config):
@@ -174,10 +193,7 @@ def get_or_create_export_for_leads(client, state, stream, export_start, config):
 
         # Create the new export and store the id and end date in state.
         # Does not start the export (must POST to the "enqueue" endpoint).
-        fields = []
-        for entry in stream['metadata']:
-            if len(entry['breadcrumb']) > 0 and (entry['metadata'].get('selected') or entry['metadata'].get('inclusion') == 'automatic'):
-                fields.append(entry['breadcrumb'][-1])
+        fields = get_stream_fields(stream)
 
         export_id = client.create_export("leads", fields, query)
         state = update_state_with_export_info(
@@ -259,17 +275,52 @@ def flatten_activity(row, stream):
     return rtn
 
 
+def get_output_typemap(stream):
+    """
+    Generate dictionary of {field: output_type} defined by the stream
+
+    field is a string (the field name),
+    and output_type is hashable, either string or tuple of strings and excludes `null`
+
+    The output from this function is used
+    """
+    available_fields = set(get_stream_fields(stream))
+    output_typemap = {}
+    for field, prop in stream["schema"]["properties"].items():
+        if field in available_fields:
+            if prop.get("format") == "date-time":
+                _type = "date-time"
+            elif isinstance(prop["type"], str):
+                _type = prop["type"]
+            elif isinstance(prop["type"], list):
+                not_null_type = [t for t in prop["type"] if t != "null"]
+                if len(not_null_type) == 1:
+                    _type = not_null_type[0]
+                else:
+                    _type = tuple(sorted(not_null_type))
+            output_typemap[field] = _type
+    return output_typemap
+
+
 def sync_leads(client, state, stream, config):
     # http://developers.marketo.com/rest-api/bulk-extract/bulk-lead-extract/
     replication_key = determine_replication_key(stream["tap_stream_id"])
-
+    output_typemap = get_output_typemap(stream)
     singer.write_schema("leads", stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
     initial_bookmark = pendulum.parse(bookmarks.get_bookmark(state, "leads", replication_key))
     export_start = pendulum.parse(bookmarks.get_bookmark(state, "leads", replication_key))
     if client.use_corona:
-        export_start = export_start.subtract(days=ATTRIBUTION_WINDOW_DAYS)
-
-    job_started = pendulum.utcnow()
+        aw = config.get(
+            'attribution_window',
+            timedelta(days=ATTRIBUTION_WINDOW_DAYS)
+        )
+        export_start = export_start.subtract(days=aw.days, seconds=aw.seconds)
+    
+    # job_started is truncated to the microsecond 
+    # in get_export_end the field export_end is also truncated to the microsecond
+    # export_start is set to export_end at the end of the following while loop
+    # which results in an extra marketo export if job_started is not truncated
+    job_started = pendulum.utcnow().replace(microsecond=0)
     record_count = 0
     max_bookmark = initial_bookmark
     while export_start < job_started:
@@ -278,20 +329,17 @@ def sync_leads(client, state, stream, config):
         for row in stream_rows(client, "leads", export_id):
             time_extracted = utils.now()
 
-            record = format_values(stream, row)
-            record_bookmark = pendulum.parse(record[replication_key])
+            record = format_values(output_typemap, row)
+            
+            singer.write_record("leads", record, time_extracted=time_extracted)
+            record_count += 1
+            if not client.use_corona:
+                record_bookmark = pendulum.parse(record[replication_key])
+                if record_bookmark >= initial_bookmark:
+                    max_bookmark = max(max_bookmark, record_bookmark)
 
-            if client.use_corona:
-                max_bookmark = export_end
-
-                singer.write_record("leads", record, time_extracted=time_extracted)
-                record_count += 1
-            elif record_bookmark >= initial_bookmark:
-                max_bookmark = max(max_bookmark, record_bookmark)
-
-                singer.write_record("leads", record, time_extracted=time_extracted)
-                record_count += 1
-
+        if client.use_corona:
+            max_bookmark = export_end
         # Now that one of the exports is finished, update the bookmark
         state = update_state_with_export_info(state, stream, bookmark=max_bookmark.isoformat())
         export_start = export_end
@@ -302,9 +350,15 @@ def sync_leads(client, state, stream, config):
 def sync_activities(client, state, stream, config):
     # http://developers.marketo.com/rest-api/bulk-extract/bulk-activity-extract/
     replication_key = determine_replication_key(stream['tap_stream_id'])
+    replication_key = determine_replication_key(stream['tap_stream_id'])
+    output_typemap = get_output_typemap(stream)
     singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
     export_start = pendulum.parse(bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key))
-    job_started = pendulum.utcnow()
+    # job_started is truncated to the microsecond 
+    # in get_export_end the field export_end is also truncated to the microsecond
+    # export_start is set to export_end at the end of the following while loop
+    # which results in an extra marketo export if job_started is not truncated
+    job_started = pendulum.utcnow().replace(microsecond=0)
     record_count = 0
     while export_start < job_started:
         export_id, export_end = get_or_create_export_for_activities(client, state, stream, export_start, config)
@@ -313,7 +367,7 @@ def sync_activities(client, state, stream, config):
             time_extracted = utils.now()
 
             row = flatten_activity(row, stream)
-            record = format_values(stream, row)
+            record = format_values(output_typemap, row)
 
             singer.write_record(stream["tap_stream_id"], record, time_extracted=time_extracted)
             record_count += 1
@@ -335,7 +389,7 @@ def sync_programs(client, state, stream):
     # per page. If requesting past the final program, an error message
     # is returned to indicate that the endpoint has been fully synced.
     replication_key = determine_replication_key(stream['tap_stream_id'])
-
+    output_typemap = get_output_typemap(stream)
     singer.write_schema("programs", stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
     start_date = bookmarks.get_bookmark(state, "programs", replication_key)
     end_date = pendulum.utcnow().isoformat()
@@ -361,7 +415,7 @@ def sync_programs(client, state, stream):
         # Each row just needs the values formatted. If the record is
         # newer than the original start date, stream the record.
         for row in data["result"]:
-            record = format_values(stream, row)
+            record = format_values(output_typemap, row)
             if record[replication_key] >= start_date:
                 record_count += 1
 
@@ -385,7 +439,7 @@ def sync_paginated(client, state, stream):
     # items per page. There are no filters that can be used to only
     # return updated records.
     replication_key = determine_replication_key(stream['tap_stream_id'])
-
+    output_typemap = get_output_typemap(stream)
     singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
     start_date = bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key)
     params = {"batchSize": 300}
@@ -410,7 +464,7 @@ def sync_paginated(client, state, stream):
         # newer than the original start date, stream the record. Finally,
         # update the bookmark if newer than the existing bookmark.
         for row in data["result"]:
-            record = format_values(stream, row)
+            record = format_values(output_typemap, row)
             if record[replication_key] >= start_date:
                 record_count += 1
 
@@ -438,7 +492,7 @@ def sync_activity_types(client, state, stream):
     #
     # Activity types aren't even paginated. Grab all the results in one
     # request, format the values, and output them.
-
+    output_typemap = get_output_typemap(stream)
     singer.write_schema("activity_types", stream["schema"], stream["key_properties"])
     endpoint = "rest/v1/activities/types.json"
     data = client.request("GET", endpoint, endpoint_name="activity_types")
@@ -447,7 +501,7 @@ def sync_activity_types(client, state, stream):
     time_extracted = utils.now()
 
     for row in data["result"]:
-        record = format_values(stream, row)
+        record = format_values(output_typemap, row)
         record_count += 1
 
         singer.write_record("activity_types", record, time_extracted=time_extracted)

@@ -123,7 +123,28 @@ class TestExports(unittest.TestCase):
     def test_export_enqueued(self):
         export_id = "123"
         self.client.poll_interval = 0
-        self.client.poll_export = unittest.mock.MagicMock(side_effect=["Created", "Completed"])
+        mock_status_completed = {
+            "result": [
+                {
+                    "exportId": "123",
+                    "status": "Completed",
+                    "createdAt": "2017-01-21T11:47:30-08:00",
+                    "queuedAt": "2017-01-21T11:48:30-08:00",
+                    "startedAt": "2017-01-21T11:51:30-08:00",
+                    "finishedAt": "2017-01-21T12:59:30-08:00",
+                    "format": "CSV",
+                    "numberOfRecords": 122323,
+                    "fileSize": 123424,
+                }
+            ]
+            }
+        mock_get_export_status = [
+            {"result": [{"export_id": export_id, "status": "Created"}]},
+            mock_status_completed,
+            ]
+        self.client.get_export_status = unittest.mock.MagicMock(
+            side_effect=mock_get_export_status
+            )
         self.client.enqueue_export = unittest.mock.MagicMock()
 
         self.assertTrue(self.client.wait_for_export("test", export_id))
@@ -132,7 +153,7 @@ class TestExports(unittest.TestCase):
     def test_api_exception(self):
         export_id = "123"
         self.client.poll_interval = 0
-        self.client.poll_export = unittest.mock.MagicMock(side_effect=ApiException("Oh no!"))
+        self.client.get_export_status = unittest.mock.MagicMock(side_effect=ApiException("Oh no!"))
 
         with self.assertRaises(ApiException):
             self.client.wait_for_export("test", export_id)
@@ -141,7 +162,7 @@ class TestExports(unittest.TestCase):
         export_id = "123"
         self.client.poll_interval = 0
         self.client.job_timeout = 0
-        self.client.poll_export = unittest.mock.MagicMock(side_effect=itertools.repeat("Queued"))
+        self.client.get_export_status = unittest.mock.MagicMock(side_effect=itertools.repeat("Queued"))
 
         with self.assertRaises(ExportFailed):
             self.client.wait_for_export("test", export_id)
@@ -149,7 +170,9 @@ class TestExports(unittest.TestCase):
     def test_export_failed(self):
         export_id = "123"
         self.client.poll_interval = 0
-        self.client.poll_export = unittest.mock.MagicMock(side_effect=["Failed"])
+        self.client.get_export_status = unittest.mock.MagicMock(side_effect=[
+            {"result": [{"exportId": export_id, "status": "Failed"}]}
+            ])
 
         with self.assertRaises(ExportFailed):
             self.client.wait_for_export("test", export_id)

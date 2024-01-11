@@ -20,15 +20,13 @@ This tap:
     > pip install tap-marketo
     ```
 
-2. Get your Endpoint, Identity, Client ID and Client Secret
+2. Get your Endpoint, Client ID and Client Secret
 
-  **Endpoint and Identity**
+  **Endpoint**
 
   The base URL contains the account id (a.k.a. Munchkin id) and is therefore unique for each Marketo subscription.
   Your base URL is found by logging into Marketo and navigating to the Admin > Integration > Web Services menu.
   It is labled as “Endpoint:” underneath the “REST API” section as shown in the following screenshots.
-
-  Identity is found directly below the endpoint entry.
 
   http://developers.marketo.com/rest-api/base-url/
 
@@ -40,13 +38,32 @@ This tap:
 
 3. Create the config file
 
-    Create a JSON file called `config.json` containing the Endpoint, Identity, Client ID and Client Secret.
+    Create a JSON file called `config.json` containing the Endpoint, Start Date, Client ID and Client Secret (and optionally Attribution Window)
 
+    **Start Date**
+
+    Determines how much historical data will be extracted. Please be aware that the larger the time period and amount of data, the longer the initial extraction can be expected to take.
+
+    **Attribution Window**
+
+    [Optional] Attribution window is used to set an earlier export_start
+    for incremental replication of of the **leads** stream. This allows the tap to _catch_
+    leads that may have been missed in the prior export.
+
+    `attribution_window` may be specified by a combination of days, hours and minutes. this parameter is quite useful in a moderate frequency incremental bulk extracts (e.g. once an hour) to allow users a way to avoid extracting all leads updated 1 day prior (i.e. default attribution window)
+    examples of valid attribution_windows:
+      * 1 day
+      * 12:00:00
+      * 01:30:00
+      * 1 day 06:55:00
+
+    attribution_window defaults to 1 Day if not specified.
     ```json
     {"endpoint": "your-endpoint",
-     "identity": "your-identity",
+     "start_date": "earliest-date-to-sync",
      "client_id": "your-client_id",
-     "client_secret": "your-client-secret"}
+     "client_secret": "your-client-secret",
+     "attribution_window": "buffer-time-subtracted-from-updatedAt-for-leads-stream"}
     ```
 
 4. [Optional] Create the initial state file
@@ -70,7 +87,15 @@ This tap:
     tap-marketo --config config.json [--state state.json]
     ```
 
+## Config Parameters
 
+| parameter name | description | examples | required or optional |
+| ------ | ------ | ------ | ------ |
+| endpoint | Base URL for the rest api, specific to your Marketo account (as in 123-ABC-123 would be your marketo account id in the example to the right) | https://123-ABC-123.mktorest.com/rest | required |
+| start_date | the earliest date to use as filter for the replication key during the initial sync or a full refresh | 2020-01-01T00:00:00Z | required |
+| client_id | The client id used to authenticate with the marketo rest api, generated through their web UI by your marketo admin (random dash separated alpha-numeric string) | a134dakfj-kldjk-39487fh3-ad834bi30 (note: actual length may differ) | required |
+| client_secret | The client secret used to authenticate with the marketo rest api generated through their web UI by your marketo admin (random alpha-numeric string) | akdj498abalj314klja934 (note: actual length may differ) | required |
+| attribution_window | a string specifying a duration of time (combination of days, hours & minutes) to subtract from the latest `updatedAt` value for the leads stream stored in the state | 1 day, 12:00:00, 01:30:00, 1 day 06:55:00, 00:20:00 | optional |
 ---
 
 Copyright &copy; 2017 Stitch
