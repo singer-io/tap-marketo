@@ -1,4 +1,5 @@
 import csv
+import datetime
 import json
 import pendulum
 import tempfile
@@ -166,6 +167,9 @@ def get_or_create_export_for_leads(client, state, stream, export_start, config):
         query_field = "updatedAt" if client.use_corona else "createdAt"
         max_export_days = int(config.get('max_export_days',
                                          MAX_EXPORT_DAYS))
+        if client.get_end_date():
+            max_export_days = (datetime.datetime.strptime(config['end_date'], "%Y-%m-%d") - export_start).days
+
         export_end = get_export_end(export_start,
                                     end_days=max_export_days)
         query = {query_field: {"startAt": export_start.isoformat(),
@@ -206,6 +210,8 @@ def get_or_create_export_for_activities(client, state, stream, export_start, con
         # largest date range that can be used for activities is 30 days.
         max_export_days = int(config.get('max_export_days',
                                          MAX_EXPORT_DAYS))
+        if client.get_end_date():
+            max_export_days = (datetime.datetime.strptime(config['end_date'], "%Y-%m-%d") - export_start).days
         export_end = get_export_end(export_start,
                                     end_days=max_export_days)
         query = {"createdAt": {"startAt": export_start.isoformat(),
@@ -269,16 +275,23 @@ def sync_leads(client, state, stream, config):
         export_start = export_start.subtract(days=ATTRIBUTION_WINDOW_DAYS)
 
     job_started = pendulum.utcnow()
+    end_date = job_started
+    if "end_date" in config:
+        end_date = datetime.datetime.strptime(config['end_date'], "%Y-%m-%d")
     record_count = 0
     max_bookmark = initial_bookmark
-    while export_start < job_started:
+    while export_start < end_date:
         export_id, export_end = get_or_create_export_for_leads(client, state, stream, export_start, config)
         state = wait_for_export(client, state, stream, export_id)
         for row in stream_rows(client, "leads", export_id):
             time_extracted = utils.now()
 
             record = format_values(stream, row)
+            singer.log_info(str(record))
+            if replication_key not in record:
+                continue
             record_bookmark = pendulum.parse(record[replication_key])
+            singer.log_info("record_bookmark  ----> "+ str(record_bookmark))
 
             if client.use_corona:
                 max_bookmark = export_end
@@ -305,7 +318,10 @@ def sync_activities(client, state, stream, config):
     export_start = pendulum.parse(bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key))
     job_started = pendulum.utcnow()
     record_count = 0
-    while export_start < job_started:
+    end_date = job_started
+    if "end_date" in config:
+        end_date = datetime.datetime.strptime(config['end_date'], "%Y-%m-%d")
+    while export_start < end_date:
         export_id, export_end = get_or_create_export_for_activities(client, state, stream, export_start, config)
         state = wait_for_export(client, state, stream, export_id)
         for row in stream_rows(client, "activities", export_id):
@@ -338,6 +354,8 @@ def sync_programs(client, state, stream):
     singer.write_schema("programs", stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
     start_date = bookmarks.get_bookmark(state, "programs", replication_key)
     end_date = pendulum.utcnow().isoformat()
+    if client.get_end_date():
+        end_date = datetime.datetime.strptime(client.get_end_date(), "%Y-%m-%d").isoformat()
     params = {
         "maxReturn": 200,
         "offset": 0,
