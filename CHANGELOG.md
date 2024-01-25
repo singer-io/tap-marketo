@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.6.0
+  * Updates to run on python 3.11 [#91](https://github.com/singer-io/tap-marketo/pull/91)
+
 ## 2.5.2
   * Fixed singer logging error in V2.5.1 [#86](https://github.com/singer-io/tap-marketo/pull/86)
 
