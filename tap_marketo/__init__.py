@@ -12,7 +12,7 @@ from singer import bookmarks
 
 from tap_marketo.client import Client
 from tap_marketo.discover import discover
-from tap_marketo.sync import sync, determine_replication_key
+import tap_marketo.sync as sync_
 from singer.bookmarks import (
     get_bookmark,
     write_bookmark,
@@ -87,7 +87,7 @@ def validate_state(config, catalog, state):
                     set_currently_syncing(state, None)
                 break
 
-        replication_key = determine_replication_key(stream['tap_stream_id'])
+        replication_key = sync_.determine_replication_key(stream['tap_stream_id'])
         if not replication_key:
             continue
 
@@ -114,7 +114,7 @@ def _main(config, properties, state, discover_mode=False):
         discover(client)
     elif properties:
         state = validate_state(config, properties, state)
-        sync(client, properties, config, state)
+        sync_.sync(client, properties, config, state)
 
 
 def main():
