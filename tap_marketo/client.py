@@ -113,7 +113,10 @@ class Client:
 
         self._session = requests.Session()
         self._use_corona = None
+        self.end_date = kwargs.get("end_date", None)
 
+    def get_end_date(self):
+        return self.end_date
     @property
     def use_corona(self):
         if getattr(self, "_use_corona", None) is None:
