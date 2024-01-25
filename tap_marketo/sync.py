@@ -287,11 +287,9 @@ def sync_leads(client, state, stream, config):
             time_extracted = utils.now()
 
             record = format_values(stream, row)
-            singer.log_info(str(record))
             if replication_key not in record:
                 continue
             record_bookmark = pendulum.parse(record[replication_key])
-            singer.log_info("record_bookmark  ----> "+ str(record_bookmark))
 
             if client.use_corona:
                 max_bookmark = export_end
