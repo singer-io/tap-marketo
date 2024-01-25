@@ -26,9 +26,8 @@ jobs:
           name: 'Unit Tests'
           command: |
             source ~/.virtualenvs/tap-marketo/bin/activate
-            pip install nose coverage
-            nosetests --with-coverage --cover-erase --cover-package=tap_marketo --cover-html-dir=htmlcov tests
-            coverage html
+            pip install nose2 parameterized nose2[coverage_plugin]>=0.6.5
+            nose2 --with-coverage -v -s tests
       - store_test_results:
           path: test_output/report.xml
       - store_artifacts:
