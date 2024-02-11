@@ -13,8 +13,11 @@ POLL_INTERVAL = 60 * 5
 
 # If Corona is not supported, an error "1035" will be returned by the API.
 # http://developers.marketo.com/rest-api/bulk-extract/bulk-lead-extract/#filters
-NO_CORONA_CODE = "1035"
-API_QUOTA_EXCEEDED = "1029"
+NO_CORONA_CODE = "1035" 
+
+# 1029 is returned when the daily quota is exhausted.
+# 1029 is also returned when job queue is full and more jobs cannot be enqueued.
+API_QUOTA_EXCEEDED = "1029" 
 
 API_QUOTA_EXCEEDED_MESSAGE = "Marketo API returned error(s): {}. Data can resume replicating at midnight central time. Read more about Marketo Bulk API limits here: http://developers.marketo.com/rest-api/bulk-extract/#limits"
 
@@ -23,6 +26,7 @@ SHORT_TERM_QUOTA_EXCEEDED = "606"
 
 SHORT_TERM_QUOTA_EXCEEDED_MESSAGE = "Marketo API returned error(s): {}. This is due to a short term rate limiting mechanism. Backing off and retrying the request."
 
+JOB_QUEUE_QUOTA_EXEECED_MESSAGE = "Marketo API returned errors(x) {}. Job queue is currently full and not accepting new jobs."
 # Marketo limits REST requests to 50000 per day with a rate limit of 100
 # calls per 20 seconds.
 # http://developers.marketo.com/rest-api/
@@ -56,9 +60,30 @@ class ShortTermQuotaExceeded(Exception):
     been made in the past 20 seconds and that we need to back off.
     """
 
+class JobQueueQuotaExceeded(Exception):
+    """
+    Indicates that the job queue is full (default queue size is 10)
+    and Marketo will not enqueue more jobs until a queue slot reopens.
+    """
 class ExportFailed(Exception):
 
     """Indicates an error occured while attempting a bulk export."""
+
+def handle_job_queue_full_rate_limit():
+    # Marketo advises that the bulk API's job status won't update in 
+    # real time, and users should not poll with an interval > 1 minute
+    # Hence, the JobQueueFullApiQuotaExceeded impliements 4 retries (5
+    # total tries) with 3 minute interval, giving a total retry window
+    # of 15 minutes.
+    return backoff.on_exception(
+        backoff.constant, 
+        JobQueueQuotaExceeded,
+        max_tries=4,
+        interval=180,
+        jitter=None,
+        logger=singer.get_logger()
+    )
+
 
 def handle_short_term_rate_limit():
     return backoff.on_exception(backoff.constant,
@@ -68,14 +93,39 @@ def handle_short_term_rate_limit():
                                 jitter=None,
                                 logger=singer.get_logger())
 
+
+def parse_exception(err_codes, err_messages):
+    """Parse Marketo Responses in order to raise API Errors."""
+
+    message_tmpl, err = None, None
+    err_pat = r'^Too many jobs.*in queue'    
+    if SHORT_TERM_QUOTA_EXCEEDED in err_codes:
+        message_tmpl = SHORT_TERM_QUOTA_EXCEEDED_MESSAGE
+        err = ShortTermQuotaExceeded
+    elif API_QUOTA_EXCEEDED in err_codes and re.search(err_pat, err_messages, re.M):
+        message_tmpl = JOB_QUEUE_QUOTA_EXEECED_MESSAGE
+        err = JobQueueQuotaExceeded
+    elif API_QUOTA_EXCEEDED in err_codes:
+        message_tmpl = API_QUOTA_EXCEEDED_MESSAGE
+        err = ApiQuotaExceeded
+    return message_tmpl, err
+
+
 def raise_for_rate_limit(data):
+    """
+    Raise errors if response from Marketo indicates a quota was exceeded.
+
+        Emit a warning for errors may succeeed if retried.
+    """
     err_codes = set(err["code"] for err in data.get("errors", []))
-    if API_QUOTA_EXCEEDED in err_codes:
-        raise ApiQuotaExceeded(API_QUOTA_EXCEEDED_MESSAGE.format(data['errors']))
-    elif SHORT_TERM_QUOTA_EXCEEDED in err_codes:
-        message = SHORT_TERM_QUOTA_EXCEEDED_MESSAGE.format(data['errors'])
-        singer.log_warning(message)
-        raise ShortTermQuotaExceeded(message)
+    err_messages = '\n'.join(err["message"] for err in data.get("errors", []))
+    message_tmpl, err = parse_exception(err_codes, err_messages)
+    if err:
+        message = message_tmpl.format(data["errors"])
+        if isinstance(err, (ShortTermQuotaExceeded, JobQueueQuotaExceeded)):
+            singer.log_warning(message)
+        raise err(message)
+    
 
 class Client:
     # pylint: disable=unused-argument
@@ -205,6 +255,7 @@ class Client:
         self.calls_today = int(data["result"][0]["total"])
         singer.log_info("Used %s of %s requests", self.calls_today, self.max_daily_calls)
 
+    @handle_job_queue_full_rate_limit()
     @handle_short_term_rate_limit()
     def request(self, method, url, endpoint_name=None, **kwargs):
         if self.calls_today % 250 == 0:
