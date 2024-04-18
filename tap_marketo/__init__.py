@@ -72,7 +72,7 @@ def main():
     args = singer.utils.parse_args(REQUIRED_CONFIG_KEYS)
 
     try:
-        _main(args.config, args.properties or args.catalog, args.state, args.discover)
+        _main(args.config, args.properties or args.catalog , args.state, args.discover)
     except Exception as e:
         singer.log_critical(e)
         raise e

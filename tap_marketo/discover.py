@@ -21,7 +21,7 @@ ACTIVITY_TYPES_UNSUPPORTED = frozenset(["attributes"])
 LISTS_AUTOMATIC_INCLUSION = frozenset(["id", "name", "createdAt", "updatedAt"])
 PROGRAMS_AUTOMATIC_INCLUSION = frozenset(["id", "createdAt", "updatedAt"])
 CAMPAIGNS_AUTOMATIC_INCLUSION = frozenset(["id", "createdAt", "updatedAt"])
-
+DELETED_LEADS_AUTOMATIC_INCLUSION = frozenset(["marketoGUID", "leadId", "activityDate"])
 LEAD_REQUIRED_FIELDS = frozenset(["id", "updatedAt", "createdAt"])
 
 def clean_string(string):
@@ -56,7 +56,7 @@ def get_schema_for_type(typ, breadcrumb, mdata, null=False):
     return rtn, mdata
 
 
-def get_activity_type_stream(activity):
+def get_activity_type_stream(activity, stream=None):
     # Activity streams have 7 attributes:
     # - marketoGUID
     # - leadId
@@ -105,17 +105,20 @@ def get_activity_type_stream(activity):
         mdata = metadata.write(mdata, (), 'marketo.primary-attribute-name', primary)
 
 
-    if "attributes" in activity:
+    if activity.get("attributes"):
         for attr in activity["attributes"]:
-            attr_name = clean_string(attr["name"])
-            field_schema, mdata = get_schema_for_type(attr["dataType"], breadcrumb=('properties', attr_name), mdata=mdata, null=True)
-            if field_schema:
-                properties[attr_name] = field_schema
+            if "name" in attr and "dataType" in attr:
+                attr_name = clean_string(attr["name"])
+                field_schema, mdata = get_schema_for_type(attr["dataType"], breadcrumb=('properties', attr_name), mdata=mdata, null=True)
+                if field_schema:
+                    properties[attr_name] = field_schema
 
-    activity_type_camel = clean_string(activity["name"])
+    if "name" in activity:
+        activity_type_camel = clean_string(activity["name"])
+        tap_stream_id = "activities_{}".format(activity_type_camel)
+    else:
+        tap_stream_id = stream
     mdata = metadata.write(mdata, (), 'marketo.activity-id', activity["id"])
-
-    tap_stream_id = "activities_{}".format(activity_type_camel)
 
     # The activities steams use "marketoGUID" as the key_properties
     mdata = metadata.write(mdata, (), 'table-key-properties', ['marketoGUID'])
@@ -186,6 +189,48 @@ def discover_leads(client):
     }
 
 
+def discover_activity_deleted_leads(client):
+    endpoint = "rest/v1/activities/deletedleads.json"
+    next_page_token = client.get_paging_token()
+    params = {"nextPageToken": next_page_token}
+
+    while True:
+        data = client.request("GET", endpoint, endpoint_name="activity_deleted_leads", params=params)
+
+        results = data.get('result', [])
+        # Taking 1st row for schema discovery
+        if results:
+            return [get_activity_type_stream(results[0], stream="deleted_leads")]
+
+        if data.get('moreResult'):
+            next_page_token = data['nextPageToken']
+            params = {"nextPageToken": next_page_token}
+        else:
+            root = os.path.dirname(os.path.realpath(__file__))
+            path = os.path.join(root, 'schemas/{}.json'.format('leads'))
+            if os.path.isfile(path):
+                # TODO: Test this usecase and see the output
+                discovered_schema = discover_catalog('deleted_leads', DELETED_LEADS_AUTOMATIC_INCLUSION)
+                return discovered_schema
+            else:
+                return {
+                    "tap_stream_id": "deleted_leads",
+                    "stream": "deleted_leads",
+                    "key_properties": ["marketoGUID"],
+                    "metadata": metadata.to_list(metadata.new()),
+                    "schema": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "marketoGUID": {"type": "string"},
+                            "leadId": {"type": "integer"},
+                            "activityDate": {"type": "string", "format": "date-time"},
+                        }
+                    }
+                }
+
+
+
 def discover_catalog(name, automatic_inclusion, **kwargs):
     unsupported = kwargs.get("unsupported", frozenset([]))
     stream_automatic_inclusion = kwargs.get("stream_automatic_inclusion", False)
@@ -219,6 +264,7 @@ def discover(client):
     streams.append(discover_leads(client))
     streams.append(discover_catalog("activity_types", ACTIVITY_TYPES_AUTOMATIC_INCLUSION, unsupported=ACTIVITY_TYPES_UNSUPPORTED, stream_automatic_inclusion=True))
     streams.extend(discover_activities(client))
+    streams.extend(discover_activity_deleted_leads(client))
     streams.append(discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION))
     streams.append(discover_catalog("lists", LISTS_AUTOMATIC_INCLUSION))
     streams.append(discover_catalog("programs", PROGRAMS_AUTOMATIC_INCLUSION))

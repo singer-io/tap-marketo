@@ -40,6 +40,8 @@ def determine_replication_key(tap_stream_id):
         return 'updatedAt'
     elif tap_stream_id == 'programs':
         return 'updatedAt'
+    elif tap_stream_id == 'deleted_leads':
+        return 'activityDate'
     else:
         return None
 
@@ -410,6 +412,12 @@ def sync_paginated(client, state, stream):
     # of results. These tokens are stored in the state for resuming
     # syncs. If a paging token exists in state, use it.
     next_page_token = bookmarks.get_bookmark(state, stream["tap_stream_id"], "next_page_token")
+    if stream["tap_stream_id"] == "deleted_leads":
+        if not next_page_token:
+            next_page_token = client.get_paging_token()
+        params = {"nextPageToken": next_page_token}
+        endpoint = "rest/v1/activities/deletedleads.json"
+
     if next_page_token:
         params["nextPageToken"] = next_page_token
 
@@ -424,12 +432,14 @@ def sync_paginated(client, state, stream):
         # Each row just needs the values formatted. If the record is
         # newer than the original start date, stream the record. Finally,
         # update the bookmark if newer than the existing bookmark.
-        for row in data["result"]:
-            record = format_values(stream, row)
-            if record[replication_key] >= start_date:
-                record_count += 1
+        results = data.get('result', [])
+        if results:
+            for row in results:
+                record = format_values(stream, row)
+                if record[replication_key] >= start_date:
+                    record_count += 1
 
-                singer.write_record(stream["tap_stream_id"], record, time_extracted=time_extracted)
+                    singer.write_record(stream["tap_stream_id"], record, time_extracted=time_extracted)
 
         # No next page, results are exhausted.
         if "nextPageToken" not in data:
@@ -505,7 +515,7 @@ def sync(client, catalog, config, state):
             state, record_count = sync_leads(client, state, stream, config)
         elif stream["tap_stream_id"].startswith("activities_"):
             state, record_count = sync_activities(client, state, stream, config)
-        elif stream["tap_stream_id"] in ["campaigns", "lists"]:
+        elif stream["tap_stream_id"] in ["campaigns", "lists", "deleted_leads"]:
             state, record_count = sync_paginated(client, state, stream)
         elif stream["tap_stream_id"] == "programs":
             state, record_count = sync_programs(client, state, stream)

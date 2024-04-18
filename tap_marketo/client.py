@@ -188,9 +188,9 @@ class Client:
         endpoint_name = endpoint_name or url
         url = self.get_url(url)
         headers = kwargs.pop("headers", {})
+        params = kwargs.pop("params", {})
         headers.update(self.headers)
-        req = requests.Request(method, url, headers=headers, **kwargs).prepare()
-        singer.log_info("%s: %s", method, req.url)
+        req = requests.Request(method, url, headers=headers, params=params, **kwargs).prepare()
         with singer.metrics.http_request_timer(endpoint_name):
             resp = self._session.send(req, stream=stream, timeout=self.request_timeout)
 
@@ -236,6 +236,14 @@ class Client:
                 raise ApiException("Marketo API returned error: {0.status_code}: {0.content}".format(resp))
 
             return resp
+
+    def get_paging_token(self):
+        endpoint = "rest/v1/activities/pagingtoken.json"
+        # TODO: Make this configurable based on bookmark state
+        sinceDatetime = "2024-04-04T00:00:00Z"
+        params = {"sinceDatetime": sinceDatetime}
+        data = self.request("GET", endpoint, endpoint_name="paging_token", params=params)
+        return data.get("nextPageToken")
 
     def create_export(self, stream_type, fields, query):
         # http://developers.marketo.com/rest-api/bulk-extract/#creating_a_job
