@@ -414,12 +414,9 @@ def sync_paginated(client, state, stream):
     next_page_token = bookmarks.get_bookmark(state, stream["tap_stream_id"], "next_page_token")
     if stream["tap_stream_id"] == "deleted_leads":
         if not next_page_token:
-            next_page_token = client.get_paging_token()
+            next_page_token = client.get_paging_token(start_date)
         params = {"nextPageToken": next_page_token}
         endpoint = "rest/v1/activities/deletedleads.json"
-
-    if next_page_token:
-        params["nextPageToken"] = next_page_token
 
     # Keep querying pages of data until no next page token.
     record_count = 0
@@ -441,8 +438,8 @@ def sync_paginated(client, state, stream):
 
                     singer.write_record(stream["tap_stream_id"], record, time_extracted=time_extracted)
 
-        # No next page, results are exhausted.
-        if "nextPageToken" not in data:
+        # If moreResult in data is False, break
+        if not data["moreResult"]:
             break
 
         # Store the next page token in state and continue.

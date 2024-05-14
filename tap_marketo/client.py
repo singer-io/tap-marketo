@@ -237,10 +237,10 @@ class Client:
 
             return resp
 
-    def get_paging_token(self):
+    def get_paging_token(self, sinceDatetime):
         endpoint = "rest/v1/activities/pagingtoken.json"
-        # TODO: Make this configurable based on bookmark state
-        sinceDatetime = "2024-04-04T00:00:00Z"
+        singer.log_info("Getting paging token for date %s", sinceDatetime)
+
         params = {"sinceDatetime": sinceDatetime}
         data = self.request("GET", endpoint, endpoint_name="paging_token", params=params)
         return data.get("nextPageToken")

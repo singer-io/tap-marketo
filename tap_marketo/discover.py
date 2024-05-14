@@ -190,44 +190,31 @@ def discover_leads(client):
 
 
 def discover_activity_deleted_leads(client):
-    endpoint = "rest/v1/activities/deletedleads.json"
-    next_page_token = client.get_paging_token()
-    params = {"nextPageToken": next_page_token}
 
-    while True:
-        data = client.request("GET", endpoint, endpoint_name="activity_deleted_leads", params=params)
-
-        results = data.get('result', [])
-        # Taking 1st row for schema discovery
-        if results:
-            return [get_activity_type_stream(results[0], stream="deleted_leads")]
-
-        if data.get('moreResult'):
-            next_page_token = data['nextPageToken']
-            params = {"nextPageToken": next_page_token}
-        else:
-            root = os.path.dirname(os.path.realpath(__file__))
-            path = os.path.join(root, 'schemas/{}.json'.format('leads'))
-            if os.path.isfile(path):
-                # TODO: Test this usecase and see the output
-                discovered_schema = discover_catalog('deleted_leads', DELETED_LEADS_AUTOMATIC_INCLUSION)
-                return discovered_schema
-            else:
-                return {
-                    "tap_stream_id": "deleted_leads",
-                    "stream": "deleted_leads",
-                    "key_properties": ["marketoGUID"],
-                    "metadata": metadata.to_list(metadata.new()),
-                    "schema": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {
-                            "marketoGUID": {"type": "string"},
-                            "leadId": {"type": "integer"},
-                            "activityDate": {"type": "string", "format": "date-time"},
-                        }
-                    }
+    # Cannot use on-the-fly schema discovery for deleted leads because paging_token is needed
+    # which cannot be fetched without bookmark's state. Bookmark's state depends on discovery itself
+    root = os.path.dirname(os.path.realpath(__file__))
+    path = os.path.join(root, 'schemas/{}.json'.format('deleted_leads'))
+    if os.path.isfile(path):
+        singer.log_info("deleted_leads.json file exists, returning discovered schema")
+        discovered_schema = discover_catalog('deleted_leads', DELETED_LEADS_AUTOMATIC_INCLUSION)
+        return discovered_schema
+    else:
+        return {
+            "tap_stream_id": "deleted_leads",
+            "stream": "deleted_leads",
+            "key_properties": ["marketoGUID"],
+            "metadata": metadata.to_list(metadata.new()),
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "marketoGUID": {"type": "string"},
+                    "leadId": {"type": "integer"},
+                    "activityDate": {"type": "string", "format": "date-time"},
                 }
+            }
+        }
 
 
 
@@ -264,7 +251,7 @@ def discover(client):
     streams.append(discover_leads(client))
     streams.append(discover_catalog("activity_types", ACTIVITY_TYPES_AUTOMATIC_INCLUSION, unsupported=ACTIVITY_TYPES_UNSUPPORTED, stream_automatic_inclusion=True))
     streams.extend(discover_activities(client))
-    streams.extend(discover_activity_deleted_leads(client))
+    streams.append(discover_activity_deleted_leads(client))
     streams.append(discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION))
     streams.append(discover_catalog("lists", LISTS_AUTOMATIC_INCLUSION))
     streams.append(discover_catalog("programs", PROGRAMS_AUTOMATIC_INCLUSION))
