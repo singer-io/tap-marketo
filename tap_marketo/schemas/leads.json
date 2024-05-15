@@ -2164,6 +2164,55 @@
                     "null"
                 ],
                 "format": "date-time"
+            },
+            "Lead_Score_Voice_IVR_SIP_Trunking__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Lead_Score_Contact_Center_Twilio_Flex__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Lead_Score_COMMs_Products__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "Lead_Score_Last_Updated_Date__c": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "X6Sense_Account_Intent_Score_Sendgrid__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "X6sense_Contact_Intent_Score_Sendgrid__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "X6sense_Lead_Intent_Score_Sendgrid__c": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "X6Sense_Account_Buying_Stage_Sendgrid__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
             }
         }
     }
