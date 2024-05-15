@@ -60,6 +60,7 @@ def validate_state(config, catalog, state):
     singer.write_state(state)
     return state
 
+
 def _main(config, properties, state, discover_mode=False):
     client = Client(**config)
     if discover_mode:
