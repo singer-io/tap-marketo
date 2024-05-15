@@ -17,7 +17,7 @@ from singer.bookmarks import (
 )
 
 REQUIRED_CONFIG_KEYS = [
-    "start_date"
+    "start_date",
     
     # Log in to Marketo
     # Go to Admin, select Integration->Web Services
