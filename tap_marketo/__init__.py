@@ -18,7 +18,6 @@ from singer.bookmarks import (
 
 REQUIRED_CONFIG_KEYS = [
     "start_date",
-    
     # Log in to Marketo
     # Go to Admin, select Integration->Web Services
     # Endpoint url matches https://123-ABC-456.mktorest.com/rest
@@ -59,7 +58,6 @@ def validate_state(config, catalog, state):
 
     singer.write_state(state)
     return state
-
 
 def _main(config, properties, state, discover_mode=False):
     client = Client(**config)
