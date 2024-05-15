@@ -56,7 +56,7 @@ def get_schema_for_type(typ, breadcrumb, mdata, null=False):
     return rtn, mdata
 
 
-def get_activity_type_stream(activity, stream=None):
+def get_activity_type_stream(activity):
     # Activity streams have 7 attributes:
     # - marketoGUID
     # - leadId
@@ -104,21 +104,18 @@ def get_activity_type_stream(activity, stream=None):
         primary = clean_string(activity["primaryAttribute"]["name"])
         mdata = metadata.write(mdata, (), 'marketo.primary-attribute-name', primary)
 
-
-    if activity.get("attributes"):
+    if "attributes" in activity:
         for attr in activity["attributes"]:
-            if "name" in attr and "dataType" in attr:
-                attr_name = clean_string(attr["name"])
-                field_schema, mdata = get_schema_for_type(attr["dataType"], breadcrumb=('properties', attr_name), mdata=mdata, null=True)
-                if field_schema:
-                    properties[attr_name] = field_schema
+            attr_name = clean_string(attr["name"])
+            field_schema, mdata = get_schema_for_type(attr["dataType"], breadcrumb=('properties', attr_name),
+                                                      mdata=mdata, null=True)
+            if field_schema:
+                properties[attr_name] = field_schema
 
-    if "name" in activity:
-        activity_type_camel = clean_string(activity["name"])
-        tap_stream_id = "activities_{}".format(activity_type_camel)
-    else:
-        tap_stream_id = stream
+    activity_type_camel = clean_string(activity["name"])
     mdata = metadata.write(mdata, (), 'marketo.activity-id', activity["id"])
+
+    tap_stream_id = "activities_{}".format(activity_type_camel)
 
     # The activities steams use "marketoGUID" as the key_properties
     mdata = metadata.write(mdata, (), 'table-key-properties', ['marketoGUID'])

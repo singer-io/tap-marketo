@@ -5,7 +5,6 @@
 import pendulum
 import singer
 from singer import bookmarks
-from singer import logger
 
 from tap_marketo.client import Client
 from tap_marketo.discover import discover
@@ -18,7 +17,8 @@ from singer.bookmarks import (
 )
 
 REQUIRED_CONFIG_KEYS = [
-    "start_date",
+    "start_date"
+    
     # Log in to Marketo
     # Go to Admin, select Integration->Web Services
     # Endpoint url matches https://123-ABC-456.mktorest.com/rest
@@ -33,17 +33,12 @@ REQUIRED_CONFIG_KEYS = [
 
 
 def validate_state(config, catalog, state):
-    singer.log_info("state in validate state: %s" % state)
     for stream in catalog["streams"]:
-        if stream['tap_stream_id'] == 'deleted_leads':
-            singer.log_info("state in validate_state in for loop: %s" % state)
         for mdata in stream['metadata']:
             if mdata['breadcrumb'] == [] and mdata['metadata'].get('selected') != True:
                 # If a stream is deselected while it's the current stream, unset the
                 # current stream.
-                singer.log_info("In mdata['breadcrumb'] == [] and mdata['metadata'].get('selected') != True:")
                 if stream["tap_stream_id"] == get_currently_syncing(state):
-                    singer.log_info("stream[tap_stream_id] == get_currently_syncing: %s" % stream["tap_stream_id"])
                     set_currently_syncing(state, None)
                 break
 
@@ -56,10 +51,7 @@ def validate_state(config, catalog, state):
         bookmark = get_bookmark(state,
                                 stream["tap_stream_id"],
                                 replication_key)
-        singer.log_info("bookmark: %s" % bookmark)
         if bookmark is None:
-            singer.log_info("No bookmark found for stream: %s, setting to start_date" % stream["tap_stream_id"])
-            # singer.log_info("state: %s" % state)
             state = write_bookmark(state,
                                    stream["tap_stream_id"],
                                    replication_key,

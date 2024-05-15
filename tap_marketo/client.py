@@ -191,6 +191,7 @@ class Client:
         params = kwargs.pop("params", {})
         headers.update(self.headers)
         req = requests.Request(method, url, headers=headers, params=params, **kwargs).prepare()
+        singer.log_info("%s: %s", method, req.url)
         with singer.metrics.http_request_timer(endpoint_name):
             resp = self._session.send(req, stream=stream, timeout=self.request_timeout)
 
