@@ -461,6 +461,7 @@ def sync(client, catalog, config, state):
     else:
         singer.log_info("Starting sync")
 
+    corona_warning_flag = False
     for stream in catalog["streams"]:
         # Skip unselected streams.
         mdata = metadata.to_map(stream['metadata'])
@@ -487,8 +488,10 @@ def sync(client, catalog, config, state):
             state, record_count = sync_activity_types(client, state, stream)
         elif stream["tap_stream_id"] == "leads":
             state, record_count = sync_leads(client, state, stream, config)
+            corona_warning_flag = True
         elif stream["tap_stream_id"].startswith("activities_"):
             state, record_count = sync_activities(client, state, stream, config)
+            corona_warning_flag = True
         elif stream["tap_stream_id"] in ["campaigns", "lists"]:
             state, record_count = sync_paginated(client, state, stream)
         elif stream["tap_stream_id"] == "programs":
@@ -509,5 +512,5 @@ def sync(client, catalog, config, state):
     # If Corona is not supported, log a warning near the end of the tap
     # log with instructions on how to get Corona supported.
     singer.log_info("Finished sync.")
-    if not client.use_corona:
-        singer.log_warning(NO_CORONA_WARNING)
+    if corona_warning_flag and not client.use_corona:
+            singer.log_warning(NO_CORONA_WARNING)
