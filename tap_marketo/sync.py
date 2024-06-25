@@ -512,6 +512,5 @@ def sync(client, catalog, config, state):
     # If Corona is not supported, log a warning near the end of the tap
     # log with instructions on how to get Corona supported.
     singer.log_info("Finished sync.")
-    if corona_warning_flag:
-        if not client.use_corona:
+    if corona_warning_flag and not client.use_corona:
             singer.log_warning(NO_CORONA_WARNING)
