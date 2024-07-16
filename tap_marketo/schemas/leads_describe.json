@@ -29,7 +29,9 @@
                 ]
             },
             "soap": {
-                "type": "object",
+                "type": [
+                    "null", "object"
+                ],
                 "properties": {
                     "name": {
                         "type": [
@@ -46,7 +48,9 @@
                 }
             },
             "rest": {
-                "type": "object",
+                "type": [
+                    "null", "object"
+                ],
                 "properties": {
                     "name": {
                         "type": [

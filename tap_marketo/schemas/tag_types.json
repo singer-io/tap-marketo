@@ -7,10 +7,10 @@
       "additionalProperties": false,
       "properties": {
         "applicableProgramTypes": {
-          "type": "string"
+          "type": ["null", "string"]
         },
         "tagType": {
-          "type": ["string", "null"]
+          "type": ["null", "string"]
         },
         "required": {
           "type": ["boolean", "null"]
