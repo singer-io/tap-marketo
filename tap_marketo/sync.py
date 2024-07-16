@@ -492,7 +492,7 @@ def sync_program_tags(client, state, stream):
 
 def sync_leads_describe(client, state, stream):
     # https://developers.marketo.com/rest-api/endpoint-reference/lead-database-endpoint-reference/#!/Leads/describeUsingGET_2
-    singer.write_schema("leads_describe(", stream["schema"], stream["key_properties"])
+    singer.write_schema("leads_describe", stream["schema"], stream["key_properties"])
     endpoint = "rest/v1/leads/describe.json"
     data = client.request("GET", endpoint)
     record_count = 0
