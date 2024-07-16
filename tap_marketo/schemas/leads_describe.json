@@ -24,7 +24,9 @@
                 ]
             },
             "length": {
-                "type": "integer"
+                "type": [
+                    "null", "integer"
+                ]
             },
             "soap": {
                 "type": "object",
