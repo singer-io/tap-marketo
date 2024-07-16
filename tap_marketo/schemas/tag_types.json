@@ -1,0 +1,20 @@
+{
+    "tap_stream_id": "tag_types",
+    "stream": "tag_types",
+    "key_properties": [],
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "applicableProgramTypes": {
+          "type": "string"
+        },
+        "tagType": {
+          "type": ["string", "null"]
+        },
+        "required": {
+          "type": ["boolean", "null"]
+        }
+      }
+    }
+  }

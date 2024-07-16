@@ -1,0 +1,26 @@
+{
+  "tap_stream_id": "program_tags",
+  "stream": "program_tags",
+  "key_properties": [],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "program_id": {
+        "type": "integer"
+      },
+      "tagType": {
+        "type": [
+          "null",
+          "string"
+        ]
+      },
+      "tagValue": {
+        "type": [
+          "null",
+          "string"
+        ]
+      }
+    }
+  }
+}

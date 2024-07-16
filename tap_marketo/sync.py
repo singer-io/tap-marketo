@@ -431,6 +431,120 @@ def sync_paginated(client, state, stream):
     singer.write_state(state)
     return state, record_count
 
+def get_program_ids(client):
+    # http://developers.marketo.com/rest-api/assets/programs/#by_date_range
+
+    params = {
+        "maxReturn": 200,
+        "offset": 0,
+    }
+    endpoint = "rest/asset/v1/programs.json"
+    rec_ids = []
+
+    while True:
+        data = client.request("GET", endpoint, endpoint_name="programs", params=params)
+        singer.log_info("params %s", params)
+        if "warnings" in data and NO_ASSET_MSG in data["warnings"]:
+            break
+        if "errors" in data and data["errors"] != []:
+            singer.log_info("error %s", data)
+            break
+        time_extracted = utils.now()
+        for rec in data["result"]:
+                rec_ids.append(rec["id"])
+        params["offset"] += params["maxReturn"]
+    return sorted(rec_ids)
+
+def sync_program_tags(client, state, stream):
+    singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
+    params = {}
+    # prefetch program ids for interuptible sync
+    program_ids = get_program_ids(client)
+    record_count, start = 0,0
+
+    last_synced_program = bookmarks.get_bookmark(state, stream["tap_stream_id"], "program_id")
+    if last_synced_program:
+        for indx, prog in enumerate(program_ids):
+            if prog == last_synced_program:
+                start = indx
+                singer.log_info("Last Sync was interupted at indx: %s prog: **%s",indx, str(prog)[-2:])
+    time_extracted = utils.now()
+    for index, program_id in enumerate(program_ids[start:], start):
+        singer.log_info("Fetching tags for %s/%s programs, prog: **%s", index+1, len(program_ids), str(program_id)[-2:])
+        endpoint = "rest/asset/v1/program/{}.json".format(program_id)
+        state = bookmarks.write_bookmark(state, stream["tap_stream_id"], "program_id", program_id)
+        singer.write_state(state)
+        data = client.request("GET", endpoint, endpoint_name=stream["tap_stream_id"], params=params)
+        result = data.get("result")
+        if result:
+            for rec in result:
+                tags = rec.get("tags")
+                if not tags:
+                    singer.log_info("No tags found for program **%s",str(program_id)[-2:])
+                for row in tags:
+                    row["program_id"] = program_id
+                    record = format_values(stream, row)
+                    singer.write_record(stream["tap_stream_id"], record, time_extracted=time_extracted)
+                    record_count+=1
+
+    state = bookmarks.write_bookmark(state, stream["tap_stream_id"], "program_id", None)
+    return state, record_count
+
+def sync_leads_describe(client, state, stream):
+    # https://developers.marketo.com/rest-api/endpoint-reference/lead-database-endpoint-reference/#!/Leads/describeUsingGET_2
+    singer.write_schema("leads_describe(", stream["schema"], stream["key_properties"])
+    endpoint = "rest/v1/leads/describe.json"
+    data = client.request("GET", endpoint)
+    record_count = 0
+
+    time_extracted = utils.now()
+    for row in data["result"]:
+        record = format_values(stream, row)
+        record_count += 1
+        singer.write_record("leads_describe", record, time_extracted=time_extracted)
+    return state, record_count
+
+
+def sync_tag_types(client, state, stream):
+    # http://developers.marketo.com/rest-api/assets/programs/#by_date_range
+    #
+    # Programs are queryable via their updatedAt time but require and
+    # end date as well. As there is no max time range for the query,
+    # query from the bookmark value until current.
+    #
+    # The Programs endpoint uses offsets with a return limit of 200
+    # per page. If requesting past the final program, an error message
+    # is returned to indicate that the endpoint has been fully synced.
+    singer.write_schema("tag_types", stream["schema"], [])
+    params = {
+        "maxReturn": 200,
+        "offset": 0,
+    }
+    endpoint = "rest/asset/v1/tagTypes.json"
+    time_extracted = utils.now()
+
+    record_count = 0
+    while True:
+        data = client.request("GET", endpoint, params=params)
+
+        # If the no asset message is in the warnings, we have exhausted
+        # the search results and can end the sync.
+        if "warnings" in data and NO_ASSET_MSG in data["warnings"]:
+            break
+
+        for row in data["result"]:
+            record = format_values(stream, row)
+            record_count += 1
+            singer.write_record("tag_types", record, time_extracted=time_extracted)
+
+        # Increment the offset by the return limit for the next query.
+        params["offset"] += params["maxReturn"]
+
+    # Now that we've finished every page we can update the bookmark to
+    # the end of the query.
+    return state, record_count
+
+
 
 def sync_activity_types(client, state, stream):
     # http://developers.marketo.com/rest-api/lead-database/activities/#describe
@@ -496,6 +610,12 @@ def sync(client, catalog, config, state):
             state, record_count = sync_paginated(client, state, stream)
         elif stream["tap_stream_id"] == "programs":
             state, record_count = sync_programs(client, state, stream)
+        elif stream["tap_stream_id"] == "leads_describe":
+            state, record_count = sync_leads_describe(client, state, stream)
+        elif stream["tap_stream_id"] == "tag_types":
+            state, record_count = sync_tag_types(client, state, stream)
+        elif stream["tap_stream_id"] == "program_tags":
+            state, record_count = sync_program_tags(client, state, stream)
         else:
             raise Exception("Stream %s not implemented" % stream["tap_stream_id"])
 
