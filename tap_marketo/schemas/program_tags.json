@@ -1,6 +1,7 @@
 {
   "tap_stream_id": "program_tags",
   "stream": "program_tags",
+  "replication_method": "FULL_TABLE",
   "key_properties": [],
   "schema": {
     "type": "object",
