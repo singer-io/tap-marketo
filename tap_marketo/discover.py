@@ -193,6 +193,7 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
 
     with open(path, "r") as f:
         discovered_schema = json.load(f)
+        repl_method = discovered_schema.get("replication_method", None)
 
         for field in discovered_schema["schema"]["properties"]:
             if field in automatic_inclusion:
@@ -207,10 +208,12 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
 
         if name in ("tag_types", "program_tags"):
             mdata = metadata.write(mdata, (), 'table-key-properties', [])
-            mdata = metadata.write(mdata, (), 'forced-replication-method', "FULL_TABLE")
         else:
         # The steams using discover_catalog all use "id" as the key_properties
             mdata = metadata.write(mdata, (), 'table-key-properties', ['id'])
+
+        if repl_method:
+            mdata = metadata.write(mdata, (), 'replication-method', repl_method)
 
         discovered_schema["metadata"] = metadata.to_list(mdata)
         return discovered_schema
