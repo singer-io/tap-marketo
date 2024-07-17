@@ -213,7 +213,7 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
             mdata = metadata.write(mdata, (), 'table-key-properties', ['id'])
 
         if repl_method:
-            mdata = metadata.write(mdata, (), 'replication-method', repl_method)
+            mdata = metadata.write(mdata, (), 'forced-replication-method', repl_method)
 
         discovered_schema["metadata"] = metadata.to_list(mdata)
         return discovered_schema
