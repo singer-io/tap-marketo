@@ -457,7 +457,8 @@ def get_program_ids(client):
     return sorted(rec_ids)
 
 def sync_program_tags(client, state, stream):
-    #before writing the table version to state, check if we had one to begin with
+
+    singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
     first_run = singer.get_bookmark(state, stream['tap_stream_id'], 'is_inital_sync_run') is None
     interupted_version = singer.get_bookmark(state, stream['tap_stream_id'], 'active_version')
 
@@ -480,7 +481,6 @@ def sync_program_tags(client, state, stream):
         singer.write_state(state)
 
     state = bookmarks.write_bookmark(state, stream["tap_stream_id"], "active_version", stream_version)
-    singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
     singer.write_state(state)
 
     params = {}
@@ -535,7 +535,8 @@ def sync_leads_describe(client, state, stream):
 
 
 def sync_tag_types(client, state, stream):
-    #before writing the table version to state, check if we had one to begin with
+
+    singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
     first_run = singer.get_bookmark(state, stream['tap_stream_id'], 'is_inital_sync_run') is None
     interupted_version = singer.get_bookmark(state, stream['tap_stream_id'], 'active_version')
 
@@ -556,7 +557,6 @@ def sync_tag_types(client, state, stream):
         singer.write_state(state)
 
     state = bookmarks.write_bookmark(state, stream["tap_stream_id"], "active_version", stream_version)
-    singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
     params = {
         "maxReturn": 200,
         "offset": 0,
