@@ -460,14 +460,12 @@ def sync_program_tags(client, state, stream):
     #before writing the table version to state, check if we had one to begin with
     first_run = singer.get_bookmark(state, stream['tap_stream_id'], 'is_inital_sync_run') is None
     interupted_version = singer.get_bookmark(state, stream['tap_stream_id'], 'active_version')
-    state = bookmarks.write_bookmark(state, stream["tap_stream_id"], 'is_inital_sync_run', True)
 
     last_synced_program = bookmarks.get_bookmark(state, stream["tap_stream_id"], "program_id")
 
     if interupted_version is None:
         stream_version = int(time.time() * 1000)
         singer.log_info("Using new activate version %s", stream_version)
-
     else:
         singer.log_info("Using interupted activate version %s", interupted_version)
         stream_version = interupted_version
@@ -537,18 +535,28 @@ def sync_leads_describe(client, state, stream):
 
 
 def sync_tag_types(client, state, stream):
-    singer.write_schema(stream['tap_stream_id'], stream["schema"], [])
-    first_run = singer.get_bookmark(state, stream['tap_stream_id'], 'is_inital_sync_run')
-    stream_version = int(time.time() * 1000)
+    #before writing the table version to state, check if we had one to begin with
+    first_run = singer.get_bookmark(state, stream['tap_stream_id'], 'is_inital_sync_run') is None
+    interupted_version = singer.get_bookmark(state, stream['tap_stream_id'], 'active_version')
+
+    if interupted_version is None:
+        stream_version = int(time.time() * 1000)
+        singer.log_info("Using new activate version %s for stream %s", stream_version, stream['tap_stream_id'])
+    else:
+        singer.log_info("Using interupted activate version %s for stream %s", interupted_version, stream['tap_stream_id'])
+        stream_version = interupted_version
 
     activate_version_message = singer.ActivateVersionMessage(
             stream=stream['tap_stream_id'],version=stream_version)
 
     if first_run:
+        singer.log_info("running inital sync")
         singer.write_message(activate_version_message)
         state = bookmarks.write_bookmark(state, stream["tap_stream_id"], 'is_inital_sync_run', True)
         singer.write_state(state)
 
+    state = bookmarks.write_bookmark(state, stream["tap_stream_id"], "active_version", stream_version)
+    singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
     params = {
         "maxReturn": 200,
         "offset": 0,
@@ -575,8 +583,8 @@ def sync_tag_types(client, state, stream):
         params["offset"] += params["maxReturn"]
 
     singer.write_message(activate_version_message)
-    # Now that we've finished every page we can update the bookmark to
-    # the end of the query.
+    state = bookmarks.write_bookmark(state, stream["tap_stream_id"], "active_version", None)
+    singer.write_state(state)
     return state, record_count
 
 
