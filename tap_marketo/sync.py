@@ -2,6 +2,7 @@ import csv
 import json
 import pendulum
 import tempfile
+import time
 
 import singer
 from singer import metadata
@@ -456,13 +457,39 @@ def get_program_ids(client):
     return sorted(rec_ids)
 
 def sync_program_tags(client, state, stream):
+    #before writing the table version to state, check if we had one to begin with
+    first_run = singer.get_bookmark(state, stream['tap_stream_id'], 'is_inital_sync_run') is None
+    interupted_version = singer.get_bookmark(state, stream['tap_stream_id'], 'active_version')
+    state = bookmarks.write_bookmark(state, stream["tap_stream_id"], 'is_inital_sync_run', True)
+
+    last_synced_program = bookmarks.get_bookmark(state, stream["tap_stream_id"], "program_id")
+
+    if interupted_version is None:
+        stream_version = int(time.time() * 1000)
+        singer.log_info("Using new activate version %s", stream_version)
+
+    else:
+        singer.log_info("Using interupted activate version %s", interupted_version)
+        stream_version = interupted_version
+
+    activate_version_message = singer.ActivateVersionMessage(
+            stream=stream['tap_stream_id'],version=stream_version)
+
+    if first_run:
+        singer.log_info("running inital sync")
+        singer.write_message(activate_version_message)
+        state = bookmarks.write_bookmark(state, stream["tap_stream_id"], 'is_inital_sync_run', True)
+        singer.write_state(state)
+
+    state = bookmarks.write_bookmark(state, stream["tap_stream_id"], "active_version", stream_version)
     singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
+    singer.write_state(state)
+
     params = {}
     # prefetch program ids for interuptible sync
     program_ids = get_program_ids(client)
     record_count, start = 0,0
 
-    last_synced_program = bookmarks.get_bookmark(state, stream["tap_stream_id"], "program_id")
     if last_synced_program:
         for indx, prog in enumerate(program_ids):
             if prog == last_synced_program:
@@ -470,7 +497,6 @@ def sync_program_tags(client, state, stream):
                 singer.log_info("Last Sync was interupted at indx: %s prog: **%s",indx, str(prog)[-2:])
     time_extracted = utils.now()
     for index, program_id in enumerate(program_ids[start:], start):
-        singer.log_info("Fetching tags for %s/%s programs, prog: **%s", index+1, len(program_ids), str(program_id)[-2:])
         endpoint = "rest/asset/v1/program/{}.json".format(program_id)
         state = bookmarks.write_bookmark(state, stream["tap_stream_id"], "program_id", program_id)
         singer.write_state(state)
@@ -484,10 +510,15 @@ def sync_program_tags(client, state, stream):
                 for row in tags:
                     row["program_id"] = program_id
                     record = format_values(stream, row)
-                    singer.write_record(stream["tap_stream_id"], record, time_extracted=time_extracted)
+                    singer.write_message(
+                        singer.RecordMessage(stream['tap_stream_id'],record,version=stream_version,time_extracted=time_extracted)
+                        )
                     record_count+=1
 
+    singer.write_message(activate_version_message)
+    state = bookmarks.write_bookmark(state, stream["tap_stream_id"], "active_version", None)
     state = bookmarks.write_bookmark(state, stream["tap_stream_id"], "program_id", None)
+    singer.write_state(state)
     return state, record_count
 
 def sync_leads_describe(client, state, stream):
@@ -506,16 +537,18 @@ def sync_leads_describe(client, state, stream):
 
 
 def sync_tag_types(client, state, stream):
-    # http://developers.marketo.com/rest-api/assets/programs/#by_date_range
-    #
-    # Programs are queryable via their updatedAt time but require and
-    # end date as well. As there is no max time range for the query,
-    # query from the bookmark value until current.
-    #
-    # The Programs endpoint uses offsets with a return limit of 200
-    # per page. If requesting past the final program, an error message
-    # is returned to indicate that the endpoint has been fully synced.
-    singer.write_schema("tag_types", stream["schema"], [])
+    singer.write_schema(stream['tap_stream_id'], stream["schema"], [])
+    first_run = singer.get_bookmark(state, stream['tap_stream_id'], 'is_inital_sync_run')
+    stream_version = int(time.time() * 1000)
+
+    activate_version_message = singer.ActivateVersionMessage(
+            stream=stream['tap_stream_id'],version=stream_version)
+
+    if first_run:
+        singer.write_message(activate_version_message)
+        state = bookmarks.write_bookmark(state, stream["tap_stream_id"], 'is_inital_sync_run', True)
+        singer.write_state(state)
+
     params = {
         "maxReturn": 200,
         "offset": 0,
@@ -535,11 +568,13 @@ def sync_tag_types(client, state, stream):
         for row in data["result"]:
             record = format_values(stream, row)
             record_count += 1
-            singer.write_record("tag_types", record, time_extracted=time_extracted)
+            singer.write_message(
+                singer.RecordMessage(stream['tap_stream_id'],record,version=stream_version,time_extracted=time_extracted))
 
         # Increment the offset by the return limit for the next query.
         params["offset"] += params["maxReturn"]
 
+    singer.write_message(activate_version_message)
     # Now that we've finished every page we can update the bookmark to
     # the end of the query.
     return state, record_count
