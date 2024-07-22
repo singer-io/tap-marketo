@@ -1,9 +1,7 @@
 {
     "tap_stream_id": "leads_describe",
     "stream": "leads_describe",
-    "key_properties": [
-        "id"
-    ],
+    "key_properties": ["id"],
     "schema": {
         "type": "object",
         "additionalProperties": false,
@@ -12,57 +10,33 @@
                 "type": "integer"
             },
             "displayName": {
-                "type": [
-                    "null",
-                    "string"
-                ]
+                "type": ["null", "string"]
             },
             "dataType": {
-                "type": [
-                    "null",
-                    "string"
-                ]
+                "type": ["null", "string"]
             },
             "length": {
-                "type": [
-                    "null", "integer"
-                ]
+                "type": ["null", "integer"]
             },
             "soap": {
-                "type": [
-                    "null", "object"
-                ],
+                "type": ["null", "object"],
                 "properties": {
                     "name": {
-                        "type": [
-                            "null",
-                            "string"
-                        ]
+                        "type": ["null", "string"]
                     },
                     "readOnly": {
-                        "type": [
-                            "null",
-                            "boolean"
-                        ]
+                        "type": ["null", "boolean"]
                     }
                 }
             },
             "rest": {
-                "type": [
-                    "null", "object"
-                ],
+                "type": ["null", "object"],
                 "properties": {
                     "name": {
-                        "type": [
-                            "null",
-                            "string"
-                        ]
+                        "type": ["null", "string"]
                     },
                     "readOnly": {
-                        "type": [
-                            "null",
-                            "boolean"
-                        ]
+                        "type": ["null", "boolean"]
                     }
                 }
             }

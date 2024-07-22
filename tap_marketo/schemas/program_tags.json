@@ -11,16 +11,10 @@
         "type": "integer"
       },
       "tagType": {
-        "type": [
-          "null",
-          "string"
-        ]
+        "type": [ "null", "string"]
       },
       "tagValue": {
-        "type": [
-          "null",
-          "string"
-        ]
+        "type": [ "null", "string"]
       }
     }
   }
