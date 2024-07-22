@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.6.2
+  * New Streams added (Describe Leads,Program Tags, Tag Types) [#95](https://github.com/singer-io/tap-marketo/pull/95)
+
 ## 2.6.1
   * Log Corona warning only if the leads and activities_* stream are selected [#94](https://github.com/singer-io/tap-marketo/pull/94)
 
