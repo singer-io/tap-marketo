@@ -452,7 +452,7 @@ def check_if_first_sync(state, tap_stream_id):
     """
     checks for initial sync flag stored in the bookmark
     """
-    first_sync_state = singer.get_bookmark(state, tap_stream_id, INITAL_SYNC_KEY, True)
+    first_sync_state = singer.get_bookmark(state, tap_stream_id, INITAL_SYNC_KEY, None)
     return True if first_sync_state in (None, False) else False
 
 def get_activate_version(state, tap_stream_id):
