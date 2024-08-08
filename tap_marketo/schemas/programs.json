@@ -20,6 +20,12 @@
       "name": {
         "type": "string"
       },
+      "sfdcName": {
+        "type": "string"
+      },
+      "sfdcId": {
+        "type": "string"
+      },
       "description": {
         "type": ["null", "string"]
       },
