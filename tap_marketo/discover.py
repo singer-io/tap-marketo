@@ -208,10 +208,9 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
         if stream_automatic_inclusion:
             mdata = metadata.write(mdata, (), 'inclusion', 'automatic')
 
-        if key_props:
-            mdata = metadata.write(mdata, (), 'table-key-properties', key_props)
-        else:
-            mdata = metadata.write(mdata, (), 'table-key-properties', [])
+        if not key_props:
+            key_props = []
+        mdata = metadata.write(mdata, (), 'table-key-properties', key_props)
 
         if repl_method:
             mdata = metadata.write(mdata, (), 'forced-replication-method', repl_method)
