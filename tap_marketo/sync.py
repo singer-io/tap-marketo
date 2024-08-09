@@ -483,7 +483,7 @@ def get_program_ids(client):
         if "errors" in data and data["errors"]:
             singer.log_info("error %s", data)
             has_more_data = False
-        for rec in data["result"]:
+        for rec in data.get("result", []):
             rec_ids.append(rec["id"])
         params["offset"] += params["maxReturn"]
     return sorted(rec_ids)
