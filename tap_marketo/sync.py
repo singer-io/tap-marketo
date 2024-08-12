@@ -575,7 +575,7 @@ def sync_tag_types(client, state, stream):
         data = client.request("GET", endpoint, params=params)
         if "warnings" in data and NO_ASSET_MSG in data["warnings"]:
             has_more_data = False
-        for row in data["result"]:
+        for row in data.get("result", []):
             record = format_values(stream, row)
             singer.write_message(
                 singer.RecordMessage(
