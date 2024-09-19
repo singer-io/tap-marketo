@@ -85,6 +85,7 @@ def get_activity_type_stream(activity):
         "activityDate": {"type": ["null", "string"], "format": "date-time"},
         "activityTypeId": {"type": ["null", "integer"]},
         "campaignId": {"type": ["null", "integer"]},
+        "actionResult": {"type": ["null", "string"]},
     }
 
     for prop in properties:
