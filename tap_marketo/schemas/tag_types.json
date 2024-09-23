@@ -1,0 +1,21 @@
+{
+    "tap_stream_id": "tag_types",
+    "stream": "tag_types",
+    "key_properties": [],
+    "replication_method": "FULL_TABLE",
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "applicableProgramTypes": {
+          "type": ["null", "string"]
+        },
+        "tagType": {
+          "type": ["null", "string"]
+        },
+        "required": {
+          "type": ["boolean", "null"]
+        }
+      }
+    }
+  }

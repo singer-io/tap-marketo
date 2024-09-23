@@ -18,7 +18,13 @@
         "format": "date-time"
       },
       "name": {
-        "type": "string"
+        "type": ["null", "string"]
+      },
+      "sfdcName": {
+       "type": ["null", "string"]
+      },
+      "sfdcId": {
+       "type": ["null", "string"]
       },
       "description": {
         "type": ["null", "string"]

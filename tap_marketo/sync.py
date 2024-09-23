@@ -2,6 +2,7 @@ import csv
 import json
 import pendulum
 import tempfile
+import time
 
 import singer
 from singer import metadata
@@ -18,6 +19,7 @@ BASE_ACTIVITY_FIELDS = [
     "activityDate",
     "activityTypeId",
     "campaignId",
+    "actionResult"
 ]
 
 ACTIVITY_FIELDS = BASE_ACTIVITY_FIELDS + [
@@ -52,6 +54,8 @@ NO_CORONA_WARNING = (
 ITER_CHUNK_SIZE = 512
 
 ATTRIBUTION_WINDOW_DAYS = 1
+INITAL_SYNC_KEY = "is_inital_sync_run"
+ACTIVATE_VERSION_KEY = "active_version"
 
 
 def format_value(value, schema):
@@ -164,7 +168,7 @@ def get_or_create_export_for_leads(client, state, stream, export_start, config):
         # Corona mode is required to query by "updatedAt", otherwise a full
         # sync is required using "createdAt".
         query_field = "updatedAt" if client.use_corona else "createdAt"
-        max_export_days = int(config.get('max_export_days',
+        max_export_days = float(config.get('max_export_days',
                                          MAX_EXPORT_DAYS))
         export_end = get_export_end(export_start,
                                     end_days=max_export_days)
@@ -204,7 +208,7 @@ def get_or_create_export_for_activities(client, state, stream, export_start, con
         # that is not a real field. `createdAt` proxies `activityDate`.
         # The activity type id must also be included in the query. The
         # largest date range that can be used for activities is 30 days.
-        max_export_days = int(config.get('max_export_days',
+        max_export_days = float(config.get('max_export_days',
                                          MAX_EXPORT_DAYS))
         export_end = get_export_end(export_start,
                                     end_days=max_export_days)
@@ -223,7 +227,7 @@ def get_or_create_export_for_activities(client, state, stream, export_start, con
             raise ApiQuotaExceeded(
                 ("You may wish to consider changing the "
                  "`max_export_days` config value to a lower number if "
-                 "you're unable to sync a single {} day window within "
+                 "you're unable to sync a {} day window within "
                  "your current API quota.").format(
                      max_export_days)) from e
         state = update_state_with_export_info(
@@ -302,6 +306,7 @@ def sync_activities(client, state, stream, config):
     # http://developers.marketo.com/rest-api/bulk-extract/bulk-activity-extract/
     replication_key = determine_replication_key(stream['tap_stream_id'])
     singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
+    singer.log_info("got bookmark %s %s",stream["tap_stream_id"], bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key))
     export_start = pendulum.parse(bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key))
     job_started = pendulum.utcnow()
     record_count = 0
@@ -431,6 +436,165 @@ def sync_paginated(client, state, stream):
     singer.write_state(state)
     return state, record_count
 
+def sync_leads_describe(client, state, stream):
+    # https://developers.marketo.com/rest-api/endpoint-reference/lead-database-endpoint-reference/#!/Leads/describeUsingGET_2
+    singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
+    endpoint = "rest/v1/leads/describe.json"
+    data = client.request("GET", endpoint)
+    record_count = 0
+
+    time_extracted = utils.now()
+    for row in data["result"]:
+        record = format_values(stream, row)
+        record_count += 1
+        singer.write_record(stream["tap_stream_id"], record, time_extracted=time_extracted)
+    return state, record_count
+
+def check_if_first_sync(state, tap_stream_id):
+    """
+    checks for initial sync flag stored in the bookmark
+    """
+    first_sync_state = singer.get_bookmark(state, tap_stream_id, INITAL_SYNC_KEY, None)
+    return first_sync_state in (None, False)
+
+def get_activate_version(state, tap_stream_id):
+    """
+    Returns the version number for a given `tap_stream_id`
+    """
+    stream_version = singer.get_bookmark(state, tap_stream_id, ACTIVATE_VERSION_KEY, None)
+    if stream_version is None:
+        stream_version = int(time.time() * 1000)
+        singer.log_info("Using new activate version %s", stream_version)
+    else:
+        singer.log_info("Using interupted activate version %s", stream_version)
+    return stream_version
+
+def get_program_ids(client):
+    """
+    Gets a list of all programs to be used for the program_tags stream
+    """
+
+    params = { "maxReturn": 200, "offset": 0}
+    endpoint = "rest/asset/v1/programs.json"
+    rec_ids = []
+    has_more_data = True
+    while has_more_data:
+        data = client.request("GET", endpoint, endpoint_name="programs", params=params)
+        if "warnings" in data and NO_ASSET_MSG in data["warnings"]:
+            has_more_data = False
+        if "errors" in data and data["errors"]:
+            singer.log_info("error %s", data)
+            has_more_data = False
+        for rec in data.get("result", []):
+            rec_ids.append(rec["id"])
+        params["offset"] += params["maxReturn"]
+    return sorted(rec_ids)
+
+def sync_program_tags(client, state, stream):
+    singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
+    is_first_run = check_if_first_sync(state, stream["tap_stream_id"])
+    stream_version = get_activate_version(state, stream["tap_stream_id"])
+    activate_version_message = singer.ActivateVersionMessage(
+            stream=stream['tap_stream_id'],version=stream_version)
+
+    if is_first_run:
+        # inital sync requires the activate version to be sent before sending records
+        singer.write_message(activate_version_message)
+        state = bookmarks.write_bookmark(state, stream["tap_stream_id"],INITAL_SYNC_KEY, True)
+        singer.write_state(state)
+
+    # check the interupted state of the program_id's list
+    last_synced_program_id = bookmarks.get_bookmark(state, stream["tap_stream_id"], "program_id")
+    # prefetch program ids for interuptible sync
+    program_ids = get_program_ids(client)
+    record_count, start = 0, 0
+    time_extracted = utils.now()
+
+    state = bookmarks.write_bookmark(state, stream["tap_stream_id"], ACTIVATE_VERSION_KEY, stream_version)
+    singer.write_state(state)
+
+    # Find the index of the last synced program
+    if last_synced_program_id:
+        for index, program_id in enumerate(program_ids):
+            if program_id == last_synced_program_id:
+                start = index
+                singer.log_info("Last Sync was interupted at index: %s",index)
+    for _ , program_id in enumerate(program_ids[start:], start):
+        endpoint = "rest/asset/v1/program/{}.json".format(program_id)
+        state = bookmarks.write_bookmark(state, stream["tap_stream_id"], "program_id", program_id)
+        singer.write_state(state)
+
+        data = client.request("GET", endpoint, endpoint_name=stream["tap_stream_id"])
+        result = data.get("result") or []
+        records = [tag for record in result for tag in record.get("tags", [])]
+        for rec in records:
+            rec["program_id"] = program_id
+            record = format_values(stream, rec)
+            singer.write_message(
+                singer.RecordMessage(
+                    stream['tap_stream_id'],
+                    record,version=stream_version,
+                    time_extracted=time_extracted)
+                )
+            record_count+=1
+
+    # send the activate version message post extraction of all records
+    singer.write_message(activate_version_message)
+    # reset the interupted extraction flags
+    state = bookmarks.write_bookmark(state, stream["tap_stream_id"], ACTIVATE_VERSION_KEY, None)
+    state = bookmarks.write_bookmark(state, stream["tap_stream_id"], "program_id", None)
+    singer.write_state(state)
+
+    return state, record_count
+
+
+def sync_tag_types(client, state, stream):
+
+    singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"])
+    first_run = check_if_first_sync(state, stream["tap_stream_id"])
+
+    stream_version = get_activate_version(state, stream["tap_stream_id"])
+
+    activate_version_message = singer.ActivateVersionMessage(
+            stream=stream["tap_stream_id"],version=stream_version)
+
+    if first_run:
+        singer.log_info("running inital sync")
+        singer.write_message(activate_version_message)
+        state = bookmarks.write_bookmark(state, stream["tap_stream_id"], INITAL_SYNC_KEY, True)
+        singer.write_state(state)
+
+    state = bookmarks.write_bookmark(state, stream["tap_stream_id"], ACTIVATE_VERSION_KEY, stream_version)
+    singer.write_state(state)
+
+    params = { "maxReturn": 200, "offset": 0}
+    endpoint = "rest/asset/v1/tagTypes.json"
+    time_extracted, record_count = utils.now(), 0
+
+
+    has_more_data = True
+    while has_more_data:
+        data = client.request("GET", endpoint, params=params)
+        if "warnings" in data and NO_ASSET_MSG in data["warnings"]:
+            has_more_data = False
+        for row in data.get("result", []):
+            record = format_values(stream, row)
+            singer.write_message(
+                singer.RecordMessage(
+                    stream['tap_stream_id'],
+                    record,
+                    version=stream_version,
+                    time_extracted=time_extracted)
+                )
+            record_count += 1
+        params["offset"] += params["maxReturn"]
+
+    singer.write_message(activate_version_message)
+    state = bookmarks.write_bookmark(state, stream["tap_stream_id"], ACTIVATE_VERSION_KEY, None)
+    singer.write_state(state)
+
+    return state, record_count
+
 
 def sync_activity_types(client, state, stream):
     # http://developers.marketo.com/rest-api/lead-database/activities/#describe
@@ -496,6 +660,12 @@ def sync(client, catalog, config, state):
             state, record_count = sync_paginated(client, state, stream)
         elif stream["tap_stream_id"] == "programs":
             state, record_count = sync_programs(client, state, stream)
+        elif stream["tap_stream_id"] == "leads_describe":
+            state, record_count = sync_leads_describe(client, state, stream)
+        elif stream["tap_stream_id"] == "tag_types":
+            state, record_count = sync_tag_types(client, state, stream)
+        elif stream["tap_stream_id"] == "program_tags":
+            state, record_count = sync_program_tags(client, state, stream)
         else:
             raise Exception("Stream %s not implemented" % stream["tap_stream_id"])
 
