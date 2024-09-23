@@ -168,7 +168,7 @@ def get_or_create_export_for_leads(client, state, stream, export_start, config):
         # Corona mode is required to query by "updatedAt", otherwise a full
         # sync is required using "createdAt".
         query_field = "updatedAt" if client.use_corona else "createdAt"
-        max_export_days = int(config.get('max_export_days',
+        max_export_days = float(config.get('max_export_days',
                                          MAX_EXPORT_DAYS))
         export_end = get_export_end(export_start,
                                     end_days=max_export_days)
@@ -208,7 +208,7 @@ def get_or_create_export_for_activities(client, state, stream, export_start, con
         # that is not a real field. `createdAt` proxies `activityDate`.
         # The activity type id must also be included in the query. The
         # largest date range that can be used for activities is 30 days.
-        max_export_days = int(config.get('max_export_days',
+        max_export_days = float(config.get('max_export_days',
                                          MAX_EXPORT_DAYS))
         export_end = get_export_end(export_start,
                                     end_days=max_export_days)
@@ -227,7 +227,7 @@ def get_or_create_export_for_activities(client, state, stream, export_start, con
             raise ApiQuotaExceeded(
                 ("You may wish to consider changing the "
                  "`max_export_days` config value to a lower number if "
-                 "you're unable to sync a single {} day window within "
+                 "you're unable to sync a {} day window within "
                  "your current API quota.").format(
                      max_export_days)) from e
         state = update_state_with_export_info(
@@ -306,6 +306,7 @@ def sync_activities(client, state, stream, config):
     # http://developers.marketo.com/rest-api/bulk-extract/bulk-activity-extract/
     replication_key = determine_replication_key(stream['tap_stream_id'])
     singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
+    singer.log_info("got bookmark %s %s",stream["tap_stream_id"], bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key))
     export_start = pendulum.parse(bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key))
     job_started = pendulum.utcnow()
     record_count = 0
