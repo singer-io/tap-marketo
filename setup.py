@@ -3,7 +3,7 @@
 from setuptools import setup
 
 setup(name='tap-marketo',
-      version='2.6.1',
+      version='2.6.2',
       description='Singer.io tap for extracting data from the Marketo API',
       author='Stitch',
       url='http://singer.io',
@@ -13,13 +13,15 @@ setup(name='tap-marketo',
           'singer-python==6.0.0',
           'requests==2.31.0',
           'pendulum==1.2.0',
-          'freezegun>=0.3.9',
-          'requests_mock>=1.3.0',
           'backoff==2.2.1',
       ],
       extras_require={
           'dev': [
-              'ipdb==0.11'
+              'ipdb',
+          ],
+          'test': [
+              'freezegun==1.5.1',
+              'requests_mock==1.12.1',
           ]
       },
       entry_points='''
