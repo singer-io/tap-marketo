@@ -10,7 +10,7 @@ jobs:
           command: |
             virtualenv -p python3 ~/.virtualenvs/tap-marketo
             source ~/.virtualenvs/tap-marketo/bin/activate
-            pip install .
+            pip install .[test]
             pip install pylint
       - run:
           name: 'Pylint'
