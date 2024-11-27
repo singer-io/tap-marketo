@@ -10,7 +10,7 @@ from singer import utils
 from tap_marketo.client import ExportFailed, ApiQuotaExceeded
 
 # We can request up to 30 days worth of activities per export.
-MAX_EXPORT_DAYS = 30
+MAX_EXPORT_DAYS = 0.3
 
 BASE_ACTIVITY_FIELDS = [
     "marketoGUID",
@@ -164,8 +164,7 @@ def get_or_create_export_for_leads(client, state, stream, export_start, config):
         # Corona mode is required to query by "updatedAt", otherwise a full
         # sync is required using "createdAt".
         query_field = "updatedAt" if client.use_corona else "createdAt"
-        max_export_days = float(config.get('max_export_days',
-                                         MAX_EXPORT_DAYS))
+        max_export_days = 0.3
         export_end = get_export_end(export_start,
                                     end_days=max_export_days)
         query = {query_field: {"startAt": export_start.isoformat(),
