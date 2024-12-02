@@ -2,16 +2,42 @@ import itertools
 import logging
 import unittest
 import unittest.mock
-
 import freezegun
 import pendulum
 import requests_mock
+import backoff
+import singer
+unittest.mock.patch(
+    'tap_marketo.client.handle_job_queue_full_rate_limit', 
+    lambda: backoff.on_exception(
+        backoff.constant, 
+        JobQueueQuotaExceeded,
+        max_tries=4,
+        interval=1,
+        jitter=None,
+        logger=singer.get_logger()
+    )    
+)
 
 from tap_marketo.client import *
 
 
 logging.disable(logging.CRITICAL)
 
+
+class MockResponseEnqueueRequest(requests.Response):
+    def __init__(self, mock_json, status_code=200):
+        self.mock_json = mock_json
+        self._status_code = status_code
+    def content(self):
+        return b'mock'
+
+    def json(self):
+        return self.mock_json
+    
+    def status_code(self):
+        return self._status_code
+    
 
 class TestClient(unittest.TestCase):
     def setUp(self):
@@ -110,7 +136,11 @@ class TestClient(unittest.TestCase):
         with requests_mock.Mocker(real_http=True) as mock:
             create = self.client.get_bulk_endpoint("leads", "create")
             cancel = self.client.get_bulk_endpoint("leads", "cancel", "123")
-            mock.register_uri("POST", self.client.get_url(create), json={"errors": [{"code": "1035"}]})
+            mock.register_uri(
+                "POST", 
+                self.client.get_url(create), 
+                json={"errors": [{"code": "1035", "message": "Unsupported filter type for target subscription"}]}
+                )
             self.assertFalse(self.client.use_corona)
 
 
@@ -153,3 +183,32 @@ class TestExports(unittest.TestCase):
 
         with self.assertRaises(ExportFailed):
             self.client.wait_for_export("test", export_id)
+
+    def test_export_enqueued_job_queue_full_raises_exception(self):
+        export_id = "123"
+        self.client.poll_interval = 0
+        
+        mock_response = [
+            MockResponseEnqueueRequest(mock_json={"success": False, "errors": [{"code": "1029", "message": "Too many jobs (10) in queue"}]}),
+            MockResponseEnqueueRequest(mock_json={"success": False, "errors": [{"code": "1029", "message": "Too many jobs (10) in queue"}]}),
+            MockResponseEnqueueRequest(mock_json={"success": False, "errors": [{"code": "1029", "message": "Too many jobs (10) in queue"}]}),
+            MockResponseEnqueueRequest(mock_json={"success": False, "errors": [{"code": "1029", "message": "Too many jobs (10) in queue"}]}),
+        ]
+
+        self.client._request = unittest.mock.MagicMock(side_effect=mock_response)
+        with self.assertRaises(JobQueueQuotaExceeded):
+            self.client.enqueue_export(stream_type='leads', export_id=export_id)
+
+    def test_export_enqueued_job_queue_full_recovers_from_exception(self):
+        export_id = "123"
+        self.client.poll_interval = 0
+        
+        mock_response = [
+            MockResponseEnqueueRequest(mock_json={"success": False, "errors": [{"code": "1029", "message": "Too many jobs (10) in queue"}]}),
+            MockResponseEnqueueRequest(mock_json={"success": False, "errors": [{"code": "1029", "message": "Too many jobs (10) in queue"}]}),
+            MockResponseEnqueueRequest(mock_json={"success": False, "errors": [{"code": "1029", "message": "Too many jobs (10) in queue"}]}),
+            MockResponseEnqueueRequest(mock_json={"success": True, "errors": []}),
+        ]
+        self.client._request = unittest.mock.MagicMock(side_effect=mock_response)
+        self.client.enqueue_export(stream_type='leads', export_id=export_id)
+        self.assertEqual(self.client._request.call_count, 4)
