@@ -141,6 +141,11 @@ def discover_activities(client):
 
 
 def discover_leads(client):
+    root = os.path.dirname(os.path.realpath(__file__))
+    path = os.path.join(root, 'schemas/{}.json'.format('leads'))
+    if os.path.isfile(path):
+        discovered_schema = discover_catalog('leads', LEAD_REQUIRED_FIELDS)
+        return discovered_schema
     # http://developers.marketo.com/rest-api/lead-database/leads/#describe
     endpoint = "rest/v1/leads/describe.json"
     data = client.request("GET", endpoint, endpoint_name="leads_discover")
