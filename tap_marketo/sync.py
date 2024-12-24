@@ -164,7 +164,7 @@ def get_or_create_export_for_leads(client, state, stream, export_start, config):
         # Corona mode is required to query by "updatedAt", otherwise a full
         # sync is required using "createdAt".
         query_field = "updatedAt" if client.use_corona else "createdAt"
-        max_export_days = int(config.get('max_export_days',
+        max_export_days = float(config.get('max_export_days',
                                          MAX_EXPORT_DAYS))
         export_end = get_export_end(export_start,
                                     end_days=max_export_days)

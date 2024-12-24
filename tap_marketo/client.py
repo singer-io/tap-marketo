@@ -9,7 +9,7 @@ import singer
 
 # By default, jobs will run for 3 hours and be polled every 5 minutes.
 JOB_TIMEOUT = 60 * 180
-POLL_INTERVAL = 60 * 5
+POLL_INTERVAL = 60 * 1
 
 # If Corona is not supported, an error "1035" will be returned by the API.
 # http://developers.marketo.com/rest-api/bulk-extract/bulk-lead-extract/#filters
