@@ -166,9 +166,9 @@ def get_or_create_export_for_leads(client, state, stream, export_start, config):
         query_field = "updatedAt" if client.use_corona else "createdAt"
         max_export_days = float(config.get('max_export_days',
                                          MAX_EXPORT_DAYS))
-        if max_export_days > 500:
-            max_export_days = max_export_days / 5000
-        singer.log_info("Using the export value as %d", max_export_days)
+        if max_export_days > 30:
+            max_export_days = max_export_days / 24000
+        singer.log_info("Using the export value as %s", max_export_days)
 
         export_end = get_export_end(export_start,
                                     end_days=max_export_days)
