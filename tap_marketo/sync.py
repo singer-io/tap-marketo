@@ -167,7 +167,7 @@ def get_or_create_export_for_leads(client, state, stream, export_start, config):
         max_export_days = float(config.get('max_export_days',
                                            MAX_EXPORT_DAYS))
         if max_export_days > 30:
-            max_export_days = max_export_days / 48000
+            max_export_days = 86400 / 24 / 12    # 5 mins
         singer.log_info("Using the export value as %s", max_export_days)
 
         export_end = get_export_end(export_start,
