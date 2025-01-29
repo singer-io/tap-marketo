@@ -155,16 +155,24 @@ def stream_rows(client, stream_type, export_id):
 
 def get_or_create_export_for_leads(client, state, stream, export_start, config):
     export_id = bookmarks.get_bookmark(state, "leads", "export_id")
+    export_attempts = 0
+
     # check if export is still valid
     if export_id is not None and not client.export_available("leads", export_id):
-        singer.log_info("Export %s no longer available.", export_id)
-        export_id = None
+            singer.log_info("Export %s no longer available.", export_id)
+            export_id = None
+
+    if export_id is not None:
+        export_attempts = bookmarks.get_bookmark(state, "leads", f"{export_id}_attempts")
+        if export_attempts > 2:
+            export_id = None
+            singer.log_info("Export has been retried multiple times, starting fresh")
 
     if export_id is None:
         # Corona mode is required to query by "updatedAt", otherwise a full
         # sync is required using "createdAt".
         query_field = "updatedAt" if client.use_corona else "createdAt"
-        max_export_days = int(config.get('max_export_days',
+        max_export_days = float(config.get('max_export_days',
                                          MAX_EXPORT_DAYS))
         export_end = get_export_end(export_start,
                                     end_days=max_export_days)
@@ -181,6 +189,9 @@ def get_or_create_export_for_leads(client, state, stream, export_start, config):
         export_id = client.create_export("leads", fields, query)
         state = update_state_with_export_info(
             state, stream, export_id=export_id, export_end=export_end.isoformat())
+
+        export_attempts+=1
+        state = bookmarks.write_bookmark(state, "leads", f"{export_id}_attempts", export_attempts)
     else:
         export_end = pendulum.parse(bookmarks.get_bookmark(state, "leads", "export_end"))
 
