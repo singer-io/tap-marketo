@@ -1,0 +1,45 @@
+{
+    "tap_stream_id": "leads_describe",
+    "stream": "leads_describe",
+    "key_properties": ["id"],
+    "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "id": {
+                "type": "integer"
+            },
+            "displayName": {
+                "type": ["null", "string"]
+            },
+            "dataType": {
+                "type": ["null", "string"]
+            },
+            "length": {
+                "type": ["null", "integer"]
+            },
+            "soap": {
+                "type": ["null", "object"],
+                "properties": {
+                    "name": {
+                        "type": ["null", "string"]
+                    },
+                    "readOnly": {
+                        "type": ["null", "boolean"]
+                    }
+                }
+            },
+            "rest": {
+                "type": ["null", "object"],
+                "properties": {
+                    "name": {
+                        "type": ["null", "string"]
+                    },
+                    "readOnly": {
+                        "type": ["null", "boolean"]
+                    }
+                }
+            }
+        }
+    }
+}
