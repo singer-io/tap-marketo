@@ -8,6 +8,8 @@ from tap_marketo.discover import *
 
 
 class TestDiscover(unittest.TestCase):
+    maxDiff = None
+
     def test_get_activity_type_stream(self):
         activity = {
             "id": 1,
@@ -98,6 +100,12 @@ class TestDiscover(unittest.TestCase):
                     },
                     "breadcrumb" : ("properties", 'query_parameters')
                 },
+                {
+                    "metadata" : {
+                        "inclusion": "automatic"
+                    },
+                    "breadcrumb" : ("properties", 'actionResult')
+                },
             ],
             "schema": {
                 "type": "object",
@@ -134,6 +142,9 @@ class TestDiscover(unittest.TestCase):
                     "query_parameters": {
                         "type": ["string", "null"],
                     },
+                    "actionResult": {
+                        "type": ["null", "string"],
+                    },
                 },
             },
         }
@@ -147,8 +158,8 @@ class TestDiscover(unittest.TestCase):
         self.assertDictEqual(stream, result)
         self.assertEqual(sorted(result_metadata, key=lambda x: x['breadcrumb']),
                          sorted(stream_metadata, key=lambda x: x['breadcrumb']))
-        self.assertEqual(11, len(result_metadata))
-        self.assertEqual(7,automatic_count)
+        self.assertEqual(12, len(result_metadata))
+        self.assertEqual(8,automatic_count)
 
     def test_discover_leads(self):
         client = Client("123-ABC-456", "id", "secret")

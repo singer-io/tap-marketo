@@ -21,6 +21,9 @@ ACTIVITY_TYPES_UNSUPPORTED = frozenset(["attributes"])
 LISTS_AUTOMATIC_INCLUSION = frozenset(["id", "name", "createdAt", "updatedAt"])
 PROGRAMS_AUTOMATIC_INCLUSION = frozenset(["id", "createdAt", "updatedAt"])
 CAMPAIGNS_AUTOMATIC_INCLUSION = frozenset(["id", "createdAt", "updatedAt"])
+LEADS_DESCRIBE_AUTOMATIC_INCLUSION = frozenset(["id","displayName"])
+PROGRAM_TAGS_AUTOMATIC_INCLUSION = frozenset(["tagType","program_id"])
+TAG_TYPES_AUTOMATIC_INCLUSION = frozenset(["tagType"])
 
 LEAD_REQUIRED_FIELDS = frozenset(["id", "updatedAt", "createdAt"])
 
@@ -82,6 +85,7 @@ def get_activity_type_stream(activity):
         "activityDate": {"type": ["null", "string"], "format": "date-time"},
         "activityTypeId": {"type": ["null", "integer"]},
         "campaignId": {"type": ["null", "integer"]},
+        "actionResult": {"type": ["null", "string"]},
     }
 
     for prop in properties:
@@ -190,6 +194,9 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
 
     with open(path, "r") as f:
         discovered_schema = json.load(f)
+        repl_method = discovered_schema.get("replication_method", None)
+        key_props = discovered_schema.get("key_properties", None)
+
 
         for field in discovered_schema["schema"]["properties"]:
             if field in automatic_inclusion:
@@ -202,8 +209,12 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
         if stream_automatic_inclusion:
             mdata = metadata.write(mdata, (), 'inclusion', 'automatic')
 
-        # The steams using discover_catalog all use "id" as the key_properties
-        mdata = metadata.write(mdata, (), 'table-key-properties', ['id'])
+        if not key_props:
+            key_props = []
+        mdata = metadata.write(mdata, (), 'table-key-properties', key_props)
+
+        if repl_method:
+            mdata = metadata.write(mdata, (), 'forced-replication-method', repl_method)
 
         discovered_schema["metadata"] = metadata.to_list(mdata)
         return discovered_schema
@@ -217,5 +228,8 @@ def discover(client):
     streams.append(discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION))
     streams.append(discover_catalog("lists", LISTS_AUTOMATIC_INCLUSION))
     streams.append(discover_catalog("programs", PROGRAMS_AUTOMATIC_INCLUSION))
+    streams.append(discover_catalog("leads_describe", LEADS_DESCRIBE_AUTOMATIC_INCLUSION))
+    streams.append(discover_catalog("program_tags", PROGRAM_TAGS_AUTOMATIC_INCLUSION))
+    streams.append(discover_catalog("tag_types", TAG_TYPES_AUTOMATIC_INCLUSION))
     json.dump({"streams": streams}, sys.stdout, indent=2)
     singer.log_info("Finished discover")
