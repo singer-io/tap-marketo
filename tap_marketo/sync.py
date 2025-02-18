@@ -155,6 +155,7 @@ def stream_rows(client, stream_type, export_id):
 
 def get_or_create_export_for_leads(client, state, stream, export_start, config):
     export_id = bookmarks.get_bookmark(state, "leads", "export_id")
+
     # check if export is still valid
     if export_id is not None and not client.export_available("leads", export_id):
         singer.log_info("Export %s no longer available.", export_id)
@@ -164,7 +165,7 @@ def get_or_create_export_for_leads(client, state, stream, export_start, config):
         # Corona mode is required to query by "updatedAt", otherwise a full
         # sync is required using "createdAt".
         query_field = "updatedAt" if client.use_corona else "createdAt"
-        max_export_days = int(config.get('max_export_days',
+        max_export_days = float(config.get('max_export_days',
                                          MAX_EXPORT_DAYS))
         export_end = get_export_end(export_start,
                                     end_days=max_export_days)
@@ -204,7 +205,7 @@ def get_or_create_export_for_activities(client, state, stream, export_start, con
         # that is not a real field. `createdAt` proxies `activityDate`.
         # The activity type id must also be included in the query. The
         # largest date range that can be used for activities is 30 days.
-        max_export_days = int(config.get('max_export_days',
+        max_export_days = float(config.get('max_export_days',
                                          MAX_EXPORT_DAYS))
         export_end = get_export_end(export_start,
                                     end_days=max_export_days)
