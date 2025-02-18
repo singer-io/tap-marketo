@@ -159,14 +159,8 @@ def get_or_create_export_for_leads(client, state, stream, export_start, config):
 
     # check if export is still valid
     if export_id is not None and not client.export_available("leads", export_id):
-            singer.log_info("Export %s no longer available.", export_id)
-            export_id = None
-
-    if export_id is not None:
-        export_attempts = bookmarks.get_bookmark(state, "leads", f"{export_id}_attempts")
-        if export_attempts > 2:
-            export_id = None
-            singer.log_info("Export has been retried multiple times, starting fresh")
+        singer.log_info("Export %s no longer available.", export_id)
+        export_id = None
 
     if export_id is None:
         # Corona mode is required to query by "updatedAt", otherwise a full
