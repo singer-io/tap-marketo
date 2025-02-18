@@ -155,7 +155,6 @@ def stream_rows(client, stream_type, export_id):
 
 def get_or_create_export_for_leads(client, state, stream, export_start, config):
     export_id = bookmarks.get_bookmark(state, "leads", "export_id")
-    export_attempts = 0
 
     # check if export is still valid
     if export_id is not None and not client.export_available("leads", export_id):
@@ -183,9 +182,6 @@ def get_or_create_export_for_leads(client, state, stream, export_start, config):
         export_id = client.create_export("leads", fields, query)
         state = update_state_with_export_info(
             state, stream, export_id=export_id, export_end=export_end.isoformat())
-
-        export_attempts+=1
-        state = bookmarks.write_bookmark(state, "leads", f"{export_id}_attempts", export_attempts)
     else:
         export_end = pendulum.parse(bookmarks.get_bookmark(state, "leads", "export_end"))
 

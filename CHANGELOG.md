@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.7.0
+  * Use float instead of int for date windows to allow shorter ranges [#97](https://github.com/singer-io/tap-marketo/pull/97)
+
 ## 2.6.2
   * Move test dependencies to `extras_require` and pin them [#96](https://github.com/singer-io/tap-marketo/pull/96)
 
