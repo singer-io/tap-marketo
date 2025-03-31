@@ -14,18 +14,6 @@
                     "null"
                 ]
             },
-            "billingStreet": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "billingCity": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
             "billingState": {
                 "type": [
                     "string",
@@ -33,12 +21,6 @@
                 ]
             },
             "billingCountry": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "website": {
                 "type": [
                     "string",
                     "null"
@@ -69,12 +51,6 @@
                 ]
             },
             "sfdcAccountId": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "externalCompanyId": {
                 "type": [
                     "string",
                     "null"
@@ -143,37 +119,7 @@
                     "null"
                 ]
             },
-            "contactCompany": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "address": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "city": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "state": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
             "country": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "postalCode": {
                 "type": [
                     "string",
                     "null"
@@ -257,12 +203,6 @@
                     "null"
                 ]
             },
-            "mktoPersonNotes": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
             "sfdcType": {
                 "type": [
                     "string",
@@ -270,12 +210,6 @@
                 ]
             },
             "sfdcContactId": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "anonymousIP": {
                 "type": [
                     "string",
                     "null"
@@ -344,12 +278,6 @@
                     "null"
                 ]
             },
-            "externalSalesPersonId": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
             "leadRole": {
                 "type": [
                     "string",
@@ -371,12 +299,6 @@
             "leadScore": {
                 "type": [
                     "integer",
-                    "null"
-                ]
-            },
-            "urgency": {
-                "type": [
-                    "number",
                     "null"
                 ]
             },
@@ -441,12 +363,6 @@
                     "null"
                 ]
             },
-            "formComments": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
             "RecordTypeId": {
                 "type": [
                     "string",
@@ -460,12 +376,6 @@
                 ]
             },
             "CountryCode": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "Address_lead": {
                 "type": [
                     "string",
                     "null"
@@ -540,12 +450,6 @@
                     "null"
                 ]
             },
-            "SFDC_Domain_Search__c": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
             "Job_Role2__c": {
                 "type": [
                     "string",
@@ -577,12 +481,6 @@
                 ]
             },
             "UTM_Source_OG__c": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "Preferred_Email__c": {
                 "type": [
                     "string",
                     "null"
@@ -642,12 +540,6 @@
                     "null"
                 ]
             },
-            "Email_Specialist__c": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
             "Lead_Score__c": {
                 "type": [
                     "integer",
@@ -666,12 +558,6 @@
                     "null"
                 ]
             },
-            "BillingAddress": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
             "ShippingStateCode": {
                 "type": [
                     "string",
@@ -679,12 +565,6 @@
                 ]
             },
             "ShippingCountryCode": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "ShippingAddress": {
                 "type": [
                     "string",
                     "null"
@@ -709,12 +589,6 @@
                 ]
             },
             "SFDC_State__c": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "SFDC_ZipCode__c": {
                 "type": [
                     "string",
                     "null"
@@ -822,12 +696,6 @@
                     "null"
                 ]
             },
-            "MailingAddress": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
             "IsEmailBounced": {
                 "type": [
                     "boolean",
@@ -870,12 +738,6 @@
                     "null"
                 ]
             },
-            "Full_Name__c": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
             "Account_18_ID__c_contact": {
                 "type": [
                     "string",
@@ -900,18 +762,6 @@
                     "null"
                 ]
             },
-            "previousPage": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "assetPage": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
             "heapID": {
                 "type": [
                     "string",
@@ -925,42 +775,6 @@
                 ]
             },
             "gCLIDURL": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "customField1InquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "customField2InquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "customField3InquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "customField4InquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "customField5InquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "customField6InquiryWebhook": {
                 "type": [
                     "string",
                     "null"
@@ -1035,18 +849,6 @@
             "tWUnsubscribeTwilioorg": {
                 "type": [
                     "boolean",
-                    "null"
-                ]
-            },
-            "customField5shortInquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "customFieldshort6InquiryWebhook": {
-                "type": [
-                    "string",
                     "null"
                 ]
             },
@@ -1195,36 +997,6 @@
                     "null"
                 ]
             },
-            "customField7InquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "customField8InquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "customField9InquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "customField10InquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "customField12InquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
             "tWDoubleOptInDate": {
                 "type": [
                     "string",
@@ -1269,12 +1041,6 @@
                     "null"
                 ]
             },
-            "customField11InquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
             "resultverdictemailvalidation": {
                 "type": [
                     "string",
@@ -1284,48 +1050,6 @@
             "resultscoreemailvalidation": {
                 "type": [
                     "number",
-                    "null"
-                ]
-            },
-            "resultlocalemailvalidation": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "resulthostemailvalidation": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "resultvalidaddresssyntaxemailvalidation": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "resultsuspecteddisposableemailvalidation": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "resultknownbouncesemailvalidation": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "resultsuspectedbouncesemailvalidation": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "resultmxonrecordemailvalidation": {
-                "type": [
-                    "string",
                     "null"
                 ]
             },
@@ -1407,18 +1131,6 @@
                     "null"
                 ]
             },
-            "customField13InquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "customField14InquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
             "tWSubscribedtoTwilioorgWePledge": {
                 "type": [
                     "boolean",
@@ -1435,24 +1147,6 @@
             "tWSubscribedtoThoughtLeadership": {
                 "type": [
                     "boolean",
-                    "null"
-                ]
-            },
-            "customField15InquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "customFieldLong3InquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "customField16InquiryWebhook": {
-                "type": [
-                    "string",
                     "null"
                 ]
             },
@@ -1596,18 +1290,6 @@
                     "null"
                 ]
             },
-            "customFieldLong4InquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "customFieldLong5InquiryWebhook": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
             "SMS_Opt_In__c": {
                 "type": [
                     "boolean",
@@ -1651,18 +1333,6 @@
                 ]
             },
             "companyTagsCB": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "segmentProgramName": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "segmentProgramStatus": {
                 "type": [
                     "string",
                     "null"
@@ -2140,18 +1810,6 @@
                     "null"
                 ]
             },
-            "TwilioProgramName": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
-            "TwilioProgramStatus": {
-                "type": [
-                    "string",
-                    "null"
-                ]
-            },
             "cPNIOptOut": {
                 "type": [
                     "boolean",
@@ -2209,6 +1867,24 @@
                 ]
             },
             "X6Sense_Account_Buying_Stage_Sendgrid__c": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "emailableSegment": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "engaged": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "mktoIndustry": {
                 "type": [
                     "string",
                     "null"
