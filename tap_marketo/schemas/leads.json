@@ -1871,6 +1871,24 @@
                     "string",
                     "null"
                 ]
+            },
+            "emailableSegment": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "engaged": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "mktoIndustry": {
+                "type": [
+                    "string",
+                    "null"
+                ]
             }
         }
     }
