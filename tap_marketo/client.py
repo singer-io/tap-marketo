@@ -26,7 +26,7 @@ SHORT_TERM_QUOTA_EXCEEDED_MESSAGE = "Marketo API returned error(s): {}. This is 
 # Marketo limits REST requests to 50000 per day with a rate limit of 100
 # calls per 20 seconds.
 # http://developers.marketo.com/rest-api/
-MAX_DAILY_CALLS = 50000 * 0.8
+MAX_DAILY_CALLS = 100000
 RATE_LIMIT_CALLS = 100
 RATE_LIMIT_SECONDS = 20
 
