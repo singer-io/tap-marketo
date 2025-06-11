@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.6.2
+  * Move test dependencies to `extras_require` and pin them [#96](https://github.com/singer-io/tap-marketo/pull/96)
+
+## 2.6.1
+  * Log Corona warning only if the leads and activities_* stream are selected [#94](https://github.com/singer-io/tap-marketo/pull/94)
+
 ## 2.6.0
   * Updates to run on python 3.11 [#91](https://github.com/singer-io/tap-marketo/pull/91)
 
