@@ -1889,6 +1889,13 @@
                     "string",
                     "null"
                 ]
+            },
+            "unsubscribeDate": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
             }
         }
     }
