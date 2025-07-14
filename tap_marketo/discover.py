@@ -183,7 +183,6 @@ def discover_leads(client):
 
 def discover_catalog(name, automatic_inclusion, **kwargs):
     unsupported = kwargs.get("unsupported", frozenset([]))
-    stream_automatic_inclusion = kwargs.get("stream_automatic_inclusion", False)
     root = os.path.dirname(os.path.realpath(__file__))
     path = os.path.join(root, 'schemas/{}.json'.format(name))
     mdata = metadata.new()
@@ -199,9 +198,6 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
             else:
                 mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'available')
 
-        if stream_automatic_inclusion:
-            mdata = metadata.write(mdata, (), 'inclusion', 'automatic')
-
         # The steams using discover_catalog all use "id" as the key_properties
         mdata = metadata.write(mdata, (), 'table-key-properties', ['id'])
 
@@ -212,7 +208,7 @@ def discover(client):
     singer.log_info("Starting discover")
     streams = []
     streams.append(discover_leads(client))
-    streams.append(discover_catalog("activity_types", ACTIVITY_TYPES_AUTOMATIC_INCLUSION, unsupported=ACTIVITY_TYPES_UNSUPPORTED, stream_automatic_inclusion=True))
+    streams.append(discover_catalog("activity_types", ACTIVITY_TYPES_AUTOMATIC_INCLUSION, unsupported=ACTIVITY_TYPES_UNSUPPORTED))
     streams.extend(discover_activities(client))
     streams.append(discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION))
     streams.append(discover_catalog("lists", LISTS_AUTOMATIC_INCLUSION))

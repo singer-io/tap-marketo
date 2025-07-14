@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.6.3
+  * Removes `inclusion : automatic` from stream level catalog metadata [#98](https://github.com/singer-io/tap-marketo/pull/98)
+
 ## 2.6.2
   * Move test dependencies to `extras_require` and pin them [#96](https://github.com/singer-io/tap-marketo/pull/96)
 
