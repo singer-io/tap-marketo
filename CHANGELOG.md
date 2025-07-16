@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.6.4
+  * Bump dependency versions for twistlock compliance [#99](https://github.com/singer-io/tap-marketo/pull/99)
+
 ## 2.6.3
   * Removes `inclusion : automatic` from stream level catalog metadata [#98](https://github.com/singer-io/tap-marketo/pull/98)
 
