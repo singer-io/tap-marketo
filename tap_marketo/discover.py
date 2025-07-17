@@ -21,7 +21,7 @@ ACTIVITY_TYPES_UNSUPPORTED = frozenset(["attributes"])
 LISTS_AUTOMATIC_INCLUSION = frozenset(["id", "name", "createdAt", "updatedAt"])
 PROGRAMS_AUTOMATIC_INCLUSION = frozenset(["id", "createdAt", "updatedAt"])
 CAMPAIGNS_AUTOMATIC_INCLUSION = frozenset(["id", "createdAt", "updatedAt"])
-
+DELETED_LEADS_AUTOMATIC_INCLUSION = frozenset(["marketoGUID", "leadId", "activityDate"])
 LEAD_REQUIRED_FIELDS = frozenset(["id", "updatedAt", "createdAt"])
 
 def clean_string(string):
@@ -104,11 +104,11 @@ def get_activity_type_stream(activity):
         primary = clean_string(activity["primaryAttribute"]["name"])
         mdata = metadata.write(mdata, (), 'marketo.primary-attribute-name', primary)
 
-
     if "attributes" in activity:
         for attr in activity["attributes"]:
             attr_name = clean_string(attr["name"])
-            field_schema, mdata = get_schema_for_type(attr["dataType"], breadcrumb=('properties', attr_name), mdata=mdata, null=True)
+            field_schema, mdata = get_schema_for_type(attr["dataType"], breadcrumb=('properties', attr_name),
+                                                      mdata=mdata, null=True)
             if field_schema:
                 properties[attr_name] = field_schema
 
@@ -141,6 +141,11 @@ def discover_activities(client):
 
 
 def discover_leads(client):
+    root = os.path.dirname(os.path.realpath(__file__))
+    path = os.path.join(root, 'schemas/{}.json'.format('leads'))
+    if os.path.isfile(path):
+        discovered_schema = discover_catalog('leads', LEAD_REQUIRED_FIELDS)
+        return discovered_schema
     # http://developers.marketo.com/rest-api/lead-database/leads/#describe
     endpoint = "rest/v1/leads/describe.json"
     data = client.request("GET", endpoint, endpoint_name="leads_discover")
@@ -181,6 +186,35 @@ def discover_leads(client):
     }
 
 
+def discover_activity_deleted_leads(client):
+
+    # Cannot use on-the-fly schema discovery for deleted leads because paging_token is needed
+    # which cannot be fetched without bookmark's state. Bookmark's state depends on discovery itself
+    root = os.path.dirname(os.path.realpath(__file__))
+    path = os.path.join(root, 'schemas/{}.json'.format('deleted_leads'))
+    if os.path.isfile(path):
+        singer.log_info("deleted_leads.json file exists, returning discovered schema")
+        discovered_schema = discover_catalog('deleted_leads', DELETED_LEADS_AUTOMATIC_INCLUSION)
+        return discovered_schema
+    else:
+        return {
+            "tap_stream_id": "deleted_leads",
+            "stream": "deleted_leads",
+            "key_properties": ["marketoGUID"],
+            "metadata": metadata.to_list(metadata.new()),
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "marketoGUID": {"type": "string"},
+                    "leadId": {"type": "integer"},
+                    "activityDate": {"type": "string", "format": "date-time"},
+                }
+            }
+        }
+
+
+
 def discover_catalog(name, automatic_inclusion, **kwargs):
     unsupported = kwargs.get("unsupported", frozenset([]))
     root = os.path.dirname(os.path.realpath(__file__))
@@ -210,6 +244,7 @@ def discover(client):
     streams.append(discover_leads(client))
     streams.append(discover_catalog("activity_types", ACTIVITY_TYPES_AUTOMATIC_INCLUSION, unsupported=ACTIVITY_TYPES_UNSUPPORTED))
     streams.extend(discover_activities(client))
+    streams.append(discover_activity_deleted_leads(client))
     streams.append(discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION))
     streams.append(discover_catalog("lists", LISTS_AUTOMATIC_INCLUSION))
     streams.append(discover_catalog("programs", PROGRAMS_AUTOMATIC_INCLUSION))

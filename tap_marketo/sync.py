@@ -1,4 +1,5 @@
 import csv
+import datetime
 import json
 import pendulum
 import tempfile
@@ -39,6 +40,8 @@ def determine_replication_key(tap_stream_id):
         return 'updatedAt'
     elif tap_stream_id == 'programs':
         return 'updatedAt'
+    elif tap_stream_id == 'deleted_leads':
+        return 'activityDate'
     else:
         return None
 
@@ -166,6 +169,9 @@ def get_or_create_export_for_leads(client, state, stream, export_start, config):
         query_field = "updatedAt" if client.use_corona else "createdAt"
         max_export_days = int(config.get('max_export_days',
                                          MAX_EXPORT_DAYS))
+        if client.get_end_date():
+            max_export_days = (datetime.datetime.strptime(config['end_date'], "%Y-%m-%d") - export_start).days
+
         export_end = get_export_end(export_start,
                                     end_days=max_export_days)
         query = {query_field: {"startAt": export_start.isoformat(),
@@ -206,6 +212,8 @@ def get_or_create_export_for_activities(client, state, stream, export_start, con
         # largest date range that can be used for activities is 30 days.
         max_export_days = int(config.get('max_export_days',
                                          MAX_EXPORT_DAYS))
+        if client.get_end_date():
+            max_export_days = (datetime.datetime.strptime(config['end_date'], "%Y-%m-%d") - export_start).days
         export_end = get_export_end(export_start,
                                     end_days=max_export_days)
         query = {"createdAt": {"startAt": export_start.isoformat(),
@@ -269,15 +277,20 @@ def sync_leads(client, state, stream, config):
         export_start = export_start.subtract(days=ATTRIBUTION_WINDOW_DAYS)
 
     job_started = pendulum.utcnow()
+    end_date = job_started
+    if "end_date" in config:
+        end_date = datetime.datetime.strptime(config['end_date'], "%Y-%m-%d")
     record_count = 0
     max_bookmark = initial_bookmark
-    while export_start < job_started:
+    while export_start < end_date:
         export_id, export_end = get_or_create_export_for_leads(client, state, stream, export_start, config)
         state = wait_for_export(client, state, stream, export_id)
         for row in stream_rows(client, "leads", export_id):
             time_extracted = utils.now()
 
             record = format_values(stream, row)
+            if replication_key not in record:
+                continue
             record_bookmark = pendulum.parse(record[replication_key])
 
             if client.use_corona:
@@ -305,7 +318,10 @@ def sync_activities(client, state, stream, config):
     export_start = pendulum.parse(bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key))
     job_started = pendulum.utcnow()
     record_count = 0
-    while export_start < job_started:
+    end_date = job_started
+    if "end_date" in config:
+        end_date = datetime.datetime.strptime(config['end_date'], "%Y-%m-%d")
+    while export_start < end_date:
         export_id, export_end = get_or_create_export_for_activities(client, state, stream, export_start, config)
         state = wait_for_export(client, state, stream, export_id)
         for row in stream_rows(client, "activities", export_id):
@@ -338,6 +354,8 @@ def sync_programs(client, state, stream):
     singer.write_schema("programs", stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
     start_date = bookmarks.get_bookmark(state, "programs", replication_key)
     end_date = pendulum.utcnow().isoformat()
+    if client.get_end_date():
+        end_date = datetime.datetime.strptime(client.get_end_date(), "%Y-%m-%d").isoformat()
     params = {
         "maxReturn": 200,
         "offset": 0,
@@ -394,8 +412,11 @@ def sync_paginated(client, state, stream):
     # of results. These tokens are stored in the state for resuming
     # syncs. If a paging token exists in state, use it.
     next_page_token = bookmarks.get_bookmark(state, stream["tap_stream_id"], "next_page_token")
-    if next_page_token:
-        params["nextPageToken"] = next_page_token
+    if stream["tap_stream_id"] == "deleted_leads":
+        if not next_page_token:
+            next_page_token = client.get_paging_token(start_date)
+        params = {"nextPageToken": next_page_token}
+        endpoint = "rest/v1/activities/deletedleads.json"
 
     # Keep querying pages of data until no next page token.
     record_count = 0
@@ -408,15 +429,17 @@ def sync_paginated(client, state, stream):
         # Each row just needs the values formatted. If the record is
         # newer than the original start date, stream the record. Finally,
         # update the bookmark if newer than the existing bookmark.
-        for row in data["result"]:
-            record = format_values(stream, row)
-            if record[replication_key] >= start_date:
-                record_count += 1
+        results = data.get('result', [])
+        if results:
+            for row in results:
+                record = format_values(stream, row)
+                if record[replication_key] >= start_date:
+                    record_count += 1
 
-                singer.write_record(stream["tap_stream_id"], record, time_extracted=time_extracted)
+                    singer.write_record(stream["tap_stream_id"], record, time_extracted=time_extracted)
 
-        # No next page, results are exhausted.
-        if "nextPageToken" not in data:
+        # If moreResult in data is False, break
+        if not data["moreResult"]:
             break
 
         # Store the next page token in state and continue.
@@ -491,8 +514,8 @@ def sync(client, catalog, config, state):
             corona_warning_flag = True
         elif stream["tap_stream_id"].startswith("activities_"):
             state, record_count = sync_activities(client, state, stream, config)
+        elif stream["tap_stream_id"] in ["campaigns", "lists", "deleted_leads"]:
             corona_warning_flag = True
-        elif stream["tap_stream_id"] in ["campaigns", "lists"]:
             state, record_count = sync_paginated(client, state, stream)
         elif stream["tap_stream_id"] == "programs":
             state, record_count = sync_programs(client, state, stream)

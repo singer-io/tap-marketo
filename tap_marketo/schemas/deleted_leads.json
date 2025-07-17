@@ -1,0 +1,44 @@
+{
+      "tap_stream_id": "deleted_leads",
+      "stream": "deleted_leads",
+      "key_properties": [
+        "marketoGUID"
+      ],
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "marketoGUID": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "leadId": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "activityDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "activityTypeId": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "campaignId": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          }
+        }
+      }
+    }
