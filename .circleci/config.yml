@@ -8,7 +8,7 @@ jobs:
       - run:
           name: 'Setup'
           command: |
-            virtualenv -p python3 ~/.virtualenvs/tap-marketo
+            uv venv --python=3.11 ~/.virtualenvs/tap-marketo
             source ~/.virtualenvs/tap-marketo/bin/activate
             pip install .[test]
             pip install pylint
