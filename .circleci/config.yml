@@ -10,8 +10,8 @@ jobs:
           command: |
             uv venv --python=3.11 /usr/local/share/virtualenvs/tap-marketo
             source /usr/local/share/tap-marketo/bin/activate
-            pip install .[test]
-            pip install pylint
+            uv pip install .[test]
+            uv pip install pylint
       - run:
           name: 'Pylint'
           command: |
@@ -26,7 +26,7 @@ jobs:
           name: 'Unit Tests'
           command: |
             source /usr/local/share/tap-marketo/bin/activate
-            pip install nose2 parameterized nose2[coverage_plugin]>=0.6.5
+            uv pip install nose2 parameterized nose2[coverage_plugin]>=0.6.5
             nose2 --with-coverage -v -s tests
       - store_test_results:
           path: test_output/report.xml
