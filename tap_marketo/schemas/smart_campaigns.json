@@ -1,0 +1,138 @@
+{
+    "tap_stream_id": "smart_campaigns",
+    "stream": "smart_campaigns",
+    "key_properties": [
+        "id"
+    ],
+    "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "id": {
+                "type": "integer"
+            },
+            "name": {
+                "type": "string"
+            },
+            "description": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "type": {
+                "type": "string"
+            },
+            "isSystem": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "isActive": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "isRequestable": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "recurrence": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "qualificationRuleType": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "qualificationRuleInterval": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "qualificationRuleUnit": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "maxMembers": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "isCommunicationLimitEnabled": {
+                "type": [
+                    "boolean",
+                    "null"
+                ]
+            },
+            "smartListId": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "flowId": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "parentProgramId": {
+                "type": [
+                    "integer",
+                    "null"
+                ]
+            },
+            "folder": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "createdAt": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "updatedAt": {
+                "type": [
+                    "string",
+                    "null"
+                ],
+                "format": "date-time"
+            },
+            "workspace": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "computedUrl": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            },
+            "status": {
+                "type": [
+                    "string",
+                    "null"
+                ]
+            }
+        }
+    }
+}

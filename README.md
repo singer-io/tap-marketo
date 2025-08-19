@@ -9,6 +9,8 @@ This tap:
   - Activities
   - Leads
   - Lists
+  - Programs
+  - Smart Campaigns
 - Outputs the schema for each resource
 - Incrementally pulls data based on the input state
 
@@ -59,7 +61,9 @@ This tap:
     {"activity_types": "2017-01-01T00:00:00Z",
      "activities": "2017-01-01T00:00:00Z",
      "leads": "2017-01-01T00:00:00Z",
-     "lists": "2017-01-01T00:00:00Z"}
+     "lists": "2017-01-01T00:00:00Z",
+     "programs": "2017-01-01T00:00:00Z",
+     "smart_campaigns": "2017-01-01T00:00:00Z"}
     ```
 
 5. Run the application

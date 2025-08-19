@@ -39,6 +39,8 @@ def determine_replication_key(tap_stream_id):
         return 'updatedAt'
     elif tap_stream_id == 'programs':
         return 'updatedAt'
+    elif tap_stream_id  == 'smart_campaigns':
+        return 'updatedAt'
     else:
         return None
 
@@ -323,7 +325,7 @@ def sync_activities(client, state, stream, config):
     return state, record_count
 
 
-def sync_programs(client, state, stream):
+def sync_by_date(client, state, stream):
     # http://developers.marketo.com/rest-api/assets/programs/#by_date_range
     #
     # Programs are queryable via their updatedAt time but require and
@@ -335,8 +337,8 @@ def sync_programs(client, state, stream):
     # is returned to indicate that the endpoint has been fully synced.
     replication_key = determine_replication_key(stream['tap_stream_id'])
 
-    singer.write_schema("programs", stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
-    start_date = bookmarks.get_bookmark(state, "programs", replication_key)
+    singer.write_schema(stream['tap_stream_id'], stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
+    start_date = bookmarks.get_bookmark(state, stream['tap_stream_id'], replication_key)
     end_date = pendulum.utcnow().isoformat()
     params = {
         "maxReturn": 200,
@@ -344,11 +346,17 @@ def sync_programs(client, state, stream):
         "earliestUpdatedAt": start_date,
         "latestUpdatedAt": end_date,
     }
-    endpoint = "rest/asset/v1/programs.json"
+
+    if stream['tap_stream_id']  == 'smart_campaigns':
+        endpoint_name = "smartCampaigns"
+    else: 
+        endpoint_name = stream['tap_stream_id'] 
+    
+    endpoint = "rest/asset/v1/{}.json".format(endpoint_name)
 
     record_count = 0
     while True:
-        data = client.request("GET", endpoint, endpoint_name="programs", params=params)
+        data = client.request("GET", endpoint, endpoint_name=endpoint_name, params=params)
 
         # If the no asset message is in the warnings, we have exhausted
         # the search results and can end the sync.
@@ -364,14 +372,14 @@ def sync_programs(client, state, stream):
             if record[replication_key] >= start_date:
                 record_count += 1
 
-                singer.write_record("programs", record, time_extracted=time_extracted)
+                singer.write_record(stream['tap_stream_id'], record, time_extracted=time_extracted)
 
         # Increment the offset by the return limit for the next query.
         params["offset"] += params["maxReturn"]
 
     # Now that we've finished every page we can update the bookmark to
     # the end of the query.
-    state = bookmarks.write_bookmark(state, "programs", replication_key, end_date)
+    state = bookmarks.write_bookmark(state, stream['tap_stream_id'], replication_key, end_date)
     singer.write_state(state)
     return state, record_count
 
@@ -494,8 +502,8 @@ def sync(client, catalog, config, state):
             corona_warning_flag = True
         elif stream["tap_stream_id"] in ["campaigns", "lists"]:
             state, record_count = sync_paginated(client, state, stream)
-        elif stream["tap_stream_id"] == "programs":
-            state, record_count = sync_programs(client, state, stream)
+        elif stream["tap_stream_id"] in ["programs", "smart_campaigns"]:
+            state, record_count = sync_by_date(client, state, stream)
         else:
             raise Exception("Stream %s not implemented" % stream["tap_stream_id"])
 
