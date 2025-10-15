@@ -58,6 +58,14 @@ def get_schema_for_type(typ, breadcrumb, mdata, null=False):
     return rtn, mdata
 
 
+def metadata_replication_key_and_method(mdata, valid_replication_keys):
+    mdata = metadata.write(mdata, (), 'forced-replication-method', 'FULL_TABLE')
+    if valid_replication_keys:
+        mdata = metadata.write(mdata, (), 'forced-replication-method', 'INCREMENTAL')
+        mdata = metadata.write(mdata, (), 'valid-replication-keys', valid_replication_keys)
+    return mdata
+
+
 def get_activity_type_stream(activity):
     # Activity streams have 7 attributes:
     # - marketoGUID
@@ -121,6 +129,10 @@ def get_activity_type_stream(activity):
 
     # The activities steams use "marketoGUID" as the key_properties
     mdata = metadata.write(mdata, (), 'table-key-properties', ['marketoGUID'])
+    mdata = metadata_replication_key_and_method(
+        mdata,
+        valid_replication_keys=determine_replication_key('activities')
+    )
 
     return {
         "tap_stream_id": tap_stream_id,
@@ -169,6 +181,10 @@ def discover_leads(client):
 
     # The leads steam uses "id" as the key_properties
     mdata = metadata.write(mdata, (), 'table-key-properties', ['id'])
+    mdata = metadata_replication_key_and_method(
+        mdata,
+        valid_replication_keys=determine_replication_key('leads')
+    )
 
     return {
         "tap_stream_id": "leads",
@@ -192,10 +208,6 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
     with open(path, "r") as f:
         discovered_schema = json.load(f)
 
-        valid_replication_keys=determine_replication_key(discovered_schema['tap_stream_id'])
-        if valid_replication_keys is not None:
-            mdata = metadata.write(mdata, (), 'valid-replication-keys', valid_replication_keys)
-
         for field in discovered_schema["schema"]["properties"]:
             if field in automatic_inclusion:
                 mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'automatic')
@@ -206,6 +218,10 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
 
         # The steams using discover_catalog all use "id" as the key_properties
         mdata = metadata.write(mdata, (), 'table-key-properties', ['id'])
+        mdata = metadata_replication_key_and_method(
+            mdata,
+            determine_replication_key(discovered_schema['tap_stream_id'])
+        )
 
         discovered_schema["metadata"] = metadata.to_list(mdata)
         return discovered_schema
