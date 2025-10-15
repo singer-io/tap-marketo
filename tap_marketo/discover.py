@@ -4,6 +4,8 @@ import sys
 
 import singer
 from singer import metadata
+from tap_marketo.sync import determine_replication_key
+
 
 STRING_TYPES = [
     'string',
@@ -189,6 +191,10 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
 
     with open(path, "r") as f:
         discovered_schema = json.load(f)
+
+        valid_replication_keys=determine_replication_key(discovered_schema['tap_stream_id'])
+        if valid_replication_keys is not None:
+            mdata = metadata.write(mdata, (), 'valid-replication-keys', valid_replication_keys)
 
         for field in discovered_schema["schema"]["properties"]:
             if field in automatic_inclusion:
