@@ -2,9 +2,11 @@ import unittest
 
 import pendulum
 import requests_mock
+from singer import metadata
 
 from tap_marketo.client import Client
 from tap_marketo.discover import *
+from tap_marketo.sync import determine_replication_key
 
 
 class TestDiscover(unittest.TestCase):
@@ -188,9 +190,130 @@ class TestDiscover(unittest.TestCase):
             result = discover_leads(client)
             metadata = result.pop("metadata")
             automatic_count = 0
+            root_metadata = None
             for mdata in metadata:
                 if mdata.get('metadata', {}).get('inclusion') == 'automatic':
                     automatic_count += 1
+                if mdata['breadcrumb'] == ():
+                    root_metadata = mdata['metadata']
+            
             self.assertDictEqual(stream, result)
             self.assertEqual(3,len(metadata))
             self.assertEqual(1,automatic_count)
+            # Test new replication metadata
+            self.assertEqual(root_metadata['forced-replication-method'], 'INCREMENTAL')
+            self.assertEqual(root_metadata['valid-replication-keys'], 'updatedAt')
+
+    def test_discover_catalog_campaigns(self):
+        result = discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION)
+        metadata = result["metadata"]
+        
+        # Find root metadata
+        root_metadata = None
+        for mdata in metadata:
+            if mdata['breadcrumb'] == ():
+                root_metadata = mdata['metadata']
+                break
+        
+        # Test basic properties
+        self.assertEqual(result["tap_stream_id"], "campaigns")
+        self.assertEqual(result["key_properties"], ["id"])
+        
+        # Test new replication metadata
+        self.assertEqual(root_metadata['forced-replication-method'], 'INCREMENTAL')
+        self.assertEqual(root_metadata['valid-replication-keys'], 'updatedAt')
+        self.assertEqual(root_metadata['table-key-properties'], ['id'])
+
+    def test_discover_catalog_activity_types(self):
+        result = discover_catalog("activity_types", ACTIVITY_TYPES_AUTOMATIC_INCLUSION, unsupported=ACTIVITY_TYPES_UNSUPPORTED)
+        metadata = result["metadata"]
+        
+        # Find root metadata
+        root_metadata = None
+        for mdata in metadata:
+            if mdata['breadcrumb'] == ():
+                root_metadata = mdata['metadata']
+                break
+        
+        # Test basic properties
+        self.assertEqual(result["tap_stream_id"], "activity_types")
+        self.assertEqual(result["key_properties"], ["id"])
+        
+        # Test new replication metadata - activity_types should be FULL_TABLE with no valid replication keys
+        self.assertEqual(root_metadata['forced-replication-method'], 'FULL_TABLE')
+        self.assertNotIn('valid-replication-keys', root_metadata)
+        self.assertEqual(root_metadata['table-key-properties'], ['id'])
+
+    def test_set_replication_metadata(self):
+        # Test with no valid replication keys (FULL_TABLE)
+        mdata = metadata.new()
+        result = set_replication_metadata(mdata, None)
+        result_list = metadata.to_list(result)
+        result_dict = metadata.to_map(result_list)
+        
+        self.assertEqual(result_dict[()]['forced-replication-method'], 'FULL_TABLE')
+        self.assertNotIn('valid-replication-keys', result_dict[()])
+        
+        # Test with valid replication keys (INCREMENTAL)
+        mdata = metadata.new()
+        result = set_replication_metadata(mdata, 'updatedAt')
+        result_list = metadata.to_list(result)
+        result_dict = metadata.to_map(result_list)
+        
+        self.assertEqual(result_dict[()]['forced-replication-method'], 'INCREMENTAL')
+        self.assertEqual(result_dict[()]['valid-replication-keys'], 'updatedAt')
+
+    def test_determine_replication_key(self):
+        # Test activity streams
+        self.assertEqual(determine_replication_key('activities_visit_webpage'), 'activityDate')
+        self.assertEqual(determine_replication_key('activities_email_sent'), 'activityDate')
+        
+        # Test other streams
+        self.assertEqual(determine_replication_key('leads'), 'updatedAt')
+        self.assertEqual(determine_replication_key('campaigns'), 'updatedAt')
+        self.assertEqual(determine_replication_key('lists'), 'updatedAt')
+        self.assertEqual(determine_replication_key('programs'), 'updatedAt')
+        
+        # Test streams with no replication key
+        self.assertIsNone(determine_replication_key('activity_types'))
+        self.assertIsNone(determine_replication_key('unknown_stream'))
+
+    def test_discover_catalog_lists(self):
+        result = discover_catalog("lists", LISTS_AUTOMATIC_INCLUSION)
+        metadata = result["metadata"]
+        
+        # Find root metadata
+        root_metadata = None
+        for mdata in metadata:
+            if mdata['breadcrumb'] == ():
+                root_metadata = mdata['metadata']
+                break
+        
+        # Test basic properties
+        self.assertEqual(result["tap_stream_id"], "lists")
+        self.assertEqual(result["key_properties"], ["id"])
+        
+        # Test new replication metadata
+        self.assertEqual(root_metadata['forced-replication-method'], 'INCREMENTAL')
+        self.assertEqual(root_metadata['valid-replication-keys'], 'updatedAt')
+        self.assertEqual(root_metadata['table-key-properties'], ['id'])
+
+    def test_discover_catalog_programs(self):
+        result = discover_catalog("programs", PROGRAMS_AUTOMATIC_INCLUSION)
+        metadata = result["metadata"]
+        
+        # Find root metadata
+        root_metadata = None
+        for mdata in metadata:
+            if mdata['breadcrumb'] == ():
+                root_metadata = mdata['metadata']
+                break
+        
+        # Test basic properties
+        self.assertEqual(result["tap_stream_id"], "programs")
+        self.assertEqual(result["key_properties"], ["id"])
+        
+        # Test new replication metadata
+        self.assertEqual(root_metadata['forced-replication-method'], 'INCREMENTAL')
+        self.assertEqual(root_metadata['valid-replication-keys'], 'updatedAt')
+        self.assertEqual(root_metadata['table-key-properties'], ['id'])
