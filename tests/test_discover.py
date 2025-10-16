@@ -37,7 +37,8 @@ class TestDiscover(unittest.TestCase):
                 {'breadcrumb': (),
                  'metadata': {'table-key-properties': ['marketoGUID'],
                               'marketo.activity-id': 1,
-                              'marketo.primary-attribute-name': 'webpage_id'}},
+                              'marketo.primary-attribute-name': 'webpage_id',
+                              'forced-replication-method': 'FULL_TABLE'}},
                 {
                     "metadata" : {
                         "inclusion": "automatic"

@@ -58,7 +58,7 @@ def get_schema_for_type(typ, breadcrumb, mdata, null=False):
     return rtn, mdata
 
 
-def metadata_replication_key_and_method(mdata, valid_replication_keys):
+def set_replication_metadata(mdata, valid_replication_keys):
     mdata = metadata.write(mdata, (), 'forced-replication-method', 'FULL_TABLE')
     if valid_replication_keys:
         mdata = metadata.write(mdata, (), 'forced-replication-method', 'INCREMENTAL')
@@ -129,7 +129,7 @@ def get_activity_type_stream(activity):
 
     # The activities steams use "marketoGUID" as the key_properties
     mdata = metadata.write(mdata, (), 'table-key-properties', ['marketoGUID'])
-    mdata = metadata_replication_key_and_method(
+    mdata = set_replication_metadata(
         mdata,
         valid_replication_keys=determine_replication_key('activities')
     )
@@ -181,7 +181,7 @@ def discover_leads(client):
 
     # The leads steam uses "id" as the key_properties
     mdata = metadata.write(mdata, (), 'table-key-properties', ['id'])
-    mdata = metadata_replication_key_and_method(
+    mdata = set_replication_metadata(
         mdata,
         valid_replication_keys=determine_replication_key('leads')
     )
@@ -218,7 +218,7 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
 
         # The steams using discover_catalog all use "id" as the key_properties
         mdata = metadata.write(mdata, (), 'table-key-properties', ['id'])
-        mdata = metadata_replication_key_and_method(
+        mdata = set_replication_metadata(
             mdata,
             determine_replication_key(discovered_schema['tap_stream_id'])
         )
