@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.6.5
+## 2.7.0
   * Add `valid-replication-keys` and `forced-replication-method` fields to catalog metadata for better incremental replication control [#104](https://github.com/singer-io/tap-marketo/pull/104)
 
 ## 2.6.4
