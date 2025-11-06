@@ -239,5 +239,7 @@ def discover(client):
     streams.append(discover_catalog("programs", PROGRAMS_AUTOMATIC_INCLUSION))
     streams.append(discover_catalog("usage", USAGE_AUTOMATIC_INCLUSION))
     streams.append(discover_catalog("errors", ERRORS_AUTOMATIC_INCLUSION))
+    streams.append(discover_catalog("usage_last7days", USAGE_AUTOMATIC_INCLUSION))
+    streams.append(discover_catalog("errors_last7days", ERRORS_AUTOMATIC_INCLUSION))
     json.dump({"streams": streams}, sys.stdout, indent=2)
     singer.log_info("Finished discover")
