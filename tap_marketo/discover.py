@@ -23,6 +23,8 @@ ACTIVITY_TYPES_UNSUPPORTED = frozenset(["attributes"])
 LISTS_AUTOMATIC_INCLUSION = frozenset(["id", "name", "createdAt", "updatedAt"])
 PROGRAMS_AUTOMATIC_INCLUSION = frozenset(["id", "createdAt", "updatedAt"])
 CAMPAIGNS_AUTOMATIC_INCLUSION = frozenset(["id", "createdAt", "updatedAt"])
+ERRORS_AUTOMATIC_INCLUSION = frozenset(["date", "errors"])
+USAGE_AUTOMATIC_INCLUSION = frozenset(["date", "total"])
 
 LEAD_REQUIRED_FIELDS = frozenset(["id", "updatedAt", "createdAt"])
 
@@ -235,5 +237,7 @@ def discover(client):
     streams.append(discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION))
     streams.append(discover_catalog("lists", LISTS_AUTOMATIC_INCLUSION))
     streams.append(discover_catalog("programs", PROGRAMS_AUTOMATIC_INCLUSION))
+    streams.append(discover_catalog("usage", USAGE_AUTOMATIC_INCLUSION))
+    streams.append(discover_catalog("errors", ERRORS_AUTOMATIC_INCLUSION))
     json.dump({"streams": streams}, sys.stdout, indent=2)
     singer.log_info("Finished discover")

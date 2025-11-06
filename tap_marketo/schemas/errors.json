@@ -1,0 +1,29 @@
+{
+  "tap_stream_id": "errors",
+  "stream": "errors",
+  "key_properties": ["date"],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "date": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "errors": {
+        "type": ["array", "null"],
+        "items": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": ["null", "integer"]
+            },
+            "errorCode": {
+              "type": ["null", "string"]
+            }
+          }
+        }
+      }
+    }
+  }
+}
