@@ -39,7 +39,11 @@ def determine_replication_key(tap_stream_id):
         return 'updatedAt'
     elif tap_stream_id == 'errors':
         return 'date'
+    elif tap_stream_id == 'errors_last7days':
+        return 'date'
     elif tap_stream_id == 'usage':
+        return 'date'
+    elif tap_stream_id == 'usage_last7days':
         return 'date'
     elif tap_stream_id == 'programs':
         return 'updatedAt'
@@ -392,7 +396,10 @@ def sync_paginated(client, state, stream, endpoint_prefix=""):
     singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
     start_date = bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key)
     params = {"batchSize": 300}
-    endpoint = "rest/v1/{}{}.json".format(endpoint_prefix, stream["tap_stream_id"])
+    requested_field = stream["tap_stream_id"]
+    if "_" in stream["tap_stream_id"]:
+        requested_field = stream["tap_stream_id"].replace("_", "/")
+    endpoint = "rest/v1/{}{}.json".format(endpoint_prefix, requested_field)
 
     # Paginated requests use paging tokens for retrieving the next page
     # of results. These tokens are stored in the state for resuming
@@ -498,7 +505,7 @@ def sync(client, catalog, config, state):
             corona_warning_flag = True
         elif stream["tap_stream_id"] in ["campaigns", "lists"]:
             state, record_count = sync_paginated(client, state, stream)
-        elif stream["tap_stream_id"] in ["errors", "usage"]:
+        elif stream["tap_stream_id"] in ["errors", "usage", "errors_last7days", "usage_last7days"]:
             state, record_count = sync_paginated(client, state, stream, endpoint_prefix="stats/")
         elif stream["tap_stream_id"] == "programs":
             state, record_count = sync_programs(client, state, stream)

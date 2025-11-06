@@ -1,6 +1,6 @@
 {
-  "tap_stream_id": "errors",
-  "stream": "errors",
+  "tap_stream_id": "usage_last7days",
+  "stream": "usage_last7days",
   "key_properties": ["date"],
   "schema": {
     "type": "object",
@@ -13,7 +13,7 @@
       "total": {
         "type": "integer"
       },
-      "errors": {
+      "users": {
         "type": ["array", "null"],
         "items": {
           "type": "object",
@@ -21,7 +21,7 @@
             "count": {
               "type": ["null", "integer"]
             },
-            "errorCode": {
+            "userId": {
               "type": ["null", "string"]
             }
           }
