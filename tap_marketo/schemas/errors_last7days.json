@@ -1,0 +1,32 @@
+{
+  "tap_stream_id": "errors_last7days",
+  "stream": "errors_last7days",
+  "key_properties": ["date"],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "date": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "total": {
+        "type": "integer"
+      },
+      "errors": {
+        "type": ["array", "null"],
+        "items": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": ["null", "integer"]
+            },
+            "errorCode": {
+              "type": ["null", "string"]
+            }
+          }
+        }
+      }
+    }
+  }
+}
