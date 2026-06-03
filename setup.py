@@ -3,7 +3,7 @@
 from setuptools import setup
 
 setup(name='tap-marketo',
-      version='2.7.0',
+      version='2.7.1',
       description='Singer.io tap for extracting data from the Marketo API',
       author='Stitch',
       url='http://singer.io',
@@ -11,7 +11,7 @@ setup(name='tap-marketo',
       py_modules=['tap_marketo'],
       install_requires=[
           'singer-python==6.0.1',
-          'requests==2.32.4',
+          'requests==2.33.0',
           'pendulum==1.2.0',
           'backoff==2.2.1',
       ],

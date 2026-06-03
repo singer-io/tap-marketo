@@ -1,5 +1,9 @@
 # Changelog
 
+# 2.7.1
+  * Bump requests to 2.33.0 for security updates [#106](https://github.com/singer-io/tap-marketo/pull/106)
+
+
 ## 2.7.0
   * Add `valid-replication-keys` and `forced-replication-method` fields to catalog metadata for better incremental replication control [#104](https://github.com/singer-io/tap-marketo/pull/104)
 
