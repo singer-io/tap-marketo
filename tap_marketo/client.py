@@ -113,7 +113,10 @@ class Client:
 
         self._session = requests.Session()
         self._use_corona = None
+        self.end_date = kwargs.get("end_date", None)
 
+    def get_end_date(self):
+        return self.end_date
     @property
     def use_corona(self):
         if getattr(self, "_use_corona", None) is None:
@@ -185,8 +188,9 @@ class Client:
         endpoint_name = endpoint_name or url
         url = self.get_url(url)
         headers = kwargs.pop("headers", {})
+        params = kwargs.pop("params", {})
         headers.update(self.headers)
-        req = requests.Request(method, url, headers=headers, **kwargs).prepare()
+        req = requests.Request(method, url, headers=headers, params=params, **kwargs).prepare()
         singer.log_info("%s: %s", method, req.url)
         with singer.metrics.http_request_timer(endpoint_name):
             resp = self._session.send(req, stream=stream, timeout=self.request_timeout)
@@ -233,6 +237,14 @@ class Client:
                 raise ApiException("Marketo API returned error: {0.status_code}: {0.content}".format(resp))
 
             return resp
+
+    def get_paging_token(self, sinceDatetime):
+        endpoint = "rest/v1/activities/pagingtoken.json"
+        singer.log_info("Getting paging token for date %s", sinceDatetime)
+
+        params = {"sinceDatetime": sinceDatetime}
+        data = self.request("GET", endpoint, endpoint_name="paging_token", params=params)
+        return data.get("nextPageToken")
 
     def create_export(self, stream_type, fields, query):
         # http://developers.marketo.com/rest-api/bulk-extract/#creating_a_job

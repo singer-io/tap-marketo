@@ -18,7 +18,6 @@ from singer.bookmarks import (
 
 REQUIRED_CONFIG_KEYS = [
     "start_date",
-
     # Log in to Marketo
     # Go to Admin, select Integration->Web Services
     # Endpoint url matches https://123-ABC-456.mktorest.com/rest
