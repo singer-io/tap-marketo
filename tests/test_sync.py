@@ -26,6 +26,57 @@ class MockResponse:
     def iter_lines(self, decode_unicode=True, chunk_size=512):
         yield self.data
 
+
+class TestSyncPrograms(unittest.TestCase):
+    def setUp(self):
+        self.client = Client("123-ABC-456", "id", "secret")
+        self.client.token_expires = pendulum.utcnow().add(days=1)
+        self.client.calls_today = 1
+        self.stream = discover_catalog("programs", PROGRAMS_AUTOMATIC_INCLUSION)
+
+    @unittest.mock.patch("singer.write_schema")
+    @unittest.mock.patch("singer.write_state")
+    def test_future_bookmark_returns_early_without_request(self, write_state, write_schema):
+        # Bookmark is in the future — should return immediately with 0 records
+        # and not call the Marketo API to avoid the 701 "End date should always
+        # be after start date" error.
+        future_date = pendulum.utcnow().add(days=1).isoformat()
+        state = {"bookmarks": {"programs": {"updatedAt": future_date}}}
+
+        with unittest.mock.patch.object(self.client, "request") as mock_request:
+            returned_state, record_count = sync_programs(self.client, state, self.stream)
+
+        mock_request.assert_not_called()
+        self.assertEqual(0, record_count)
+        self.assertEqual(state, returned_state)
+
+    @unittest.mock.patch("singer.write_record")
+    @unittest.mock.patch("singer.write_schema")
+    @unittest.mock.patch("singer.write_state")
+    @freezegun.freeze_time("2017-01-15")
+    def test_past_bookmark_syncs_records(self, write_state, write_schema, write_record):
+        # Bookmark is in the past — should request from Marketo and return records.
+        state = {"bookmarks": {"programs": {"updatedAt": "2017-01-01T00:00:00+00:00"}}}
+
+        program_row = {
+            "id": 1,
+            "name": "Test Program",
+            "updatedAt": "2017-01-10T00:00:00+00:00",
+            "createdAt": "2017-01-01T00:00:00+00:00",
+        }
+        page1 = {"success": True, "result": [program_row]}
+        page2 = {"success": True, "warnings": [NO_ASSET_MSG], "result": []}
+
+        with unittest.mock.patch.object(self.client, "request", side_effect=[page1, page2]):
+            returned_state, record_count = sync_programs(self.client, state, self.stream)
+
+        self.assertEqual(1, record_count)
+        write_record.assert_called_once()
+        self.assertEqual(
+            "2017-01-15T00:00:00+00:00",
+            returned_state["bookmarks"]["programs"]["updatedAt"],
+        )
+
 # class TestSyncActivityTypes(unittest.TestCase):
 #     def setUp(self):
 #         self.client = Client("123-ABC-456", "id", "secret")

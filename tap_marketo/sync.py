@@ -337,7 +337,12 @@ def sync_programs(client, state, stream):
 
     singer.write_schema("programs", stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
     start_date = bookmarks.get_bookmark(state, "programs", replication_key)
-    end_date = pendulum.utcnow().isoformat()
+    end_dt = pendulum.utcnow()
+    end_date = end_dt.isoformat()
+
+    if pendulum.parse(start_date) >= end_dt:
+        return state, 0
+
     params = {
         "maxReturn": 200,
         "offset": 0,
