@@ -1,5 +1,8 @@
 # Changelog
 
+# 2.7.2
+  * Do not sync programs when start_date >= now [#107](https://github.com/singer-io/tap-marketo/pull/107)
+
 # 2.7.1
   * Bump requests to 2.33.0 for security updates [#106](https://github.com/singer-io/tap-marketo/pull/106)
 
