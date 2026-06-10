@@ -1,7 +1,7 @@
 import csv
+import io
 import json
 import pendulum
-import tempfile
 
 import singer
 from singer import metadata
@@ -144,28 +144,42 @@ MEGABYTE_IN_BYTES = 1024 * 1024
 CHUNK_SIZE_MB = 10
 CHUNK_SIZE_BYTES = MEGABYTE_IN_BYTES * CHUNK_SIZE_MB
 
-# This function has an issue with UTF-8 data most likely caused by decode_unicode=True
-# See https://github.com/singer-io/tap-marketo/pull/51/files
-def stream_rows(client, stream_type, export_id):
-    with tempfile.NamedTemporaryFile(mode="w+", encoding="utf8") as csv_file:
-        singer.log_info("Download starting.")
-        resp = client.stream_export(stream_type, export_id)
+class IterStream(io.RawIOBase):
+    """Adapts a byte-chunk iterator into a file-like object for io.BufferedReader/TextIOWrapper."""
+
+    def __init__(self, iterator):
+        self._iter = iterator
+        self._leftover = b''
+
+    def readable(self):
+        return True
+
+    def readinto(self, buf):
         try:
-            for chunk in resp.iter_content(chunk_size=CHUNK_SIZE_BYTES, decode_unicode=True):
-                if chunk:
-                    # Replace CR
-                    chunk = chunk.replace('\r', '')
-                    csv_file.write(chunk)
-        finally:
-            resp.close()
+            chunk = self._leftover or next(self._iter)
+            out, self._leftover = chunk[:len(buf)], chunk[len(buf):]
+            buf[:len(out)] = out
+            return len(out)
+        except StopIteration:
+            return 0
 
-        singer.log_info("Download completed. Begin streaming rows.")
-        csv_file.seek(0)
 
-        reader = csv.reader((line.replace('\0', '') for line in csv_file), delimiter=',', quotechar='"')
+def stream_rows(client, stream_type, export_id):
+    singer.log_info("Download starting.")
+    resp = client.stream_export(stream_type, export_id)
+    try:
+        chunks = resp.iter_content(chunk_size=CHUNK_SIZE_BYTES, decode_unicode=False)
+        text_stream = io.TextIOWrapper(io.BufferedReader(IterStream(chunks)), encoding='utf-8')
+        reader = csv.reader(
+            (line.replace('\r', '').replace('\0', '') for line in text_stream),
+            delimiter=',', quotechar='"'
+        )
+
         headers = next(reader)
         for line in reader:
             yield dict(zip(headers, line))
+    finally:
+        resp.close()
 
 
 def get_or_create_export_for_leads(client, state, stream, export_start, config):

@@ -20,11 +20,14 @@ def parse_params(request):
 
 class MockResponse:
     def __init__(self, data):
-        self.data = data
-    def iter_content(self, decode_unicode=True, chunk_size=512):
+        self.data = data if isinstance(data, bytes) else data.encode('utf-8')
+        self.closed = False
+    def iter_content(self, decode_unicode=False, chunk_size=512):
         yield self.data
-    def iter_lines(self, decode_unicode=True, chunk_size=512):
+    def iter_lines(self, decode_unicode=False, chunk_size=512):
         yield self.data
+    def close(self):
+        self.closed = True
 
 
 class TestSyncPrograms(unittest.TestCase):
@@ -524,3 +527,99 @@ class TestSyncPrograms(unittest.TestCase):
 #                                 "activityTypeId": 1, "primary_attribute_value_id": None, "primary_attribute_name": "webpage_id", "primary_attribute_value": '1', "client_ip_address": "0.0.0.0"}),
 #         ]
 #         write_record.assert_has_calls(expected_calls)
+
+
+class TestIterStream(unittest.TestCase):
+    def test_reads_single_chunk(self):
+        chunks = iter([b'hello,world\n'])
+        stream = IterStream(chunks)
+        result = stream.read()
+        self.assertEqual(b'hello,world\n', result)
+
+    def test_reads_across_multiple_chunks(self):
+        chunks = iter([b'hel', b'lo,', b'wor', b'ld\n'])
+        stream = IterStream(chunks)
+        result = stream.read()
+        self.assertEqual(b'hello,world\n', result)
+
+    def test_leftover_bytes_carried_forward(self):
+        # readinto buf is smaller than the chunk — leftover must be preserved
+        chunks = iter([b'abcdef'])
+        stream = IterStream(chunks)
+        buf = bytearray(4)
+        n = stream.readinto(buf)
+        self.assertEqual(4, n)
+        self.assertEqual(b'abcd', bytes(buf))
+        buf2 = bytearray(4)
+        n2 = stream.readinto(buf2)
+        self.assertEqual(2, n2)
+        self.assertEqual(b'ef', bytes(buf2[:n2]))
+
+    def test_returns_zero_on_exhausted_iterator(self):
+        chunks = iter([])
+        stream = IterStream(chunks)
+        buf = bytearray(4)
+        self.assertEqual(0, stream.readinto(buf))
+
+
+class TestStreamRows(unittest.TestCase):
+    def _make_mock_client(self, chunks):
+        """Return a mock client whose stream_export yields the given byte chunks."""
+        class MultiChunkResponse:
+            def __init__(self, byte_chunks):
+                self._chunks = byte_chunks
+                self.closed = False
+            def iter_content(self, decode_unicode=False, chunk_size=512):
+                yield from self._chunks
+            def close(self):
+                self.closed = True
+
+        client = unittest.mock.MagicMock()
+        resp = MultiChunkResponse(chunks)
+        client.stream_export.return_value = resp
+        return client, resp
+
+    def test_basic_csv_parsing(self):
+        data = b'id,name\n1,Alice\n2,Bob\n'
+        client, _ = self._make_mock_client([data])
+        rows = list(stream_rows(client, 'leads', 'export-1'))
+        self.assertEqual([{'id': '1', 'name': 'Alice'}, {'id': '2', 'name': 'Bob'}], rows)
+
+    def test_cr_stripped(self):
+        data = b'id,name\r\n1,Alice\r\n'
+        client, _ = self._make_mock_client([data])
+        rows = list(stream_rows(client, 'leads', 'export-1'))
+        self.assertEqual([{'id': '1', 'name': 'Alice'}], rows)
+
+    def test_null_bytes_stripped(self):
+        data = b'id,name\n1,Ali\x00ce\n'
+        client, _ = self._make_mock_client([data])
+        rows = list(stream_rows(client, 'leads', 'export-1'))
+        self.assertEqual([{'id': '1', 'name': 'Alice'}], rows)
+
+    def test_response_closed_after_iteration(self):
+        data = b'id\n1\n'
+        client, resp = self._make_mock_client([data])
+        list(stream_rows(client, 'leads', 'export-1'))
+        self.assertTrue(resp.closed)
+
+    def test_response_closed_on_exception(self):
+        # Even if iteration raises, resp.close() must still be called.
+        # An empty chunk produces no headers; next(reader) raises StopIteration,
+        # which Python 3.7+ (PEP 479) converts to RuntimeError inside a generator.
+        client, resp = self._make_mock_client([b''])
+        try:
+            list(stream_rows(client, 'leads', 'export-1'))
+        except (StopIteration, RuntimeError):
+            pass
+        self.assertTrue(resp.closed)
+
+    def test_multibyte_utf8_split_across_chunks(self):
+        # 'café' encoded as UTF-8: b'caf\xc3\xa9' (\xc3\xa9 is a 2-byte sequence).
+        # Split the chunk boundary between the two bytes of the multi-byte character.
+        row = 'id,name\n1,café\n'.encode('utf-8')
+        split = row.index(b'\xc3') + 1  # after \xc3, before \xa9
+        chunk1, chunk2 = row[:split], row[split:]
+        client, _ = self._make_mock_client([chunk1, chunk2])
+        rows = list(stream_rows(client, 'leads', 'export-1'))
+        self.assertEqual([{'id': '1', 'name': 'café'}], rows)
