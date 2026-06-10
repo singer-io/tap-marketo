@@ -86,14 +86,26 @@ def format_value(value, schema):
     return value
 
 
-def format_values(stream, row):
-    rtn = {}
+def get_available_fields(stream):
+    """Return the set of selected/automatic field names for a stream.
 
-    available_fields = []
+    Computing this once per stream (rather than per row) avoids rebuilding the
+    set on every row processed during a bulk export.
+    """
+    available_fields = set()
     for entry in stream['metadata']:
-        if len(entry['breadcrumb']) > 0 and (entry['metadata'].get('selected') or entry['metadata'].get('inclusion') == 'automatic'):
-            available_fields.append(entry['breadcrumb'][-1])
+        if len(entry['breadcrumb']) > 0 and (
+            entry['metadata'].get('selected') or
+            entry['metadata'].get('inclusion') == 'automatic'
+        ):
+            available_fields.add(entry['breadcrumb'][-1])
+    return available_fields
 
+
+def format_values(stream, row, available_fields=None):
+    if available_fields is None:
+        available_fields = get_available_fields(stream)
+    rtn = {}
     for field, schema in stream["schema"]["properties"].items():
         if field in available_fields:
             rtn[field] = format_value(row.get(field), schema)
@@ -162,6 +174,7 @@ def stream_rows(client, stream_type, export_id):
             (line.replace('\r', '').replace('\0', '') for line in text_stream),
             delimiter=',', quotechar='"'
         )
+
         headers = next(reader)
         for line in reader:
             yield dict(zip(headers, line))
@@ -189,10 +202,7 @@ def get_or_create_export_for_leads(client, state, stream, export_start, config):
 
         # Create the new export and store the id and end date in state.
         # Does not start the export (must POST to the "enqueue" endpoint).
-        fields = []
-        for entry in stream['metadata']:
-            if len(entry['breadcrumb']) > 0 and (entry['metadata'].get('selected') or entry['metadata'].get('inclusion') == 'automatic'):
-                fields.append(entry['breadcrumb'][-1])
+        fields = list(get_available_fields(stream))
 
         export_id = client.create_export("leads", fields, query)
         state = update_state_with_export_info(
@@ -250,15 +260,11 @@ def get_or_create_export_for_activities(client, state, stream, export_start, con
     return export_id, export_end
 
 
-def flatten_activity(row, stream):
+def flatten_activity(row, pan_field):
     # Start with the base fields
     rtn = {field: row[field] for field in BASE_ACTIVITY_FIELDS}
 
-    # Add the primary attribute name
-    # This name is the human readable name/description of the
-    # pimaryAttribute
-    mdata = metadata.to_map(stream['metadata'])
-    pan_field = metadata.get(mdata, (), 'marketo.primary-attribute-name')
+    # pan_field is the pre-computed primary attribute field name for this stream.
     if pan_field:
         rtn['primary_attribute_name'] = pan_field
         rtn['primary_attribute_value'] = row['primaryAttributeValue']
@@ -287,13 +293,14 @@ def sync_leads(client, state, stream, config):
     job_started = pendulum.utcnow()
     record_count = 0
     max_bookmark = initial_bookmark
+    available_fields = get_available_fields(stream)
     while export_start < job_started:
         export_id, export_end = get_or_create_export_for_leads(client, state, stream, export_start, config)
         state = wait_for_export(client, state, stream, export_id)
         for row in stream_rows(client, "leads", export_id):
             time_extracted = utils.now()
 
-            record = format_values(stream, row)
+            record = format_values(stream, row, available_fields)
             record_bookmark = pendulum.parse(record[replication_key])
 
             if client.use_corona:
@@ -321,14 +328,19 @@ def sync_activities(client, state, stream, config):
     export_start = pendulum.parse(bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key))
     job_started = pendulum.utcnow()
     record_count = 0
+
+    activity_metadata = metadata.to_map(stream["metadata"])
+    pan_field = metadata.get(activity_metadata, (), 'marketo.primary-attribute-name')
+    available_fields = get_available_fields(stream)
+
     while export_start < job_started:
         export_id, export_end = get_or_create_export_for_activities(client, state, stream, export_start, config)
         state = wait_for_export(client, state, stream, export_id)
         for row in stream_rows(client, "activities", export_id):
             time_extracted = utils.now()
 
-            row = flatten_activity(row, stream)
-            record = format_values(stream, row)
+            row = flatten_activity(row, pan_field)
+            record = format_values(stream, row, available_fields)
 
             singer.write_record(stream["tap_stream_id"], record, time_extracted=time_extracted)
             record_count += 1
@@ -368,6 +380,7 @@ def sync_programs(client, state, stream):
     endpoint = "rest/asset/v1/programs.json"
 
     record_count = 0
+    available_fields = get_available_fields(stream)
     while True:
         data = client.request("GET", endpoint, endpoint_name="programs", params=params)
 
@@ -381,7 +394,7 @@ def sync_programs(client, state, stream):
         # Each row just needs the values formatted. If the record is
         # newer than the original start date, stream the record.
         for row in data["result"]:
-            record = format_values(stream, row)
+            record = format_values(stream, row, available_fields)
             if record[replication_key] >= start_date:
                 record_count += 1
 
@@ -421,6 +434,7 @@ def sync_paginated(client, state, stream):
     # Keep querying pages of data until no next page token.
     record_count = 0
     job_started = pendulum.utcnow().isoformat()
+    available_fields = get_available_fields(stream)
     while True:
         data = client.request("GET", endpoint, endpoint_name=stream["tap_stream_id"], params=params)
 
@@ -430,7 +444,7 @@ def sync_paginated(client, state, stream):
         # newer than the original start date, stream the record. Finally,
         # update the bookmark if newer than the existing bookmark.
         for row in data["result"]:
-            record = format_values(stream, row)
+            record = format_values(stream, row, available_fields)
             if record[replication_key] >= start_date:
                 record_count += 1
 
@@ -463,11 +477,12 @@ def sync_activity_types(client, state, stream):
     endpoint = "rest/v1/activities/types.json"
     data = client.request("GET", endpoint, endpoint_name="activity_types")
     record_count = 0
+    available_fields = get_available_fields(stream)
 
     time_extracted = utils.now()
 
     for row in data["result"]:
-        record = format_values(stream, row)
+        record = format_values(stream, row, available_fields)
         record_count += 1
 
         singer.write_record("activity_types", record, time_extracted=time_extracted)
