@@ -1,5 +1,11 @@
 # Changelog
 
+# 2.8.0
+  * Stream HTTP data directly to generator rather than dowloading entire response to a tempfile
+  * Small improvements to memory usage
+  * [#109](https://github.com/singer-io/tap-marketo/pull/109)
+  * [#111](https://github.com/singer-io/tap-marketo/pull/111)
+
 # 2.7.2
   * Do not sync programs when start_date >= now [#107](https://github.com/singer-io/tap-marketo/pull/107)
 
