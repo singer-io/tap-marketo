@@ -130,6 +130,44 @@ def get_export_end(export_start, end_days=MAX_EXPORT_DAYS):
     return export_end.replace(microsecond=0)
 
 
+# Marketo's bulk extract API enforces a daily data-volume quota. A single
+# wide export window can produce a file too large to extract, which fails
+# with ApiQuotaExceeded (1029) and returns no data at all. When that happens
+# we halve the window and retry so we can still make forward progress, down
+# to a floor of MIN_EXPORT_DAYS. If even the smallest window exceeds quota we
+# re-raise so downstream processes see the failure.
+MIN_EXPORT_DAYS = 2
+
+
+def create_export_with_quota_backoff(create_fn, export_start, max_export_days):
+    """Create a bulk export for the window starting at ``export_start``.
+
+    ``create_fn`` is called with the chosen ``export_end`` and must return the
+    new export id. On ApiQuotaExceeded we halve the window (bounded below by
+    MIN_EXPORT_DAYS) and retry; if the minimum window still exceeds quota the
+    error is re-raised. Returns ``(export_id, export_end)``.
+    """
+    export_end = get_export_end(export_start, end_days=max_export_days)
+    while True:
+        try:
+            export_id = create_fn(export_end)
+            return export_id, export_end
+        except ApiQuotaExceeded as e:
+            # in_days() floors to whole days, matching how we size windows.
+            window_days = (export_end - export_start).in_days()
+            if window_days <= MIN_EXPORT_DAYS:
+                raise ApiQuotaExceeded(
+                    ("Unable to create an export for the window starting {} "
+                     "within your Marketo API quota, even after shrinking it "
+                     "to {} day(s).").format(export_start.isoformat(),
+                                             window_days)) from e
+            new_days = max(MIN_EXPORT_DAYS, window_days // 2)
+            singer.log_warning(
+                "Hit Marketo API quota creating export; retrying with a "
+                "smaller %s-day window (was %s days).", new_days, window_days)
+            export_end = get_export_end(export_start, end_days=new_days)
+
+
 def wait_for_export(client, state, stream, export_id):
     stream_type = "activities" if stream["tap_stream_id"] != "leads" else "leads"
     try:
@@ -195,16 +233,20 @@ def get_or_create_export_for_leads(client, state, stream, export_start, config):
         query_field = "updatedAt" if client.use_corona else "createdAt"
         max_export_days = int(config.get('max_export_days',
                                          MAX_EXPORT_DAYS))
-        export_end = get_export_end(export_start,
-                                    end_days=max_export_days)
-        query = {query_field: {"startAt": export_start.isoformat(),
-                               "endAt": export_end.isoformat()}}
+        fields = list(get_available_fields(stream))
+
+        def create(export_end):
+            query = {query_field: {"startAt": export_start.isoformat(),
+                                   "endAt": export_end.isoformat()}}
+            return client.create_export("leads", fields, query)
 
         # Create the new export and store the id and end date in state.
         # Does not start the export (must POST to the "enqueue" endpoint).
-        fields = list(get_available_fields(stream))
-
-        export_id = client.create_export("leads", fields, query)
+        export_id, export_end = create_export_with_quota_backoff(
+            create,
+            export_start,
+            max_export_days
+        )
         state = update_state_with_export_info(
             state, stream, export_id=export_id, export_end=export_end.isoformat())
     else:
@@ -232,26 +274,19 @@ def get_or_create_export_for_activities(client, state, stream, export_start, con
         # largest date range that can be used for activities is 30 days.
         max_export_days = int(config.get('max_export_days',
                                          MAX_EXPORT_DAYS))
-        export_end = get_export_end(export_start,
-                                    end_days=max_export_days)
-        query = {"createdAt": {"startAt": export_start.isoformat(),
-                               "endAt": export_end.isoformat()},
-                 "activityTypeIds": [activity_type_id]}
+
+        def create(export_end):
+            query = {"createdAt": {"startAt": export_start.isoformat(),
+                                   "endAt": export_end.isoformat()},
+                     "activityTypeIds": [activity_type_id]}
+            return client.create_export("activities", ACTIVITY_FIELDS, query)
 
         # Create the new export and store the id and end date in state.
         # Does not start the export (must POST to the "enqueue" endpoint).
-        try:
-            export_id = client.create_export("activities", ACTIVITY_FIELDS, query)
-        except ApiQuotaExceeded as e:
-            # The main reason we wrap the ApiQuotaExceeded exception in a
-            # new one is to be able to tell the customer what their
-            # configured max_export_days is.
-            raise ApiQuotaExceeded(
-                ("You may wish to consider changing the "
-                 "`max_export_days` config value to a lower number if "
-                 "you're unable to sync a single {} day window within "
-                 "your current API quota.").format(
-                     max_export_days)) from e
+        # The window is automatically shrunk and retried if a single window
+        # is too large to extract within the daily API quota.
+        export_id, export_end = create_export_with_quota_backoff(
+            create, export_start, max_export_days)
         state = update_state_with_export_info(
             state, stream, export_id=export_id, export_end=export_end.isoformat())
     else:
