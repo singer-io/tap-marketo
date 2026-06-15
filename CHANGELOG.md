@@ -1,5 +1,8 @@
 # Changelog
 
+# 2.9.0
+  * Shrink bulk request window on ApiQuotaExceeded exception [#112](https://github.com/singer-io/tap-marketo/pull/112)
+
 # 2.8.0
   * Stream HTTP data directly to generator rather than dowloading entire response to a tempfile
   * Small improvements to memory usage

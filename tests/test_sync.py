@@ -6,7 +6,7 @@ import freezegun
 import pendulum
 import requests_mock
 
-from tap_marketo.client import Client, ApiException
+from tap_marketo.client import Client, ApiException, ApiQuotaExceeded
 from tap_marketo.discover import (discover_catalog,
                                   ACTIVITY_TYPES_AUTOMATIC_INCLUSION,
                                   ACTIVITY_TYPES_UNSUPPORTED,
@@ -623,3 +623,76 @@ class TestStreamRows(unittest.TestCase):
         client, _ = self._make_mock_client([chunk1, chunk2])
         rows = list(stream_rows(client, 'leads', 'export-1'))
         self.assertEqual([{'id': '1', 'name': 'café'}], rows)
+
+
+@freezegun.freeze_time("2017-02-15")
+class TestCreateExportWithQuotaBackoff(unittest.TestCase):
+    # export_start is well in the past so the full window isn't capped at "now".
+    export_start = pendulum.parse("2017-01-01T00:00:00+00:00")
+
+    def _days(self, export_end):
+        return (export_end - self.export_start).in_days()
+
+    def test_succeeds_on_first_try_uses_full_window(self):
+        calls = []
+
+        def create(export_end):
+            calls.append(self._days(export_end))
+            return "export-123"
+
+        export_id, export_end = create_export_with_quota_backoff(
+            create, self.export_start, 30)
+
+        self.assertEqual("export-123", export_id)
+        self.assertEqual([30], calls)
+        self.assertEqual(30, self._days(export_end))
+
+    @unittest.mock.patch("singer.log_warning")
+    def test_halves_window_until_it_fits(self, _log_warning):
+        calls = []
+
+        def create(export_end):
+            days = self._days(export_end)
+            calls.append(days)
+            if days > 7:
+                raise ApiQuotaExceeded("window too large")
+            return "export-123"
+
+        export_id, export_end = create_export_with_quota_backoff(
+            create, self.export_start, 30)
+
+        # 30 -> 15 -> 7, halving until the window is small enough to extract.
+        self.assertEqual("export-123", export_id)
+        self.assertEqual([30, 15, 7], calls)
+        self.assertEqual(7, self._days(export_end))
+
+    @unittest.mock.patch("singer.log_warning")
+    def test_reraises_when_minimum_window_still_exceeds_quota(self, _log_warning):
+        calls = []
+
+        def create(export_end):
+            calls.append(self._days(export_end))
+            raise ApiQuotaExceeded("window too large")
+
+        with self.assertRaises(ApiQuotaExceeded):
+            create_export_with_quota_backoff(create, self.export_start, 30)
+
+        # Shrinks down to the MIN_EXPORT_DAYS floor before giving up.
+        self.assertEqual([30, 15, 7, 3, 2], calls)
+        self.assertEqual(MIN_EXPORT_DAYS, calls[-1])
+
+    @unittest.mock.patch("singer.log_warning")
+    def test_does_not_shrink_below_minimum_for_small_window(self, _log_warning):
+        # A naturally small window (capped near "now") that still fails should
+        # raise immediately rather than retry below the floor.
+        small_start = pendulum.parse("2017-02-14T00:00:00+00:00")  # ~1 day before now
+        calls = []
+
+        def create(export_end):
+            calls.append((export_end - small_start).in_days())
+            raise ApiQuotaExceeded("window too large")
+
+        with self.assertRaises(ApiQuotaExceeded):
+            create_export_with_quota_backoff(create, small_start, 30)
+
+        self.assertEqual(1, len(calls))
