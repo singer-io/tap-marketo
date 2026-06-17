@@ -1,5 +1,8 @@
 # Changelog
 
+# 2.9.1
+  * Resume bulk export downloads via a byte-range request when the connection is dropped mid-stream [#113](https://github.com/singer-io/tap-marketo/pull/113)
+
 # 2.9.0
   * Shrink bulk request window on ApiQuotaExceeded exception [#112](https://github.com/singer-io/tap-marketo/pull/112)
 
