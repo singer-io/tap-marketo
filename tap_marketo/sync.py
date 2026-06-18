@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import pendulum
+from requests.exceptions import ChunkedEncodingError, ConnectionError
 
 import singer
 from singer import metadata
@@ -201,13 +202,48 @@ class IterStream(io.RawIOBase):
         except StopIteration:
             return 0
 
+MAX_EMPTY_RESUMES = 5
+
+def resumable_iter_content(client, stream_type, export_id):
+    """Yield the export file's bytes, reconnecting on a dropped connection.
+
+    Marketo drops the bulk-export download connection when it is held open too
+    long -- e.g. while the tap is reading at the pace of a slower target. The
+    export file is static and supports byte ranges, so we recover by
+    re-requesting from the byte offset already yielded and continuing. Resuming
+    here, below the CSV parser, keeps the byte stream contiguous so callers
+    never see the seam.
+    """
+    start_byte = 0
+    empty_resumes = 0
+    while True:
+        resp = client.stream_export(stream_type, export_id, start_byte=start_byte)
+        bytes_this_connection = 0
+        try:
+            for chunk in resp.iter_content(chunk_size=CHUNK_SIZE_BYTES, decode_unicode=False):
+                bytes_this_connection += len(chunk)
+                start_byte += len(chunk)
+                yield chunk
+            return
+        except (ChunkedEncodingError, ConnectionError) as ex:
+            if bytes_this_connection:
+                empty_resumes = 0
+            else:
+                empty_resumes += 1
+                if empty_resumes > MAX_EMPTY_RESUMES:
+                    raise ex
+            singer.log_warning(
+                "Export download connection dropped after %s bytes; resuming "
+                "from byte %s: %s.", bytes_this_connection, start_byte, ex)
+        finally:
+            resp.close()
+
 
 def stream_rows(client, stream_type, export_id):
     singer.log_info("Download starting.")
-    resp = client.stream_export(stream_type, export_id)
+    chunks = resumable_iter_content(client, stream_type, export_id)
+    text_stream = io.TextIOWrapper(io.BufferedReader(IterStream(chunks)), encoding='utf-8')
     try:
-        chunks = resp.iter_content(chunk_size=CHUNK_SIZE_BYTES, decode_unicode=False)
-        text_stream = io.TextIOWrapper(io.BufferedReader(IterStream(chunks)), encoding='utf-8')
         reader = csv.reader(
             (line.replace('\r', '').replace('\0', '') for line in text_stream),
             delimiter=',', quotechar='"'
@@ -217,7 +253,8 @@ def stream_rows(client, stream_type, export_id):
         for line in reader:
             yield dict(zip(headers, line))
     finally:
-        resp.close()
+        text_stream.close()
+        chunks.close()
 
 
 def get_or_create_export_for_leads(client, state, stream, export_start, config):

@@ -4,6 +4,7 @@ import urllib.parse
 
 import freezegun
 import pendulum
+from requests.exceptions import ChunkedEncodingError, ConnectionError
 import requests_mock
 
 from tap_marketo.client import Client, ApiException, ApiQuotaExceeded
@@ -623,6 +624,77 @@ class TestStreamRows(unittest.TestCase):
         client, _ = self._make_mock_client([chunk1, chunk2])
         rows = list(stream_rows(client, 'leads', 'export-1'))
         self.assertEqual([{'id': '1', 'name': 'café'}], rows)
+
+
+class TestResumableDownload(unittest.TestCase):
+    class ByteResponse:
+        """Yields its data one byte at a time, optionally dropping the
+        connection once a given number of bytes have been emitted."""
+        def __init__(self, data, fail_after=None):
+            self.data = data
+            self.fail_after = fail_after
+            self.closed = False
+
+        def iter_content(self, decode_unicode=False, chunk_size=512):
+            for i, b in enumerate(self.data):
+                if self.fail_after is not None and i >= self.fail_after:
+                    raise ChunkedEncodingError("connection dropped")
+                yield bytes([b])
+
+        def close(self):
+            self.closed = True
+
+    def _client(self, responses):
+        client = unittest.mock.MagicMock()
+        client.stream_export.side_effect = responses
+        return client
+
+    def test_resumes_from_byte_offset_after_drop(self):
+        full = b'id,name\n1,Alice\n2,Bob\n'
+        split = full.index(b'2,Bob')  # drop right at the start of the 2nd data row
+        client = self._client([
+            self.ByteResponse(full, fail_after=split),  # delivers header + row 1, then drops
+            self.ByteResponse(full[split:]),            # resumes with the remainder
+        ])
+
+        rows = list(stream_rows(client, 'leads', 'export-1'))
+
+        self.assertEqual([{'id': '1', 'name': 'Alice'}, {'id': '2', 'name': 'Bob'}], rows)
+        # The resume request must ask for exactly the bytes already consumed.
+        self.assertEqual(split, client.stream_export.call_args_list[1].kwargs['start_byte'])
+        self.assertEqual(2, client.stream_export.call_count)
+
+    def test_resumes_multiple_times(self):
+        full = b'id,n\n1,a\n2,b\n3,c\n'
+        client = self._client([
+            self.ByteResponse(full, fail_after=8),
+            self.ByteResponse(full[8:], fail_after=4),
+            self.ByteResponse(full[12:]),
+        ])
+
+        rows = list(stream_rows(client, 'leads', 'export-1'))
+
+        self.assertEqual(
+            [{'id': '1', 'n': 'a'}, {'id': '2', 'n': 'b'}, {'id': '3', 'n': 'c'}], rows)
+        self.assertEqual([0, 8, 12],
+                         [c.kwargs['start_byte'] for c in client.stream_export.call_args_list])
+
+    def test_all_responses_closed(self):
+        full = b'id\n1\n2\n'
+        responses = [self.ByteResponse(full, fail_after=4), self.ByteResponse(full[4:])]
+        client = self._client(responses)
+        list(stream_rows(client, 'leads', 'export-1'))
+        self.assertTrue(all(r.closed for r in responses))
+
+    def test_gives_up_after_repeated_zero_progress_resumes(self):
+        # A connection that drops before yielding any bytes can't make progress;
+        # after MAX_EMPTY_RESUMES retries we surface the error instead of looping.
+        responses = [self.ByteResponse(b'id\n1\n', fail_after=0)
+                     for _ in range(MAX_EMPTY_RESUMES + 5)]
+        client = self._client(responses)
+        with self.assertRaises(ChunkedEncodingError):
+            list(stream_rows(client, 'leads', 'export-1'))
+        self.assertEqual(MAX_EMPTY_RESUMES + 1, client.stream_export.call_count)
 
 
 @freezegun.freeze_time("2017-02-15")

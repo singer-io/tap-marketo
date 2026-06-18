@@ -303,11 +303,15 @@ class Client:
         # http://developers.marketo.com/rest-api/bulk-extract/#polling_job_status
         return self.get_export_status(stream_type, export_id)["result"][0]["status"]
 
-    def stream_export(self, stream_type, export_id):
+    def stream_export(self, stream_type, export_id, start_byte=0):
         # http://developers.marketo.com/rest-api/bulk-extract/#retrieving_your_data
         endpoint = self.get_bulk_endpoint(stream_type, "file", export_id)
         endpoint_name = "{}_stream".format(stream_type)
-        return self.request("GET", endpoint, endpoint_name=endpoint_name, stream=True)
+        kwargs = {}
+        if start_byte:
+            # Resume a partially-downloaded export from where a dropped connection left off.
+            kwargs["headers"] = {"Range": "bytes={}-".format(start_byte)}
+        return self.request("GET", endpoint, endpoint_name=endpoint_name, stream=True, **kwargs)
 
     def wait_for_export(self, stream_type, export_id):
         # Poll the export status until it enters a finalized state or
