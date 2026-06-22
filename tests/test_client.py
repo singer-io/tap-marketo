@@ -153,3 +153,42 @@ class TestExports(unittest.TestCase):
 
         with self.assertRaises(ExportFailed):
             self.client.wait_for_export("test", export_id)
+
+    def _file_url(self, export_id="exp-1"):
+        return self.client.get_url(self.client.get_bulk_endpoint("leads", "file", export_id))
+
+    def test_stream_export_returns_streaming_response_for_csv(self):
+        self.client.access_token = "token"
+        with requests_mock.Mocker(real_http=True) as mock:
+            mock.register_uri("GET", self._file_url(), content=b"id,name\n1,Alice\n",
+                              headers={"Content-Type": "text/csv;charset=UTF-8"})
+            resp = self.client.stream_export("leads", "exp-1")
+        self.assertEqual(b"id,name\n1,Alice\n", resp.content)
+
+    def test_stream_export_raises_on_json_error_envelope(self):
+        # A 200 with a JSON error body must not be passed back to be parsed as CSV.
+        self.client.access_token = "token"
+        with requests_mock.Mocker(real_http=True) as mock:
+            mock.register_uri(
+                "GET", self._file_url(),
+                json={"requestId": "x", "success": False,
+                      "errors": [{"code": "1035", "message": "no corona"}]},
+                headers={"Content-Type": "application/json"})
+            with self.assertRaises(ApiException):
+                self.client.stream_export("leads", "exp-1")
+
+    @unittest.mock.patch("time.sleep")
+    def test_stream_export_retries_short_term_quota_then_succeeds(self, _sleep):
+        # A 606 rate-limit envelope should back off and retry, then return the file.
+        self.client.access_token = "token"
+        with requests_mock.Mocker(real_http=True) as mock:
+            mock.register_uri("GET", self._file_url(), [
+                {"json": {"requestId": "x", "success": False,
+                          "errors": [{"code": "606", "message": "rate limited"}]},
+                 "headers": {"Content-Type": "application/json"}},
+                {"content": b"id,name\n1,Alice\n",
+                 "headers": {"Content-Type": "text/csv"}},
+            ])
+            resp = self.client.stream_export("leads", "exp-1")
+            self.assertEqual(b"id,name\n1,Alice\n", resp.content)
+            self.assertEqual(2, mock.call_count)
