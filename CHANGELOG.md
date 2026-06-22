@@ -1,5 +1,8 @@
 # Changelog
 
+# 2.9.2
+  * Detect JSON errors returned by the export file endpoint instead of parsing them as CSV data [#114](https://github.com/singer-io/tap-marketo/pull/114)
+
 # 2.9.1
   * Resume bulk export downloads via a byte-range request when the connection is dropped mid-stream [#113](https://github.com/singer-io/tap-marketo/pull/113)
 
