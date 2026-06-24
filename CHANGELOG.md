@@ -1,5 +1,30 @@
 # Changelog
 
+# 2.9.2
+  * Detect JSON errors returned by the export file endpoint instead of parsing them as CSV data [#114](https://github.com/singer-io/tap-marketo/pull/114)
+
+# 2.9.1
+  * Resume bulk export downloads via a byte-range request when the connection is dropped mid-stream [#113](https://github.com/singer-io/tap-marketo/pull/113)
+
+# 2.9.0
+  * Shrink bulk request window on ApiQuotaExceeded exception [#112](https://github.com/singer-io/tap-marketo/pull/112)
+
+# 2.8.0
+  * Stream HTTP data directly to generator rather than dowloading entire response to a tempfile
+  * Small improvements to memory usage
+  * [#109](https://github.com/singer-io/tap-marketo/pull/109)
+  * [#111](https://github.com/singer-io/tap-marketo/pull/111)
+
+# 2.7.2
+  * Do not sync programs when start_date >= now [#107](https://github.com/singer-io/tap-marketo/pull/107)
+
+# 2.7.1
+  * Bump requests to 2.33.0 for security updates [#106](https://github.com/singer-io/tap-marketo/pull/106)
+
+
+## 2.7.0
+  * Add `valid-replication-keys` and `forced-replication-method` fields to catalog metadata for better incremental replication control [#104](https://github.com/singer-io/tap-marketo/pull/104)
+
 ## 2.6.4
   * Bump dependency versions for twistlock compliance [#99](https://github.com/singer-io/tap-marketo/pull/99)
 

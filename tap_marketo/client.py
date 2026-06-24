@@ -280,7 +280,8 @@ class Client:
         endpoint_name = "{}_stream".format(stream_type)
         try:
             # Range described here: https://developers.marketo.com/rest-api/bulk-extract/#crayon-5e600bb5f1a53663868461
-            self.request("GET", endpoint, endpoint_name=endpoint_name, stream=True, headers={"Range": "bytes=0-0"})
+            resp = self.request("GET", endpoint, endpoint_name=endpoint_name, stream=True, headers={"Range": "bytes=0-0"})
+            resp.close()
             return True
         except requests.exceptions.HTTPError as ex:
             if ex.response.status_code == 404:
@@ -302,11 +303,28 @@ class Client:
         # http://developers.marketo.com/rest-api/bulk-extract/#polling_job_status
         return self.get_export_status(stream_type, export_id)["result"][0]["status"]
 
-    def stream_export(self, stream_type, export_id):
+    @handle_short_term_rate_limit()
+    def stream_export(self, stream_type, export_id, start_byte=0):
         # http://developers.marketo.com/rest-api/bulk-extract/#retrieving_your_data
         endpoint = self.get_bulk_endpoint(stream_type, "file", export_id)
         endpoint_name = "{}_stream".format(stream_type)
-        return self.request("GET", endpoint, endpoint_name=endpoint_name, stream=True)
+        kwargs = {}
+        if start_byte:
+            # Resume a partially-downloaded export from where a dropped connection left off.
+            kwargs["headers"] = {"Range": "bytes={}-".format(start_byte)}
+        resp = self.request("GET", endpoint, endpoint_name=endpoint_name, stream=True, **kwargs)
+
+        # The export file streams as CSV. Marketo may instead return a JSON error envelope with a
+        # 200 status, which would otherwise be fed to the CSV parser as if it were export data.
+        if "application/json" in resp.headers.get("Content-Type", "").lower():
+            data = resp.json()
+            raise_for_rate_limit(data)
+            err = ", ".join("{code}: {message}".format(**e) for e in data.get("errors", []))
+            raise ApiException(
+                "Marketo API returned an error instead of the export file: {}".format(
+                    err or resp.content))
+
+        return resp
 
     def wait_for_export(self, stream_type, export_id):
         # Poll the export status until it enters a finalized state or

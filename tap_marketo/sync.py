@@ -1,7 +1,8 @@
 import csv
+import io
 import json
 import pendulum
-import tempfile
+from requests.exceptions import ChunkedEncodingError, ConnectionError
 
 import singer
 from singer import metadata
@@ -86,14 +87,26 @@ def format_value(value, schema):
     return value
 
 
-def format_values(stream, row):
-    rtn = {}
+def get_available_fields(stream):
+    """Return the set of selected/automatic field names for a stream.
 
-    available_fields = []
+    Computing this once per stream (rather than per row) avoids rebuilding the
+    set on every row processed during a bulk export.
+    """
+    available_fields = set()
     for entry in stream['metadata']:
-        if len(entry['breadcrumb']) > 0 and (entry['metadata'].get('selected') or entry['metadata'].get('inclusion') == 'automatic'):
-            available_fields.append(entry['breadcrumb'][-1])
+        if len(entry['breadcrumb']) > 0 and (
+            entry['metadata'].get('selected') or
+            entry['metadata'].get('inclusion') == 'automatic'
+        ):
+            available_fields.add(entry['breadcrumb'][-1])
+    return available_fields
 
+
+def format_values(stream, row, available_fields=None):
+    if available_fields is None:
+        available_fields = get_available_fields(stream)
+    rtn = {}
     for field, schema in stream["schema"]["properties"].items():
         if field in available_fields:
             rtn[field] = format_value(row.get(field), schema)
@@ -118,6 +131,44 @@ def get_export_end(export_start, end_days=MAX_EXPORT_DAYS):
     return export_end.replace(microsecond=0)
 
 
+# Marketo's bulk extract API enforces a daily data-volume quota. A single
+# wide export window can produce a file too large to extract, which fails
+# with ApiQuotaExceeded (1029) and returns no data at all. When that happens
+# we halve the window and retry so we can still make forward progress, down
+# to a floor of MIN_EXPORT_DAYS. If even the smallest window exceeds quota we
+# re-raise so downstream processes see the failure.
+MIN_EXPORT_DAYS = 2
+
+
+def create_export_with_quota_backoff(create_fn, export_start, max_export_days):
+    """Create a bulk export for the window starting at ``export_start``.
+
+    ``create_fn`` is called with the chosen ``export_end`` and must return the
+    new export id. On ApiQuotaExceeded we halve the window (bounded below by
+    MIN_EXPORT_DAYS) and retry; if the minimum window still exceeds quota the
+    error is re-raised. Returns ``(export_id, export_end)``.
+    """
+    export_end = get_export_end(export_start, end_days=max_export_days)
+    while True:
+        try:
+            export_id = create_fn(export_end)
+            return export_id, export_end
+        except ApiQuotaExceeded as e:
+            # in_days() floors to whole days, matching how we size windows.
+            window_days = (export_end - export_start).in_days()
+            if window_days <= MIN_EXPORT_DAYS:
+                raise ApiQuotaExceeded(
+                    ("Unable to create an export for the window starting {} "
+                     "within your Marketo API quota, even after shrinking it "
+                     "to {} day(s).").format(export_start.isoformat(),
+                                             window_days)) from e
+            new_days = max(MIN_EXPORT_DAYS, window_days // 2)
+            singer.log_warning(
+                "Hit Marketo API quota creating export; retrying with a "
+                "smaller %s-day window (was %s days).", new_days, window_days)
+            export_end = get_export_end(export_start, end_days=new_days)
+
+
 def wait_for_export(client, state, stream, export_id):
     stream_type = "activities" if stream["tap_stream_id"] != "leads" else "leads"
     try:
@@ -132,25 +183,78 @@ MEGABYTE_IN_BYTES = 1024 * 1024
 CHUNK_SIZE_MB = 10
 CHUNK_SIZE_BYTES = MEGABYTE_IN_BYTES * CHUNK_SIZE_MB
 
-# This function has an issue with UTF-8 data most likely caused by decode_unicode=True
-# See https://github.com/singer-io/tap-marketo/pull/51/files
+class IterStream(io.RawIOBase):
+    """Adapts a byte-chunk iterator into a file-like object for io.BufferedReader/TextIOWrapper."""
+
+    def __init__(self, iterator):
+        self._iter = iterator
+        self._leftover = b''
+
+    def readable(self):
+        return True
+
+    def readinto(self, buf):
+        try:
+            chunk = self._leftover or next(self._iter)
+            out, self._leftover = chunk[:len(buf)], chunk[len(buf):]
+            buf[:len(out)] = out
+            return len(out)
+        except StopIteration:
+            return 0
+
+MAX_EMPTY_RESUMES = 5
+
+def resumable_iter_content(client, stream_type, export_id):
+    """Yield the export file's bytes, reconnecting on a dropped connection.
+
+    Marketo drops the bulk-export download connection when it is held open too
+    long -- e.g. while the tap is reading at the pace of a slower target. The
+    export file is static and supports byte ranges, so we recover by
+    re-requesting from the byte offset already yielded and continuing. Resuming
+    here, below the CSV parser, keeps the byte stream contiguous so callers
+    never see the seam.
+    """
+    start_byte = 0
+    empty_resumes = 0
+    while True:
+        resp = client.stream_export(stream_type, export_id, start_byte=start_byte)
+        bytes_this_connection = 0
+        try:
+            for chunk in resp.iter_content(chunk_size=CHUNK_SIZE_BYTES, decode_unicode=False):
+                bytes_this_connection += len(chunk)
+                start_byte += len(chunk)
+                yield chunk
+            return
+        except (ChunkedEncodingError, ConnectionError) as ex:
+            if bytes_this_connection:
+                empty_resumes = 0
+            else:
+                empty_resumes += 1
+                if empty_resumes > MAX_EMPTY_RESUMES:
+                    raise ex
+            singer.log_warning(
+                "Export download connection dropped after %s bytes; resuming "
+                "from byte %s: %s.", bytes_this_connection, start_byte, ex)
+        finally:
+            resp.close()
+
+
 def stream_rows(client, stream_type, export_id):
-    with tempfile.NamedTemporaryFile(mode="w+", encoding="utf8") as csv_file:
-        singer.log_info("Download starting.")
-        resp = client.stream_export(stream_type, export_id)
-        for chunk in resp.iter_content(chunk_size=CHUNK_SIZE_BYTES, decode_unicode=True):
-            if chunk:
-                # Replace CR
-                chunk = chunk.replace('\r', '')
-                csv_file.write(chunk)
+    singer.log_info("Download starting.")
+    chunks = resumable_iter_content(client, stream_type, export_id)
+    text_stream = io.TextIOWrapper(io.BufferedReader(IterStream(chunks)), encoding='utf-8')
+    try:
+        reader = csv.reader(
+            (line.replace('\r', '').replace('\0', '') for line in text_stream),
+            delimiter=',', quotechar='"'
+        )
 
-        singer.log_info("Download completed. Begin streaming rows.")
-        csv_file.seek(0)
-
-        reader = csv.reader((line.replace('\0', '') for line in csv_file), delimiter=',', quotechar='"')
         headers = next(reader)
         for line in reader:
             yield dict(zip(headers, line))
+    finally:
+        text_stream.close()
+        chunks.close()
 
 
 def get_or_create_export_for_leads(client, state, stream, export_start, config):
@@ -166,19 +270,20 @@ def get_or_create_export_for_leads(client, state, stream, export_start, config):
         query_field = "updatedAt" if client.use_corona else "createdAt"
         max_export_days = int(config.get('max_export_days',
                                          MAX_EXPORT_DAYS))
-        export_end = get_export_end(export_start,
-                                    end_days=max_export_days)
-        query = {query_field: {"startAt": export_start.isoformat(),
-                               "endAt": export_end.isoformat()}}
+        fields = list(get_available_fields(stream))
+
+        def create(export_end):
+            query = {query_field: {"startAt": export_start.isoformat(),
+                                   "endAt": export_end.isoformat()}}
+            return client.create_export("leads", fields, query)
 
         # Create the new export and store the id and end date in state.
         # Does not start the export (must POST to the "enqueue" endpoint).
-        fields = []
-        for entry in stream['metadata']:
-            if len(entry['breadcrumb']) > 0 and (entry['metadata'].get('selected') or entry['metadata'].get('inclusion') == 'automatic'):
-                fields.append(entry['breadcrumb'][-1])
-
-        export_id = client.create_export("leads", fields, query)
+        export_id, export_end = create_export_with_quota_backoff(
+            create,
+            export_start,
+            max_export_days
+        )
         state = update_state_with_export_info(
             state, stream, export_id=export_id, export_end=export_end.isoformat())
     else:
@@ -206,26 +311,19 @@ def get_or_create_export_for_activities(client, state, stream, export_start, con
         # largest date range that can be used for activities is 30 days.
         max_export_days = int(config.get('max_export_days',
                                          MAX_EXPORT_DAYS))
-        export_end = get_export_end(export_start,
-                                    end_days=max_export_days)
-        query = {"createdAt": {"startAt": export_start.isoformat(),
-                               "endAt": export_end.isoformat()},
-                 "activityTypeIds": [activity_type_id]}
+
+        def create(export_end):
+            query = {"createdAt": {"startAt": export_start.isoformat(),
+                                   "endAt": export_end.isoformat()},
+                     "activityTypeIds": [activity_type_id]}
+            return client.create_export("activities", ACTIVITY_FIELDS, query)
 
         # Create the new export and store the id and end date in state.
         # Does not start the export (must POST to the "enqueue" endpoint).
-        try:
-            export_id = client.create_export("activities", ACTIVITY_FIELDS, query)
-        except ApiQuotaExceeded as e:
-            # The main reason we wrap the ApiQuotaExceeded exception in a
-            # new one is to be able to tell the customer what their
-            # configured max_export_days is.
-            raise ApiQuotaExceeded(
-                ("You may wish to consider changing the "
-                 "`max_export_days` config value to a lower number if "
-                 "you're unable to sync a single {} day window within "
-                 "your current API quota.").format(
-                     max_export_days)) from e
+        # The window is automatically shrunk and retried if a single window
+        # is too large to extract within the daily API quota.
+        export_id, export_end = create_export_with_quota_backoff(
+            create, export_start, max_export_days)
         state = update_state_with_export_info(
             state, stream, export_id=export_id, export_end=export_end.isoformat())
     else:
@@ -234,15 +332,11 @@ def get_or_create_export_for_activities(client, state, stream, export_start, con
     return export_id, export_end
 
 
-def flatten_activity(row, stream):
+def flatten_activity(row, pan_field):
     # Start with the base fields
     rtn = {field: row[field] for field in BASE_ACTIVITY_FIELDS}
 
-    # Add the primary attribute name
-    # This name is the human readable name/description of the
-    # pimaryAttribute
-    mdata = metadata.to_map(stream['metadata'])
-    pan_field = metadata.get(mdata, (), 'marketo.primary-attribute-name')
+    # pan_field is the pre-computed primary attribute field name for this stream.
     if pan_field:
         rtn['primary_attribute_name'] = pan_field
         rtn['primary_attribute_value'] = row['primaryAttributeValue']
@@ -271,13 +365,14 @@ def sync_leads(client, state, stream, config):
     job_started = pendulum.utcnow()
     record_count = 0
     max_bookmark = initial_bookmark
+    available_fields = get_available_fields(stream)
     while export_start < job_started:
         export_id, export_end = get_or_create_export_for_leads(client, state, stream, export_start, config)
         state = wait_for_export(client, state, stream, export_id)
         for row in stream_rows(client, "leads", export_id):
             time_extracted = utils.now()
 
-            record = format_values(stream, row)
+            record = format_values(stream, row, available_fields)
             record_bookmark = pendulum.parse(record[replication_key])
 
             if client.use_corona:
@@ -305,14 +400,19 @@ def sync_activities(client, state, stream, config):
     export_start = pendulum.parse(bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key))
     job_started = pendulum.utcnow()
     record_count = 0
+
+    activity_metadata = metadata.to_map(stream["metadata"])
+    pan_field = metadata.get(activity_metadata, (), 'marketo.primary-attribute-name')
+    available_fields = get_available_fields(stream)
+
     while export_start < job_started:
         export_id, export_end = get_or_create_export_for_activities(client, state, stream, export_start, config)
         state = wait_for_export(client, state, stream, export_id)
         for row in stream_rows(client, "activities", export_id):
             time_extracted = utils.now()
 
-            row = flatten_activity(row, stream)
-            record = format_values(stream, row)
+            row = flatten_activity(row, pan_field)
+            record = format_values(stream, row, available_fields)
 
             singer.write_record(stream["tap_stream_id"], record, time_extracted=time_extracted)
             record_count += 1
@@ -337,7 +437,12 @@ def sync_programs(client, state, stream):
 
     singer.write_schema("programs", stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
     start_date = bookmarks.get_bookmark(state, "programs", replication_key)
-    end_date = pendulum.utcnow().isoformat()
+    end_dt = pendulum.utcnow()
+    end_date = end_dt.isoformat()
+
+    if pendulum.parse(start_date) >= end_dt:
+        return state, 0
+
     params = {
         "maxReturn": 200,
         "offset": 0,
@@ -347,6 +452,7 @@ def sync_programs(client, state, stream):
     endpoint = "rest/asset/v1/programs.json"
 
     record_count = 0
+    available_fields = get_available_fields(stream)
     while True:
         data = client.request("GET", endpoint, endpoint_name="programs", params=params)
 
@@ -360,7 +466,7 @@ def sync_programs(client, state, stream):
         # Each row just needs the values formatted. If the record is
         # newer than the original start date, stream the record.
         for row in data["result"]:
-            record = format_values(stream, row)
+            record = format_values(stream, row, available_fields)
             if record[replication_key] >= start_date:
                 record_count += 1
 
@@ -400,6 +506,7 @@ def sync_paginated(client, state, stream):
     # Keep querying pages of data until no next page token.
     record_count = 0
     job_started = pendulum.utcnow().isoformat()
+    available_fields = get_available_fields(stream)
     while True:
         data = client.request("GET", endpoint, endpoint_name=stream["tap_stream_id"], params=params)
 
@@ -409,7 +516,7 @@ def sync_paginated(client, state, stream):
         # newer than the original start date, stream the record. Finally,
         # update the bookmark if newer than the existing bookmark.
         for row in data["result"]:
-            record = format_values(stream, row)
+            record = format_values(stream, row, available_fields)
             if record[replication_key] >= start_date:
                 record_count += 1
 
@@ -442,11 +549,12 @@ def sync_activity_types(client, state, stream):
     endpoint = "rest/v1/activities/types.json"
     data = client.request("GET", endpoint, endpoint_name="activity_types")
     record_count = 0
+    available_fields = get_available_fields(stream)
 
     time_extracted = utils.now()
 
     for row in data["result"]:
-        record = format_values(stream, row)
+        record = format_values(stream, row, available_fields)
         record_count += 1
 
         singer.write_record("activity_types", record, time_extracted=time_extracted)

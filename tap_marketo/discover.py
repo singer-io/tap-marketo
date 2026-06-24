@@ -4,6 +4,8 @@ import sys
 
 import singer
 from singer import metadata
+from tap_marketo.sync import determine_replication_key
+
 
 STRING_TYPES = [
     'string',
@@ -54,6 +56,14 @@ def get_schema_for_type(typ, breadcrumb, mdata, null=False):
         mdata = metadata.write(mdata, breadcrumb, 'inclusion', 'automatic')
 
     return rtn, mdata
+
+
+def set_replication_metadata(mdata, valid_replication_keys):
+    mdata = metadata.write(mdata, (), 'forced-replication-method', 'FULL_TABLE')
+    if valid_replication_keys:
+        mdata = metadata.write(mdata, (), 'forced-replication-method', 'INCREMENTAL')
+        mdata = metadata.write(mdata, (), 'valid-replication-keys', valid_replication_keys)
+    return mdata
 
 
 def get_activity_type_stream(activity):
@@ -119,6 +129,10 @@ def get_activity_type_stream(activity):
 
     # The activities steams use "marketoGUID" as the key_properties
     mdata = metadata.write(mdata, (), 'table-key-properties', ['marketoGUID'])
+    mdata = set_replication_metadata(
+        mdata,
+        valid_replication_keys=determine_replication_key('activities')
+    )
 
     return {
         "tap_stream_id": tap_stream_id,
@@ -167,6 +181,10 @@ def discover_leads(client):
 
     # The leads steam uses "id" as the key_properties
     mdata = metadata.write(mdata, (), 'table-key-properties', ['id'])
+    mdata = set_replication_metadata(
+        mdata,
+        valid_replication_keys=determine_replication_key('leads')
+    )
 
     return {
         "tap_stream_id": "leads",
@@ -200,6 +218,10 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
 
         # The steams using discover_catalog all use "id" as the key_properties
         mdata = metadata.write(mdata, (), 'table-key-properties', ['id'])
+        mdata = set_replication_metadata(
+            mdata,
+            determine_replication_key(discovered_schema['tap_stream_id'])
+        )
 
         discovered_schema["metadata"] = metadata.to_list(mdata)
         return discovered_schema

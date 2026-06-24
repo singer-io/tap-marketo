@@ -4,9 +4,10 @@ import urllib.parse
 
 import freezegun
 import pendulum
+from requests.exceptions import ChunkedEncodingError, ConnectionError
 import requests_mock
 
-from tap_marketo.client import Client, ApiException
+from tap_marketo.client import Client, ApiException, ApiQuotaExceeded
 from tap_marketo.discover import (discover_catalog,
                                   ACTIVITY_TYPES_AUTOMATIC_INCLUSION,
                                   ACTIVITY_TYPES_UNSUPPORTED,
@@ -20,11 +21,65 @@ def parse_params(request):
 
 class MockResponse:
     def __init__(self, data):
-        self.data = data
-    def iter_content(self, decode_unicode=True, chunk_size=512):
+        self.data = data if isinstance(data, bytes) else data.encode('utf-8')
+        self.closed = False
+    def iter_content(self, decode_unicode=False, chunk_size=512):
         yield self.data
-    def iter_lines(self, decode_unicode=True, chunk_size=512):
+    def iter_lines(self, decode_unicode=False, chunk_size=512):
         yield self.data
+    def close(self):
+        self.closed = True
+
+
+class TestSyncPrograms(unittest.TestCase):
+    def setUp(self):
+        self.client = Client("123-ABC-456", "id", "secret")
+        self.client.token_expires = pendulum.utcnow().add(days=1)
+        self.client.calls_today = 1
+        self.stream = discover_catalog("programs", PROGRAMS_AUTOMATIC_INCLUSION)
+
+    @unittest.mock.patch("singer.write_schema")
+    @unittest.mock.patch("singer.write_state")
+    def test_future_bookmark_returns_early_without_request(self, write_state, write_schema):
+        # Bookmark is in the future — should return immediately with 0 records
+        # and not call the Marketo API to avoid the 701 "End date should always
+        # be after start date" error.
+        future_date = pendulum.utcnow().add(days=1).isoformat()
+        state = {"bookmarks": {"programs": {"updatedAt": future_date}}}
+
+        with unittest.mock.patch.object(self.client, "request") as mock_request:
+            returned_state, record_count = sync_programs(self.client, state, self.stream)
+
+        mock_request.assert_not_called()
+        self.assertEqual(0, record_count)
+        self.assertEqual(state, returned_state)
+
+    @unittest.mock.patch("singer.write_record")
+    @unittest.mock.patch("singer.write_schema")
+    @unittest.mock.patch("singer.write_state")
+    @freezegun.freeze_time("2017-01-15")
+    def test_past_bookmark_syncs_records(self, write_state, write_schema, write_record):
+        # Bookmark is in the past — should request from Marketo and return records.
+        state = {"bookmarks": {"programs": {"updatedAt": "2017-01-01T00:00:00+00:00"}}}
+
+        program_row = {
+            "id": 1,
+            "name": "Test Program",
+            "updatedAt": "2017-01-10T00:00:00+00:00",
+            "createdAt": "2017-01-01T00:00:00+00:00",
+        }
+        page1 = {"success": True, "result": [program_row]}
+        page2 = {"success": True, "warnings": [NO_ASSET_MSG], "result": []}
+
+        with unittest.mock.patch.object(self.client, "request", side_effect=[page1, page2]):
+            returned_state, record_count = sync_programs(self.client, state, self.stream)
+
+        self.assertEqual(1, record_count)
+        write_record.assert_called_once()
+        self.assertEqual(
+            "2017-01-15T00:00:00+00:00",
+            returned_state["bookmarks"]["programs"]["updatedAt"],
+        )
 
 # class TestSyncActivityTypes(unittest.TestCase):
 #     def setUp(self):
@@ -473,3 +528,243 @@ class MockResponse:
 #                                 "activityTypeId": 1, "primary_attribute_value_id": None, "primary_attribute_name": "webpage_id", "primary_attribute_value": '1', "client_ip_address": "0.0.0.0"}),
 #         ]
 #         write_record.assert_has_calls(expected_calls)
+
+
+class TestIterStream(unittest.TestCase):
+    def test_reads_single_chunk(self):
+        chunks = iter([b'hello,world\n'])
+        stream = IterStream(chunks)
+        result = stream.read()
+        self.assertEqual(b'hello,world\n', result)
+
+    def test_reads_across_multiple_chunks(self):
+        chunks = iter([b'hel', b'lo,', b'wor', b'ld\n'])
+        stream = IterStream(chunks)
+        result = stream.read()
+        self.assertEqual(b'hello,world\n', result)
+
+    def test_leftover_bytes_carried_forward(self):
+        # readinto buf is smaller than the chunk — leftover must be preserved
+        chunks = iter([b'abcdef'])
+        stream = IterStream(chunks)
+        buf = bytearray(4)
+        n = stream.readinto(buf)
+        self.assertEqual(4, n)
+        self.assertEqual(b'abcd', bytes(buf))
+        buf2 = bytearray(4)
+        n2 = stream.readinto(buf2)
+        self.assertEqual(2, n2)
+        self.assertEqual(b'ef', bytes(buf2[:n2]))
+
+    def test_returns_zero_on_exhausted_iterator(self):
+        chunks = iter([])
+        stream = IterStream(chunks)
+        buf = bytearray(4)
+        self.assertEqual(0, stream.readinto(buf))
+
+
+class TestStreamRows(unittest.TestCase):
+    def _make_mock_client(self, chunks):
+        """Return a mock client whose stream_export yields the given byte chunks."""
+        class MultiChunkResponse:
+            def __init__(self, byte_chunks):
+                self._chunks = byte_chunks
+                self.closed = False
+            def iter_content(self, decode_unicode=False, chunk_size=512):
+                yield from self._chunks
+            def close(self):
+                self.closed = True
+
+        client = unittest.mock.MagicMock()
+        resp = MultiChunkResponse(chunks)
+        client.stream_export.return_value = resp
+        return client, resp
+
+    def test_basic_csv_parsing(self):
+        data = b'id,name\n1,Alice\n2,Bob\n'
+        client, _ = self._make_mock_client([data])
+        rows = list(stream_rows(client, 'leads', 'export-1'))
+        self.assertEqual([{'id': '1', 'name': 'Alice'}, {'id': '2', 'name': 'Bob'}], rows)
+
+    def test_cr_stripped(self):
+        data = b'id,name\r\n1,Alice\r\n'
+        client, _ = self._make_mock_client([data])
+        rows = list(stream_rows(client, 'leads', 'export-1'))
+        self.assertEqual([{'id': '1', 'name': 'Alice'}], rows)
+
+    def test_null_bytes_stripped(self):
+        data = b'id,name\n1,Ali\x00ce\n'
+        client, _ = self._make_mock_client([data])
+        rows = list(stream_rows(client, 'leads', 'export-1'))
+        self.assertEqual([{'id': '1', 'name': 'Alice'}], rows)
+
+    def test_response_closed_after_iteration(self):
+        data = b'id\n1\n'
+        client, resp = self._make_mock_client([data])
+        list(stream_rows(client, 'leads', 'export-1'))
+        self.assertTrue(resp.closed)
+
+    def test_response_closed_on_exception(self):
+        # Even if iteration raises, resp.close() must still be called.
+        # An empty chunk produces no headers; next(reader) raises StopIteration,
+        # which Python 3.7+ (PEP 479) converts to RuntimeError inside a generator.
+        client, resp = self._make_mock_client([b''])
+        try:
+            list(stream_rows(client, 'leads', 'export-1'))
+        except (StopIteration, RuntimeError):
+            pass
+        self.assertTrue(resp.closed)
+
+    def test_multibyte_utf8_split_across_chunks(self):
+        # 'café' encoded as UTF-8: b'caf\xc3\xa9' (\xc3\xa9 is a 2-byte sequence).
+        # Split the chunk boundary between the two bytes of the multi-byte character.
+        row = 'id,name\n1,café\n'.encode('utf-8')
+        split = row.index(b'\xc3') + 1  # after \xc3, before \xa9
+        chunk1, chunk2 = row[:split], row[split:]
+        client, _ = self._make_mock_client([chunk1, chunk2])
+        rows = list(stream_rows(client, 'leads', 'export-1'))
+        self.assertEqual([{'id': '1', 'name': 'café'}], rows)
+
+
+class TestResumableDownload(unittest.TestCase):
+    class ByteResponse:
+        """Yields its data one byte at a time, optionally dropping the
+        connection once a given number of bytes have been emitted."""
+        def __init__(self, data, fail_after=None):
+            self.data = data
+            self.fail_after = fail_after
+            self.closed = False
+
+        def iter_content(self, decode_unicode=False, chunk_size=512):
+            for i, b in enumerate(self.data):
+                if self.fail_after is not None and i >= self.fail_after:
+                    raise ChunkedEncodingError("connection dropped")
+                yield bytes([b])
+
+        def close(self):
+            self.closed = True
+
+    def _client(self, responses):
+        client = unittest.mock.MagicMock()
+        client.stream_export.side_effect = responses
+        return client
+
+    def test_resumes_from_byte_offset_after_drop(self):
+        full = b'id,name\n1,Alice\n2,Bob\n'
+        split = full.index(b'2,Bob')  # drop right at the start of the 2nd data row
+        client = self._client([
+            self.ByteResponse(full, fail_after=split),  # delivers header + row 1, then drops
+            self.ByteResponse(full[split:]),            # resumes with the remainder
+        ])
+
+        rows = list(stream_rows(client, 'leads', 'export-1'))
+
+        self.assertEqual([{'id': '1', 'name': 'Alice'}, {'id': '2', 'name': 'Bob'}], rows)
+        # The resume request must ask for exactly the bytes already consumed.
+        self.assertEqual(split, client.stream_export.call_args_list[1].kwargs['start_byte'])
+        self.assertEqual(2, client.stream_export.call_count)
+
+    def test_resumes_multiple_times(self):
+        full = b'id,n\n1,a\n2,b\n3,c\n'
+        client = self._client([
+            self.ByteResponse(full, fail_after=8),
+            self.ByteResponse(full[8:], fail_after=4),
+            self.ByteResponse(full[12:]),
+        ])
+
+        rows = list(stream_rows(client, 'leads', 'export-1'))
+
+        self.assertEqual(
+            [{'id': '1', 'n': 'a'}, {'id': '2', 'n': 'b'}, {'id': '3', 'n': 'c'}], rows)
+        self.assertEqual([0, 8, 12],
+                         [c.kwargs['start_byte'] for c in client.stream_export.call_args_list])
+
+    def test_all_responses_closed(self):
+        full = b'id\n1\n2\n'
+        responses = [self.ByteResponse(full, fail_after=4), self.ByteResponse(full[4:])]
+        client = self._client(responses)
+        list(stream_rows(client, 'leads', 'export-1'))
+        self.assertTrue(all(r.closed for r in responses))
+
+    def test_gives_up_after_repeated_zero_progress_resumes(self):
+        # A connection that drops before yielding any bytes can't make progress;
+        # after MAX_EMPTY_RESUMES retries we surface the error instead of looping.
+        responses = [self.ByteResponse(b'id\n1\n', fail_after=0)
+                     for _ in range(MAX_EMPTY_RESUMES + 5)]
+        client = self._client(responses)
+        with self.assertRaises(ChunkedEncodingError):
+            list(stream_rows(client, 'leads', 'export-1'))
+        self.assertEqual(MAX_EMPTY_RESUMES + 1, client.stream_export.call_count)
+
+
+@freezegun.freeze_time("2017-02-15")
+class TestCreateExportWithQuotaBackoff(unittest.TestCase):
+    # export_start is well in the past so the full window isn't capped at "now".
+    export_start = pendulum.parse("2017-01-01T00:00:00+00:00")
+
+    def _days(self, export_end):
+        return (export_end - self.export_start).in_days()
+
+    def test_succeeds_on_first_try_uses_full_window(self):
+        calls = []
+
+        def create(export_end):
+            calls.append(self._days(export_end))
+            return "export-123"
+
+        export_id, export_end = create_export_with_quota_backoff(
+            create, self.export_start, 30)
+
+        self.assertEqual("export-123", export_id)
+        self.assertEqual([30], calls)
+        self.assertEqual(30, self._days(export_end))
+
+    @unittest.mock.patch("singer.log_warning")
+    def test_halves_window_until_it_fits(self, _log_warning):
+        calls = []
+
+        def create(export_end):
+            days = self._days(export_end)
+            calls.append(days)
+            if days > 7:
+                raise ApiQuotaExceeded("window too large")
+            return "export-123"
+
+        export_id, export_end = create_export_with_quota_backoff(
+            create, self.export_start, 30)
+
+        # 30 -> 15 -> 7, halving until the window is small enough to extract.
+        self.assertEqual("export-123", export_id)
+        self.assertEqual([30, 15, 7], calls)
+        self.assertEqual(7, self._days(export_end))
+
+    @unittest.mock.patch("singer.log_warning")
+    def test_reraises_when_minimum_window_still_exceeds_quota(self, _log_warning):
+        calls = []
+
+        def create(export_end):
+            calls.append(self._days(export_end))
+            raise ApiQuotaExceeded("window too large")
+
+        with self.assertRaises(ApiQuotaExceeded):
+            create_export_with_quota_backoff(create, self.export_start, 30)
+
+        # Shrinks down to the MIN_EXPORT_DAYS floor before giving up.
+        self.assertEqual([30, 15, 7, 3, 2], calls)
+        self.assertEqual(MIN_EXPORT_DAYS, calls[-1])
+
+    @unittest.mock.patch("singer.log_warning")
+    def test_does_not_shrink_below_minimum_for_small_window(self, _log_warning):
+        # A naturally small window (capped near "now") that still fails should
+        # raise immediately rather than retry below the floor.
+        small_start = pendulum.parse("2017-02-14T00:00:00+00:00")  # ~1 day before now
+        calls = []
+
+        def create(export_end):
+            calls.append((export_end - small_start).in_days())
+            raise ApiQuotaExceeded("window too large")
+
+        with self.assertRaises(ApiQuotaExceeded):
+            create_export_with_quota_backoff(create, small_start, 30)
+
+        self.assertEqual(1, len(calls))
