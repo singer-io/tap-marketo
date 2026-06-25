@@ -3,6 +3,7 @@ import io
 import json
 import pendulum
 from requests.exceptions import ChunkedEncodingError, ConnectionError
+from urllib3.exceptions import ProtocolError
 
 import singer
 from singer import metadata
@@ -197,6 +198,9 @@ class IterStream(io.RawIOBase):
             return len(out)
         except StopIteration:
             return 0
+        except (ChunkedEncodingError, ConnectionError, BrokenPipeError, ProtocolError) as ex:
+            # Re-raise connection errors so they can be handled by resumable_iter_content
+            raise ex
 
 MAX_EMPTY_RESUMES = 5
 
@@ -221,7 +225,7 @@ def resumable_iter_content(client, stream_type, export_id):
                 start_byte += len(chunk)
                 yield chunk
             return
-        except (ChunkedEncodingError, ConnectionError) as ex:
+        except (ChunkedEncodingError, ConnectionError, BrokenPipeError, ProtocolError) as ex:
             if bytes_this_connection:
                 empty_resumes = 0
             else:
