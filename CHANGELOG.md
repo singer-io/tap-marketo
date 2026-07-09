@@ -1,5 +1,8 @@
 # Changelog
 
+# 2.9.3
+  * Preserve API quota error when shrinking window to minimum value [#116](https://github.com/singer-io/tap-marketo/pull/116)
+
 # 2.9.2
   * Detect JSON errors returned by the export file endpoint instead of parsing them as CSV data [#114](https://github.com/singer-io/tap-marketo/pull/114)
 
