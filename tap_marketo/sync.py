@@ -157,11 +157,7 @@ def create_export_with_quota_backoff(create_fn, export_start, max_export_days):
             # in_days() floors to whole days, matching how we size windows.
             window_days = (export_end - export_start).in_days()
             if window_days <= MIN_EXPORT_DAYS:
-                raise ApiQuotaExceeded(
-                    ("Unable to create an export for the window starting {} "
-                     "within your Marketo API quota, even after shrinking it "
-                     "to {} day(s).").format(export_start.isoformat(),
-                                             window_days)) from e
+                raise e
             new_days = max(MIN_EXPORT_DAYS, window_days // 2)
             singer.log_warning(
                 "Hit Marketo API quota creating export; retrying with a "
