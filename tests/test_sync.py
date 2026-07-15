@@ -6,6 +6,7 @@ import freezegun
 import pendulum
 from requests.exceptions import ChunkedEncodingError, ConnectionError
 import requests_mock
+from urllib3.exceptions import ProtocolError
 
 from tap_marketo.client import Client, ApiException, ApiQuotaExceeded
 from tap_marketo.discover import (discover_catalog,
@@ -630,15 +631,16 @@ class TestResumableDownload(unittest.TestCase):
     class ByteResponse:
         """Yields its data one byte at a time, optionally dropping the
         connection once a given number of bytes have been emitted."""
-        def __init__(self, data, fail_after=None):
+        def __init__(self, data, fail_after=None, exc_class=ChunkedEncodingError):
             self.data = data
             self.fail_after = fail_after
+            self.exc_class = exc_class
             self.closed = False
 
         def iter_content(self, decode_unicode=False, chunk_size=512):
             for i, b in enumerate(self.data):
                 if self.fail_after is not None and i >= self.fail_after:
-                    raise ChunkedEncodingError("connection dropped")
+                    raise self.exc_class("connection dropped")
                 yield bytes([b])
 
         def close(self):
@@ -693,6 +695,50 @@ class TestResumableDownload(unittest.TestCase):
                      for _ in range(MAX_EMPTY_RESUMES + 5)]
         client = self._client(responses)
         with self.assertRaises(ChunkedEncodingError):
+            list(stream_rows(client, 'leads', 'export-1'))
+        self.assertEqual(MAX_EMPTY_RESUMES + 1, client.stream_export.call_count)
+
+    def test_resumes_on_broken_pipe_error(self):
+        full = b'id,name\n1,Alice\n2,Bob\n'
+        split = full.index(b'2,Bob')
+        client = self._client([
+            self.ByteResponse(full, fail_after=split, exc_class=BrokenPipeError),
+            self.ByteResponse(full[split:]),
+        ])
+
+        rows = list(stream_rows(client, 'leads', 'export-1'))
+
+        self.assertEqual([{'id': '1', 'name': 'Alice'}, {'id': '2', 'name': 'Bob'}], rows)
+        self.assertEqual(split, client.stream_export.call_args_list[1].kwargs['start_byte'])
+        self.assertEqual(2, client.stream_export.call_count)
+
+    def test_gives_up_after_repeated_zero_progress_broken_pipe(self):
+        responses = [self.ByteResponse(b'id\n1\n', fail_after=0, exc_class=BrokenPipeError)
+                     for _ in range(MAX_EMPTY_RESUMES + 5)]
+        client = self._client(responses)
+        with self.assertRaises(BrokenPipeError):
+            list(stream_rows(client, 'leads', 'export-1'))
+        self.assertEqual(MAX_EMPTY_RESUMES + 1, client.stream_export.call_count)
+
+    def test_resumes_on_protocol_error(self):
+        full = b'id,name\n1,Alice\n2,Bob\n'
+        split = full.index(b'2,Bob')
+        client = self._client([
+            self.ByteResponse(full, fail_after=split, exc_class=ProtocolError),
+            self.ByteResponse(full[split:]),
+        ])
+
+        rows = list(stream_rows(client, 'leads', 'export-1'))
+
+        self.assertEqual([{'id': '1', 'name': 'Alice'}, {'id': '2', 'name': 'Bob'}], rows)
+        self.assertEqual(split, client.stream_export.call_args_list[1].kwargs['start_byte'])
+        self.assertEqual(2, client.stream_export.call_count)
+
+    def test_gives_up_after_repeated_zero_progress_protocol_error(self):
+        responses = [self.ByteResponse(b'id\n1\n', fail_after=0, exc_class=ProtocolError)
+                     for _ in range(MAX_EMPTY_RESUMES + 5)]
+        client = self._client(responses)
+        with self.assertRaises(ProtocolError):
             list(stream_rows(client, 'leads', 'export-1'))
         self.assertEqual(MAX_EMPTY_RESUMES + 1, client.stream_export.call_count)
 

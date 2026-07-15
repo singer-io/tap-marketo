@@ -1,5 +1,8 @@
 # Changelog
 
+# 2.9.4
+  * Added retry for brokenpipe [#117](https://github.com/singer-io/tap-marketo/pull/116)
+
 # 2.9.3
   * Preserve API quota error when shrinking window to minimum value [#116](https://github.com/singer-io/tap-marketo/pull/116)
 
