@@ -198,9 +198,9 @@ class IterStream(io.RawIOBase):
             return len(out)
         except StopIteration:
             return 0
-        except (ChunkedEncodingError, ConnectionError, BrokenPipeError, ProtocolError) as ex:
-            # Re-raise connection errors so they can be handled by resumable_iter_content
-            raise ex
+        except (ChunkedEncodingError, ConnectionError, BrokenPipeError, ProtocolError):
+            # Preserve original traceback for upstream handling.
+            raise
 
 MAX_EMPTY_RESUMES = 5
 
