@@ -303,8 +303,7 @@ def check_stream_access(client, stream_name) -> bool:
 
 def _apply_access_checks(client, streams: list) -> list:
     """Remove streams the credentials cannot access.
-    Probes each stream and removes inaccessible ones from the list in place,
-    returning the filtered list.
+    Probes each stream and returns a filtered list containing only accessible streams.
     Raises MarketoForbiddenError if no streams remain after filtering.
     """
     accessible = []
