@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 from tap_marketo.client import ApiException, MarketoForbiddenError
 from tap_marketo.discover import (
