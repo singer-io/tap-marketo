@@ -276,12 +276,16 @@ STREAM_PROBE_ENDPOINTS = {
 }
 
 
+def _get_probe_key(stream_name):
+    return "activity_types" if stream_name.startswith("activities_") else stream_name
+
+
 def check_stream_access(client, stream_name) -> bool:
     """Probe stream_name's endpoint and return whether the credentials have read access.
     Returns False if a MarketoForbiddenError (HTTP 403) is raised; True otherwise.
     Activity sub-streams (activities_*) delegate to the shared 'activity_types' probe.
     """
-    probe_key = "activity_types" if stream_name.startswith("activities_") else stream_name
+    probe_key = _get_probe_key(stream_name)
     probe = STREAM_PROBE_ENDPOINTS.get(probe_key)
     if probe is None:
         # Unknown stream — assume accessible rather than blocking discovery.
@@ -308,7 +312,7 @@ def _apply_access_checks(client, streams: list) -> list:
     accessible = []
     inaccessible = []
 
-    # Cache per stream name so parent and children can be handled independently.
+    # Cache by delegated probe key/endpoints to avoid redundant API calls.
     probed = {}
 
     inaccessible_set = set()
@@ -322,10 +326,11 @@ def _apply_access_checks(client, streams: list) -> list:
             inaccessible.append(stream_name)
             continue
 
-        if stream_name not in probed:
-            probed[stream_name] = check_stream_access(client, stream_name)
+        probe_key = _get_probe_key(stream_name)
+        if probe_key not in probed:
+            probed[probe_key] = check_stream_access(client, stream_name)
 
-        if probed[stream_name]:
+        if probed[probe_key]:
             accessible.append(stream)
         else:
             inaccessible_set.add(stream_name)
