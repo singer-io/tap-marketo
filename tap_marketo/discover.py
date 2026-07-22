@@ -41,6 +41,8 @@ def build_stream_entry(
         mdata,
         parent_stream=None):
     replication_method, replication_key = _stream_replication_metadata(tap_stream_id)
+    if parent_stream:
+        mdata = metadata.write(mdata, (), "parent-tap-stream-id", parent_stream)
     return {
         "tap_stream_id": tap_stream_id,
         "stream": tap_stream_id,
@@ -87,6 +89,8 @@ def get_schema_for_type(typ, breadcrumb, mdata, null=False):
 def set_replication_metadata(mdata, valid_replication_keys):
     mdata = metadata.write(mdata, (), 'forced-replication-method', 'FULL_TABLE')
     if valid_replication_keys:
+        if not isinstance(valid_replication_keys, list):
+            valid_replication_keys = [valid_replication_keys]
         mdata = metadata.write(mdata, (), 'forced-replication-method', 'INCREMENTAL')
         mdata = metadata.write(mdata, (), 'valid-replication-keys', valid_replication_keys)
     return mdata
