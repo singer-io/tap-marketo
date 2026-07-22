@@ -310,7 +310,7 @@ def _apply_access_checks(client, streams: list) -> list:
     accessible = []
     inaccessible = []
 
-    # Deduplicate probes: activity sub-streams share the activity_types endpoint.
+    # Cache per stream name so parent and children can be handled independently.
     probed = {}
 
     inaccessible_set = set()
@@ -324,12 +324,10 @@ def _apply_access_checks(client, streams: list) -> list:
             inaccessible.append(stream_name)
             continue
 
-        probe_key = "activity_types" if stream_name.startswith("activities_") else stream_name
+        if stream_name not in probed:
+            probed[stream_name] = check_stream_access(client, stream_name)
 
-        if probe_key not in probed:
-            probed[probe_key] = check_stream_access(client, probe_key)
-
-        if probed[probe_key]:
+        if probed[stream_name]:
             accessible.append(stream)
         else:
             inaccessible_set.add(stream_name)

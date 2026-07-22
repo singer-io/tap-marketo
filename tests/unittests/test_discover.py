@@ -111,7 +111,7 @@ class TestApplyAccessChecks(unittest.TestCase):
 
     @patch("tap_marketo.discover.check_stream_access")
     def test_activity_substreams_share_single_probe(self, mock_check):
-        """Multiple activities_* streams must only trigger one probe for activity_types."""
+        """Each activity child stream is evaluated independently for access."""
         mock_check.return_value = True
         streams = [
             _make_stream("activities_visit_webpage"),
@@ -119,9 +119,11 @@ class TestApplyAccessChecks(unittest.TestCase):
             _make_stream("activities_click_link"),
         ]
         _apply_access_checks(MagicMock(), streams)
-        # check_stream_access should be called once for "activity_types", not 3 times
         probe_calls = [c[0][1] for c in mock_check.call_args_list]
-        self.assertEqual(probe_calls.count("activity_types"), 1)
+        self.assertIn("activities_visit_webpage", probe_calls)
+        self.assertIn("activities_fill_out_form", probe_calls)
+        self.assertIn("activities_click_link", probe_calls)
+        self.assertEqual(len(probe_calls), 3)
 
     @patch("tap_marketo.discover.check_stream_access")
     def test_inaccessible_activity_types_excludes_all_substreams(self, mock_check):
@@ -137,6 +139,31 @@ class TestApplyAccessChecks(unittest.TestCase):
         self.assertIn("leads", ids)
         self.assertNotIn("activity_types", ids)
         self.assertNotIn("activities_visit_webpage", ids)
+        self.assertNotIn("activities_fill_out_form", ids)
+
+    @patch("tap_marketo.discover.check_stream_access")
+    def test_only_forbidden_child_excluded_parent_remains(self, mock_check):
+        """If only a child stream is forbidden, exclude only that child.
+        Parent and sibling children should remain accessible."""
+        forbidden_child = "activities_fill_out_form"
+
+        def _side_effect(_client, stream_name):
+            return stream_name != forbidden_child
+
+        mock_check.side_effect = _side_effect
+        streams = [
+            _make_stream("leads"),
+            _make_stream("activity_types"),
+            _make_stream("activities_visit_webpage"),
+            _make_stream("activities_fill_out_form"),
+        ]
+
+        result = _apply_access_checks(MagicMock(), streams)
+        ids = [s["tap_stream_id"] for s in result]
+
+        self.assertIn("leads", ids)
+        self.assertIn("activity_types", ids)
+        self.assertIn("activities_visit_webpage", ids)
         self.assertNotIn("activities_fill_out_form", ids)
 
     @patch("tap_marketo.discover.check_stream_access")
