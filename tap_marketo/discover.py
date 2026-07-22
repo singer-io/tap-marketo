@@ -4,6 +4,7 @@ import sys
 
 import singer
 from singer import metadata
+from tap_marketo.client import MarketoForbiddenError
 from tap_marketo.sync import determine_replication_key
 
 
@@ -25,6 +26,31 @@ PROGRAMS_AUTOMATIC_INCLUSION = frozenset(["id", "createdAt", "updatedAt"])
 CAMPAIGNS_AUTOMATIC_INCLUSION = frozenset(["id", "createdAt", "updatedAt"])
 
 LEAD_REQUIRED_FIELDS = frozenset(["id", "updatedAt", "createdAt"])
+
+
+def _stream_replication_metadata(tap_stream_id):
+    replication_key = determine_replication_key(tap_stream_id)
+    replication_method = "INCREMENTAL" if replication_key else "FULL_TABLE"
+    return replication_method, replication_key
+
+
+def build_stream_entry(
+        tap_stream_id,
+        key_properties,
+        schema,
+        mdata,
+        parent_stream=None):
+    replication_method, replication_key = _stream_replication_metadata(tap_stream_id)
+    return {
+        "tap_stream_id": tap_stream_id,
+        "stream": tap_stream_id,
+        "key_properties": key_properties,
+        "metadata": metadata.to_list(mdata),
+        "schema": schema,
+        "replication_method": replication_method,
+        "replication_key": replication_key,
+        "parent_stream": parent_stream,
+    }
 
 def clean_string(string):
     return string.lower().replace(" ", "_")
@@ -134,17 +160,17 @@ def get_activity_type_stream(activity):
         valid_replication_keys=determine_replication_key('activities')
     )
 
-    return {
-        "tap_stream_id": tap_stream_id,
-        "stream": tap_stream_id,
-        "key_properties": ["marketoGUID"],
-        "metadata": metadata.to_list(mdata),
-        "schema": {
+    return build_stream_entry(
+        tap_stream_id=tap_stream_id,
+        key_properties=["marketoGUID"],
+        schema={
             "type": "object",
             "additionalProperties": False,
             "properties": properties,
         },
-    }
+        mdata=mdata,
+        parent_stream="activity_types",
+    )
 
 
 def discover_activities(client):
@@ -186,17 +212,16 @@ def discover_leads(client):
         valid_replication_keys=determine_replication_key('leads')
     )
 
-    return {
-        "tap_stream_id": "leads",
-        "stream": "leads",
-        "key_properties": ["id"],
-        "metadata": metadata.to_list(mdata),
-        "schema": {
+    return build_stream_entry(
+        tap_stream_id="leads",
+        key_properties=["id"],
+        schema={
             "type": "object",
             "additionalProperties": False,
             "properties": properties,
         },
-    }
+        mdata=mdata,
+    )
 
 
 def discover_catalog(name, automatic_inclusion, **kwargs):
@@ -224,7 +249,102 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
         )
 
         discovered_schema["metadata"] = metadata.to_list(mdata)
+        replication_method, replication_key = _stream_replication_metadata(
+            discovered_schema['tap_stream_id'])
+        discovered_schema["replication_method"] = replication_method
+        discovered_schema["replication_key"] = replication_key
+        discovered_schema["parent_stream"] = None
         return discovered_schema
+
+
+# ---------------------------------------------------------------------------
+# Stream access checks
+# ---------------------------------------------------------------------------
+
+# Mapping of tap_stream_id to the probe endpoint used to verify access.
+# Activity type streams are probed via the shared activity_types endpoint.
+STREAM_PROBE_ENDPOINTS = {
+    "leads": ("GET", "rest/v1/leads/describe.json"),
+    "activity_types": ("GET", "rest/v1/activities/types.json"),
+    "campaigns": ("GET", "rest/v1/campaigns.json"),
+    "lists": ("GET", "rest/v1/lists.json"),
+    "programs": ("GET", "rest/asset/v1/programs.json"),
+}
+
+
+def check_stream_access(client, stream_name) -> bool:
+    """Probe stream_name's endpoint and return whether the credentials have read access.
+    Returns False if a MarketoForbiddenError (HTTP 403) is raised; True otherwise.
+    Activity sub-streams (activities_*) delegate to the shared 'activity_types' probe.
+    """
+    probe_key = "activity_types" if stream_name.startswith("activities_") else stream_name
+    probe = STREAM_PROBE_ENDPOINTS.get(probe_key)
+    if probe is None:
+        # Unknown stream — assume accessible rather than blocking discovery.
+        return True
+
+    method, endpoint = probe
+    singer.log_info("Checking access for stream '%s' via %s %s", stream_name, method, endpoint)
+    try:
+        client.request(method, endpoint, endpoint_name="{}_access_check".format(probe_key))
+        return True
+    except MarketoForbiddenError as exc:
+        singer.log_warning(
+            "Excluding unauthorized stream '%s' from catalog. Error: %s",
+            stream_name,
+            str(exc),
+        )
+        return False
+
+
+def _apply_access_checks(client, streams: list) -> list:
+    """Remove streams the credentials cannot access.
+    Probes each stream and removes inaccessible ones from the list in place,
+    returning the filtered list.
+    Raises MarketoForbiddenError if no streams remain after filtering.
+    """
+    accessible = []
+    inaccessible = []
+
+    # Deduplicate probes: activity sub-streams share the activity_types endpoint.
+    probed = {}
+
+    inaccessible_set = set()
+
+    for stream in streams:
+        stream_name = stream["tap_stream_id"]
+        parent_stream = stream.get("parent_stream")
+
+        if parent_stream and parent_stream in inaccessible_set:
+            inaccessible_set.add(stream_name)
+            inaccessible.append(stream_name)
+            continue
+
+        probe_key = "activity_types" if stream_name.startswith("activities_") else stream_name
+
+        if probe_key not in probed:
+            probed[probe_key] = check_stream_access(client, probe_key)
+
+        if probed[probe_key]:
+            accessible.append(stream)
+        else:
+            inaccessible_set.add(stream_name)
+            inaccessible.append(stream_name)
+
+    if not accessible:
+        raise MarketoForbiddenError(
+            "HTTP-error-code: 403, Error: The credentials do not have "
+            "'read' access to any supported streams."
+        )
+
+    if inaccessible:
+        singer.log_warning(
+            "No 'read' access to stream(s): %s. Excluded from catalog.",
+            ", ".join(inaccessible),
+        )
+
+    return accessible
+
 
 def discover(client):
     singer.log_info("Starting discover")
@@ -235,5 +355,9 @@ def discover(client):
     streams.append(discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION))
     streams.append(discover_catalog("lists", LISTS_AUTOMATIC_INCLUSION))
     streams.append(discover_catalog("programs", PROGRAMS_AUTOMATIC_INCLUSION))
-    json.dump({"streams": streams}, sys.stdout, indent=2)
+
+    streams = _apply_access_checks(client, streams)
+
+    catalog = {"streams": streams}
     singer.log_info("Finished discover")
+    return catalog

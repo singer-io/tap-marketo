@@ -35,6 +35,9 @@ class TestDiscover(unittest.TestCase):
             "tap_stream_id": "activities_visit_webpage",
             "stream": "activities_visit_webpage",
             "key_properties": ["marketoGUID"],
+            "replication_method": "INCREMENTAL",
+            "replication_key": "activityDate",
+            "parent_stream": "activity_types",
             "metadata" : [
                 {'breadcrumb': (),
                  'metadata': {'table-key-properties': ['marketoGUID'],
@@ -170,6 +173,9 @@ class TestDiscover(unittest.TestCase):
             "tap_stream_id": "leads",
             "stream": "leads",
             "key_properties": ["id"],
+            "replication_method": "INCREMENTAL",
+            "replication_key": "updatedAt",
+            "parent_stream": None,
             "schema": {
                 "type": "object",
                 "additionalProperties": False,

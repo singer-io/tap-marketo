@@ -47,6 +47,10 @@ class ApiException(Exception):
     """Indicates an error occured communicating with the Marketo API."""
 
 
+class MarketoForbiddenError(ApiException):
+    """Indicates the credentials do not have read access to the requested resource (HTTP 403)."""
+
+
 class ApiQuotaExceeded(Exception):
     """Indicates that there's no quota left for the API"""
 
@@ -191,8 +195,16 @@ class Client:
         with singer.metrics.http_request_timer(endpoint_name):
             resp = self._session.send(req, stream=stream, timeout=self.request_timeout)
 
-        resp.raise_for_status()
+        self._raise_for_status(resp)
         return resp
+
+    def _raise_for_status(self, resp):
+        """Raise provider-specific exceptions for known HTTP error codes."""
+        if resp.status_code == 403:
+            raise MarketoForbiddenError(
+                "HTTP-error-code: 403, Error: Access to the requested resource is forbidden."
+            )
+        resp.raise_for_status()
 
     def update_calls_today(self):
         # http://developers.marketo.com/rest-api/endpoint-reference/lead-database-endpoint-reference/#!/Usage/getDailyUsageUsingGET

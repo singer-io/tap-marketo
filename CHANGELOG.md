@@ -1,5 +1,10 @@
 # Changelog
 
+# 2.10.0
+  * Streams the credentials cannot access (HTTP 403) are now excluded from the catalog during discovery instead of raising an error.
+  * Added `MarketoForbiddenError` to `client.py` for explicit 403 handling.
+  * Added unit tests for discovery access-check behaviour.
+
 # 2.9.4
   * Added retry for brokenpipe [#117](https://github.com/singer-io/tap-marketo/pull/116)
 

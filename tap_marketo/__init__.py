@@ -2,6 +2,9 @@
 
 # Marketo Docs are located at http://developers.marketo.com/rest-api/
 
+import json
+import sys
+
 import pendulum
 import singer
 from singer import bookmarks
@@ -63,7 +66,8 @@ def validate_state(config, catalog, state):
 def _main(config, properties, state, discover_mode=False):
     client = Client(**config)
     if discover_mode:
-        discover(client)
+        catalog = discover(client)
+        json.dump(catalog, sys.stdout, indent=2)
     elif properties:
         state = validate_state(config, properties, state)
         sync(client, properties, config, state)
