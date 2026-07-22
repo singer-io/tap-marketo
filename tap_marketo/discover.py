@@ -288,7 +288,6 @@ def check_stream_access(client, stream_name) -> bool:
         return True
 
     method, endpoint = probe
-    singer.log_info("Checking access for stream '%s' via %s %s", stream_name, method, endpoint)
     try:
         client.request(method, endpoint, endpoint_name="{}_access_check".format(probe_key))
         return True
