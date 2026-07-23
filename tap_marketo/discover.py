@@ -180,14 +180,31 @@ def get_activity_type_stream(activity):
 def discover_activities(client):
     # http://developers.marketo.com/rest-api/lead-database/activities/#describe
     endpoint = "rest/v1/activities/types.json"
-    data = client.request("GET", endpoint, endpoint_name="activity_types")
-    return [get_activity_type_stream(row) for row in data["result"]]
+    try:
+        data = client.request("GET", endpoint, endpoint_name="activity_types")
+        return [get_activity_type_stream(row) for row in data["result"]]
+    except MarketoForbiddenError as ex:
+        singer.log_warning(
+            "Excluding unauthorized stream '%s' from catalog. HTTP-Error-Message: '%s'",
+            "activity_types",
+            str(ex)
+        )
+        return None
 
 
 def discover_leads(client):
     # http://developers.marketo.com/rest-api/lead-database/leads/#describe
     endpoint = "rest/v1/leads/describe.json"
-    data = client.request("GET", endpoint, endpoint_name="leads_discover")
+    try:
+        data = client.request("GET", endpoint, endpoint_name="leads_discover")
+    except MarketoForbiddenError as ex:
+        singer.log_warning(
+            "Excluding unauthorized stream '%s' from catalog. HTTP-Error-Message: '%s'",
+            "leads",
+            str(ex)
+        )
+        return None
+
     properties = {}
     mdata = metadata.new()
 
@@ -228,7 +245,7 @@ def discover_leads(client):
     )
 
 
-def discover_catalog(name, automatic_inclusion, **kwargs):
+def discover_catalog(name, automatic_inclusion, client=None, **kwargs):
     unsupported = kwargs.get("unsupported", frozenset([]))
     root = os.path.dirname(os.path.realpath(__file__))
     path = os.path.join(root, 'schemas/{}.json'.format(name))
@@ -251,6 +268,9 @@ def discover_catalog(name, automatic_inclusion, **kwargs):
             mdata,
             determine_replication_key(discovered_schema['tap_stream_id'])
         )
+
+        if client and not check_stream_access(client, discovered_schema['tap_stream_id']):
+            return None
 
         discovered_schema["metadata"] = metadata.to_list(mdata)
         replication_method, replication_key = _stream_replication_metadata(
@@ -295,73 +315,68 @@ def check_stream_access(client, stream_name) -> bool:
     try:
         client.request(method, endpoint, endpoint_name="{}_access_check".format(probe_key))
         return True
-    except MarketoForbiddenError as exc:
+    except MarketoForbiddenError as ex:
         singer.log_warning(
-            "Excluding unauthorized stream '%s' from catalog. Error: %s",
+            "Excluding unauthorized stream '%s' from catalog. HTTP-Error-Message: '%s'",
             stream_name,
-            str(exc),
+            str(ex)
         )
         return False
-
-
-def _apply_access_checks(client, streams: list) -> list:
-    """Remove streams the credentials cannot access.
-    Probes each stream and returns a filtered list containing only accessible streams.
-    Raises MarketoForbiddenError if no streams remain after filtering.
-    """
-    accessible = []
-    inaccessible = []
-
-    # Cache by delegated probe key/endpoints to avoid redundant API calls.
-    probed = {}
-
-    inaccessible_set = set()
-
-    for stream in streams:
-        stream_name = stream["tap_stream_id"]
-        parent_stream = stream.get("parent_stream")
-
-        if parent_stream and parent_stream in inaccessible_set:
-            inaccessible_set.add(stream_name)
-            inaccessible.append(stream_name)
-            continue
-
-        probe_key = _get_probe_key(stream_name)
-        if probe_key not in probed:
-            probed[probe_key] = check_stream_access(client, stream_name)
-
-        if probed[probe_key]:
-            accessible.append(stream)
-        else:
-            inaccessible_set.add(stream_name)
-            inaccessible.append(stream_name)
-
-    if not accessible:
-        raise MarketoForbiddenError(
-            "HTTP-error-code: 403, Error: The credentials do not have "
-            "'read' access to any supported streams."
-        )
-
-    if inaccessible:
-        singer.log_warning(
-            "No 'read' access to stream(s): %s. Excluded from catalog.",
-            ", ".join(inaccessible),
-        )
-
-    return accessible
 
 
 def discover(client):
     singer.log_info("Starting discover")
     streams = []
-    streams.append(discover_leads(client))
-    streams.append(discover_catalog("activity_types", ACTIVITY_TYPES_AUTOMATIC_INCLUSION, unsupported=ACTIVITY_TYPES_UNSUPPORTED))
-    streams.extend(discover_activities(client))
-    streams.append(discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION))
-    streams.append(discover_catalog("lists", LISTS_AUTOMATIC_INCLUSION))
-    streams.append(discover_catalog("programs", PROGRAMS_AUTOMATIC_INCLUSION))
+    inaccessible_streams = []
 
-    streams = _apply_access_checks(client, streams)
+    leads_stream = discover_leads(client)
+    if leads_stream:
+        streams.append(leads_stream)
+    else:
+        inaccessible_streams.append("leads")
+
+    activity_streams = discover_activities(client)
+    if activity_streams is not None:
+        activity_types_stream = discover_catalog(
+            "activity_types",
+            ACTIVITY_TYPES_AUTOMATIC_INCLUSION,
+            unsupported=ACTIVITY_TYPES_UNSUPPORTED,
+        )
+        if activity_types_stream:
+            streams.append(activity_types_stream)
+        streams.extend(activity_streams)
+    else:
+        inaccessible_streams.append("activity_types")
+
+    campaigns_stream = discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION, client=client)
+    if campaigns_stream:
+        streams.append(campaigns_stream)
+    else:
+        inaccessible_streams.append("campaigns")
+
+    lists_stream = discover_catalog("lists", LISTS_AUTOMATIC_INCLUSION, client=client)
+    if lists_stream:
+        streams.append(lists_stream)
+    else:
+        inaccessible_streams.append("lists")
+
+    programs_stream = discover_catalog("programs", PROGRAMS_AUTOMATIC_INCLUSION, client=client)
+    if programs_stream:
+        streams.append(programs_stream)
+    else:
+        inaccessible_streams.append("programs")
+
+    if inaccessible_streams:
+        singer.log_warning(
+            "No 'read' access to stream(s): %s. Excluded from catalog.",
+            ", ".join(inaccessible_streams),
+        )
+
+    if not streams:
+        raise MarketoForbiddenError(
+            "HTTP-error-code: 403, Error: The credentials do not have "
+            "'read' access to any supported streams."
+        )
 
     catalog = {"streams": streams}
     singer.log_info("Finished discover")

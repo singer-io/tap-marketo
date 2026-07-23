@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 from tap_marketo.client import ApiException, MarketoForbiddenError
 from tap_marketo.discover import (
     check_stream_access,
-    _apply_access_checks,
     discover,
+    discover_catalog,
     STREAM_PROBE_ENDPOINTS,
 )
 
@@ -81,87 +81,18 @@ class TestCheckStreamAccess(unittest.TestCase):
                           msg=f"Stream '{s}' missing from STREAM_PROBE_ENDPOINTS")
 
 
-# ---------------------------------------------------------------------------
-# _apply_access_checks
-# ---------------------------------------------------------------------------
-
-class TestApplyAccessChecks(unittest.TestCase):
+class TestDiscoverCatalogAccess(unittest.TestCase):
 
     @patch("tap_marketo.discover.check_stream_access", return_value=True)
-    def test_all_accessible_returns_all_streams(self, _mock_check):
-        streams = [_make_stream("leads"), _make_stream("campaigns")]
-        result = _apply_access_checks(MagicMock(), streams)
-        self.assertEqual(len(result), 2)
-
-    @patch("tap_marketo.discover.check_stream_access")
-    def test_inaccessible_stream_excluded(self, mock_check):
-        mock_check.side_effect = lambda client, name: name != "campaigns"
-        streams = [_make_stream("leads"), _make_stream("campaigns")]
-        result = _apply_access_checks(MagicMock(), streams)
-        ids = [s["tap_stream_id"] for s in result]
-        self.assertIn("leads", ids)
-        self.assertNotIn("campaigns", ids)
+    def test_discover_catalog_returns_stream_when_accessible(self, _mock_check):
+        stream = discover_catalog("campaigns", frozenset(["id"]), client=MagicMock())
+        self.assertIsNotNone(stream)
+        self.assertEqual(stream["tap_stream_id"], "campaigns")
 
     @patch("tap_marketo.discover.check_stream_access", return_value=False)
-    def test_all_inaccessible_raises_forbidden(self, _mock_check):
-        streams = [_make_stream("leads"), _make_stream("campaigns")]
-        with self.assertRaises(MarketoForbiddenError) as ctx:
-            _apply_access_checks(MagicMock(), streams)
-        self.assertIn("HTTP-error-code: 403", str(ctx.exception))
-
-    @patch("tap_marketo.discover.check_stream_access")
-    def test_activity_substreams_share_single_probe(self, mock_check):
-        """Multiple activities_* streams must only trigger one probe for activity_types."""
-        mock_check.return_value = True
-        streams = [
-            _make_stream("activities_visit_webpage"),
-            _make_stream("activities_fill_out_form"),
-            _make_stream("activities_click_link"),
-        ]
-        _apply_access_checks(MagicMock(), streams)
-        probe_calls = [c[0][1] for c in mock_check.call_args_list]
-        self.assertEqual(probe_calls.count("activities_visit_webpage"), 1)
-        self.assertEqual(len(probe_calls), 1)
-
-    @patch("tap_marketo.discover.check_stream_access")
-    def test_inaccessible_activity_types_excludes_all_substreams(self, mock_check):
-        mock_check.side_effect = lambda client, name: name != "activity_types"
-        streams = [
-            _make_stream("leads"),
-            _make_stream("activity_types"),
-            _make_stream("activities_visit_webpage"),
-            _make_stream("activities_fill_out_form"),
-        ]
-        result = _apply_access_checks(MagicMock(), streams)
-        ids = [s["tap_stream_id"] for s in result]
-        self.assertIn("leads", ids)
-        self.assertNotIn("activity_types", ids)
-        self.assertNotIn("activities_visit_webpage", ids)
-        self.assertNotIn("activities_fill_out_form", ids)
-
-    @patch("tap_marketo.discover.check_stream_access")
-    def test_parent_inaccessible_marks_child_in_inaccessible_logger(self, mock_check):
-        """If a parent stream is inaccessible, child streams should be excluded and
-        included in the same inaccessible log list without probing child endpoint."""
-        mock_check.side_effect = lambda client, name: name != "activity_types"
-        streams = [
-            _make_stream("leads"),
-            _make_stream("activity_types"),
-            _make_stream("activities_visit_webpage"),
-        ]
-        with patch("tap_marketo.discover.singer.log_warning") as mock_warning:
-            result = _apply_access_checks(MagicMock(), streams)
-
-        ids = [s["tap_stream_id"] for s in result]
-        self.assertIn("leads", ids)
-        self.assertNotIn("activity_types", ids)
-        self.assertNotIn("activities_visit_webpage", ids)
-        mock_warning.assert_called_once()
-        warning_msg = mock_warning.call_args[0][0]
-        warning_streams = mock_warning.call_args[0][1]
-        self.assertIn("No 'read' access to stream(s): %s. Excluded from catalog.", warning_msg)
-        self.assertIn("activity_types", warning_streams)
-        self.assertIn("activities_visit_webpage", warning_streams)
+    def test_discover_catalog_returns_none_when_inaccessible(self, _mock_check):
+        stream = discover_catalog("campaigns", frozenset(["id"]), client=MagicMock())
+        self.assertIsNone(stream)
 
 
 # ---------------------------------------------------------------------------
@@ -170,11 +101,10 @@ class TestApplyAccessChecks(unittest.TestCase):
 
 class TestDiscover(unittest.TestCase):
 
-    @patch("tap_marketo.discover._apply_access_checks", side_effect=lambda client, s: s)
     @patch("tap_marketo.discover.discover_activities", return_value=[_make_stream("activities_visit_webpage")])
     @patch("tap_marketo.discover.discover_leads", return_value=_make_stream("leads"))
     @patch("tap_marketo.discover.discover_catalog")
-    def test_discover_returns_catalog_dict(self, mock_catalog, mock_leads, mock_acts, mock_checks):
+    def test_discover_returns_catalog_dict(self, mock_catalog, mock_leads, mock_acts):
         mock_catalog.return_value = _make_stream("campaigns")
         result = discover(MagicMock())
         self.assertIsInstance(result, dict)
@@ -187,24 +117,10 @@ class TestDiscover(unittest.TestCase):
             self.assertIn("replication_key", stream)
             self.assertIn("parent_stream", stream)
 
-    @patch("tap_marketo.discover._apply_access_checks")
-    @patch("tap_marketo.discover.discover_activities", return_value=[])
-    @patch("tap_marketo.discover.discover_leads", return_value=_make_stream("leads"))
-    @patch("tap_marketo.discover.discover_catalog", return_value=_make_stream("campaigns"))
-    def test_discover_calls_access_checks(self, _c, _l, _a, mock_checks):
-        mock_checks.side_effect = lambda client, s: s
-        client = MagicMock()
-        discover(client)
-        mock_checks.assert_called_once()
-        # client must be the first arg passed to _apply_access_checks
-        self.assertIs(mock_checks.call_args[0][0], client)
-
-    @patch("tap_marketo.discover._apply_access_checks",
-           side_effect=MarketoForbiddenError("no access"))
-    @patch("tap_marketo.discover.discover_activities", return_value=[])
-    @patch("tap_marketo.discover.discover_leads", return_value=_make_stream("leads"))
-    @patch("tap_marketo.discover.discover_catalog", return_value=_make_stream("campaigns"))
-    def test_discover_propagates_forbidden_error(self, _c, _l, _a, _checks):
+    @patch("tap_marketo.discover.discover_activities", return_value=None)
+    @patch("tap_marketo.discover.discover_leads", return_value=None)
+    @patch("tap_marketo.discover.discover_catalog", return_value=None)
+    def test_discover_raises_forbidden_if_all_streams_excluded(self, _c, _l, _a):
         with self.assertRaises(MarketoForbiddenError):
             discover(MagicMock())
 
