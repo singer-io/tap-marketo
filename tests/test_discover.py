@@ -1,10 +1,8 @@
 import unittest
+from unittest.mock import MagicMock
 
-import pendulum
-import requests_mock
 from singer import metadata
 
-from tap_marketo.client import Client
 from tap_marketo.discover import *
 from tap_marketo.sync import determine_replication_key
 
@@ -158,9 +156,7 @@ class TestDiscover(unittest.TestCase):
         self.assertEqual(7,automatic_count)
 
     def test_discover_leads(self):
-        client = Client("123-ABC-456", "id", "secret")
-        client.token_expires = pendulum.utcnow().add(days=1)
-        client.calls_today = 1
+        client = MagicMock()
         data = {
             "success": True,
             "result": [
@@ -169,6 +165,7 @@ class TestDiscover(unittest.TestCase):
                 {"displayName": "bar", "dataType": "string", "soap": {"name": "bar"}},
             ],
         }
+        client.request.return_value = data
 
         stream = {
             "tap_stream_id": "leads",
@@ -191,25 +188,23 @@ class TestDiscover(unittest.TestCase):
             },
         }
 
-        with requests_mock.Mocker(real_http=True) as mock:
-            mock.register_uri("GET", client.get_url("rest/v1/leads/describe.json"), json=data)
-            self.maxDiff = None
-            result = discover_leads(client)
-            metadata = result.pop("metadata")
-            automatic_count = 0
-            root_metadata = None
-            for mdata in metadata:
-                if mdata.get('metadata', {}).get('inclusion') == 'automatic':
-                    automatic_count += 1
-                if mdata['breadcrumb'] == ():
-                    root_metadata = mdata['metadata']
-            
-            self.assertDictEqual(stream, result)
-            self.assertEqual(3,len(metadata))
-            self.assertEqual(1,automatic_count)
-            # Test new replication metadata
-            self.assertEqual(root_metadata['forced-replication-method'], 'INCREMENTAL')
-            self.assertEqual(root_metadata['valid-replication-keys'], ['updatedAt'])
+        self.maxDiff = None
+        result = discover_leads(client)
+        metadata = result.pop("metadata")
+        automatic_count = 0
+        root_metadata = None
+        for mdata in metadata:
+            if mdata.get('metadata', {}).get('inclusion') == 'automatic':
+                automatic_count += 1
+            if mdata['breadcrumb'] == ():
+                root_metadata = mdata['metadata']
+
+        self.assertDictEqual(stream, result)
+        self.assertEqual(3,len(metadata))
+        self.assertEqual(1,automatic_count)
+        # Test new replication metadata
+        self.assertEqual(root_metadata['forced-replication-method'], 'INCREMENTAL')
+        self.assertEqual(root_metadata['valid-replication-keys'], ['updatedAt'])
 
     def test_discover_catalog_campaigns(self):
         result = discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION)
