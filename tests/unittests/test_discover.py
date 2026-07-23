@@ -117,6 +117,34 @@ class TestDiscover(unittest.TestCase):
             self.assertIn("replication_key", stream)
             self.assertIn("parent_stream", stream)
 
+    @patch(
+        "tap_marketo.discover.discover_activities",
+        return_value=[
+            _make_stream("activities_visit_webpage"),
+            _make_stream("activities_responded_to_a_survey_in_webinar"),
+        ],
+    )
+    @patch("tap_marketo.discover.discover_leads", return_value=_make_stream("leads"))
+    @patch("tap_marketo.discover.discover_catalog")
+    @patch("tap_marketo.discover.check_stream_access")
+    def test_discover_excludes_forbidden_activity_child(
+            self,
+            mock_check_access,
+            mock_catalog,
+            mock_leads,
+            mock_acts):
+        def _access(stream_name):
+            return stream_name != "activities_responded_to_a_survey_in_webinar"
+
+        mock_check_access.side_effect = lambda _client, stream_name: _access(stream_name)
+        mock_catalog.return_value = _make_stream("campaigns")
+
+        result = discover(MagicMock())
+        stream_ids = [stream["tap_stream_id"] for stream in result["streams"]]
+
+        self.assertIn("activities_visit_webpage", stream_ids)
+        self.assertNotIn("activities_responded_to_a_survey_in_webinar", stream_ids)
+
     @patch("tap_marketo.discover.discover_activities", return_value=None)
     @patch("tap_marketo.discover.discover_leads", return_value=None)
     @patch("tap_marketo.discover.discover_catalog", return_value=None)
