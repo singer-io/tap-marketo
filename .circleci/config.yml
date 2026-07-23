@@ -26,15 +26,13 @@ jobs:
           name: 'Unit Tests & Mocked Integration Tests'
           command: |
             source /usr/local/share/virtualenvs/tap-marketo/bin/activate
-            uv pip install nose2 parameterized nose2[coverage_plugin]>=0.6.5
-            nose2 --with-coverage -v \
-              tests/test_client.py \
-              tests/test_client_max_api_limit.py \
-              tests/test_discover.py \
-              tests/test_request_timeout.py \
-              tests/test_startup.py \
-              tests/test_sync.py \
-              tests/unittests
+            uv pip install pytest pytest-cov
+            mkdir -p test_output
+            pytest tests -v \
+              --junitxml=test_output/report.xml \
+              --cov=tap_marketo \
+              --cov-report=html \
+              --cov-report=term
       - store_test_results:
           path: test_output/report.xml
       - store_artifacts:
