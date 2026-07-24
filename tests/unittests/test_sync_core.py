@@ -141,3 +141,22 @@ class TestSyncRouting(unittest.TestCase):
 
         with self.assertRaises(Exception):
             sync_module.sync(client, catalog, {}, state)
+
+    @patch("tap_marketo.sync.singer.write_state")
+    @patch("tap_marketo.sync.singer.metrics.record_counter", return_value=DummyCounter())
+    @patch("tap_marketo.sync.sync_paginated", return_value=({"bookmarks": {}}, 1))
+    def test_sync_accepts_catalog_object(self, _sync_paginated, _counter, _write_state):
+        client = SimpleNamespace(use_corona=True)
+        state = {"bookmarks": {"campaigns": {"updatedAt": "2023-01-01T00:00:00Z"}}}
+
+        stream_obj = SimpleNamespace(
+            tap_stream_id="campaigns",
+            metadata=[SimpleNamespace(breadcrumb=(), metadata={"selected": True})],
+            schema={"properties": {}},
+            key_properties=["id"],
+        )
+        catalog_obj = SimpleNamespace(streams=[stream_obj])
+
+        sync_module.sync(client, catalog_obj, {}, state)
+
+        _sync_paginated.assert_called_once()

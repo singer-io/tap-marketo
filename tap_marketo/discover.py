@@ -40,6 +40,8 @@ def build_stream_entry(
         mdata,
         parent_stream=None):
     replication_method, replication_key = _stream_replication_metadata(tap_stream_id)
+    if metadata.get(mdata, (), "inclusion") is None:
+        mdata = metadata.write(mdata, (), "inclusion", "available")
     if parent_stream:
         mdata = metadata.write(mdata, (), "parent-tap-stream-id", parent_stream)
     return {
@@ -253,7 +255,16 @@ def discover_catalog(name, automatic_inclusion, client=None, **kwargs):
     with open(path, "r") as f:
         discovered_schema = json.load(f)
 
-        for field in discovered_schema["schema"]["properties"]:
+        if "schema" in discovered_schema:
+            tap_stream_id = discovered_schema.get("tap_stream_id", name)
+            stream_schema = discovered_schema["schema"]
+            key_properties = discovered_schema.get("key_properties", ["id"])
+        else:
+            tap_stream_id = name
+            stream_schema = discovered_schema
+            key_properties = ["id"]
+
+        for field in stream_schema["properties"]:
             if field in automatic_inclusion:
                 mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'automatic')
             elif field in unsupported:
@@ -262,22 +273,22 @@ def discover_catalog(name, automatic_inclusion, client=None, **kwargs):
                 mdata = metadata.write(mdata, ('properties', field), 'inclusion', 'available')
 
         # The steams using discover_catalog all use "id" as the key_properties
-        mdata = metadata.write(mdata, (), 'table-key-properties', ['id'])
+        mdata = metadata.write(mdata, (), 'table-key-properties', key_properties)
         mdata = set_replication_metadata(
             mdata,
-            determine_replication_key(discovered_schema['tap_stream_id'])
+            determine_replication_key(tap_stream_id)
         )
 
-        if client and not check_stream_access(client, discovered_schema['tap_stream_id']):
+        if client and not check_stream_access(client, tap_stream_id):
             return None
 
-        discovered_schema["metadata"] = metadata.to_list(mdata)
-        replication_method, replication_key = _stream_replication_metadata(
-            discovered_schema['tap_stream_id'])
-        discovered_schema["replication_method"] = replication_method
-        discovered_schema["replication_key"] = replication_key
-        discovered_schema["parent_stream"] = None
-        return discovered_schema
+        return build_stream_entry(
+            tap_stream_id=tap_stream_id,
+            key_properties=key_properties,
+            schema=stream_schema,
+            mdata=mdata,
+            parent_stream=None,
+        )
 
 
 # ---------------------------------------------------------------------------

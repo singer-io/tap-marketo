@@ -1,43 +1,38 @@
 {
-  "tap_stream_id": "campaigns",
-  "stream": "campaigns",
-  "key_properties": ["id"],
-  "schema": {
-    "type": "object",
-    "additionalProperties": false,
-    "properties": {
-      "id": {
-        "type": "integer"
-      },
-      "createdAt": {
-        "type": "string",
-        "format": "date-time"
-      },
-      "updatedAt": {
-        "type": "string",
-        "format": "date-time"
-      },
-      "active": {
-        "type": ["boolean", "null"]
-      },
-      "description": {
-        "type": ["string", "null"]
-      },
-      "name": {
-        "type": "string"
-      },
-      "programId": {
-        "type": ["integer", "null"]
-      },
-      "programName": {
-        "type": ["string", "null"]
-      },
-      "type": {
-        "type": "string"
-      },
-      "workspaceName": {
-        "type": ["string", "null"]
-      }
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "integer"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "active": {
+      "type": ["boolean", "null"]
+    },
+    "description": {
+      "type": ["string", "null"]
+    },
+    "name": {
+      "type": "string"
+    },
+    "programId": {
+      "type": ["integer", "null"]
+    },
+    "programName": {
+      "type": ["string", "null"]
+    },
+    "type": {
+      "type": "string"
+    },
+    "workspaceName": {
+      "type": ["string", "null"]
     }
   }
 }

@@ -42,6 +42,7 @@ class TestDiscover(unittest.TestCase):
                               'marketo.activity-id': 1,
                               'marketo.primary-attribute-name': 'webpage_id',
                               'forced-replication-method': 'FULL_TABLE',
+                              'inclusion': 'available',
                               'parent-tap-stream-id': 'activity_types'}},
                 {
                     "metadata" : {
