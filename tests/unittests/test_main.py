@@ -1,4 +1,5 @@
 import unittest
+import runpy
 from unittest.mock import MagicMock, patch
 
 import tap_marketo
@@ -88,3 +89,23 @@ class TestMainModule(unittest.TestCase):
             tap_marketo.main()
 
         mock_log_critical.assert_called_once()
+
+    @patch("tap_marketo.client.Client")
+    @patch("singer.utils.parse_args")
+    def test_module_guard_executes_main(self, mock_parse_args, mock_client):
+        args = MagicMock()
+        args.config = {
+            "endpoint": "123-ABC-456",
+            "client_id": "id",
+            "client_secret": "secret",
+            "start_date": "2024-01-01T00:00:00Z",
+        }
+        args.properties = None
+        args.catalog = None
+        args.state = {}
+        args.discover = False
+        mock_parse_args.return_value = args
+
+        runpy.run_path(tap_marketo.__file__, run_name="__main__")
+
+        mock_client.assert_called_once_with(**args.config)

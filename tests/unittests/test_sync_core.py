@@ -18,6 +18,8 @@ class TestSyncHelpers(unittest.TestCase):
     def test_determine_replication_key(self):
         self.assertEqual("activityDate", sync_module.determine_replication_key("activities_open_email"))
         self.assertEqual("updatedAt", sync_module.determine_replication_key("leads"))
+        self.assertEqual("updatedAt", sync_module.determine_replication_key("lists"))
+        self.assertEqual("updatedAt", sync_module.determine_replication_key("programs"))
         self.assertIsNone(sync_module.determine_replication_key("activity_types"))
         self.assertIsNone(sync_module.determine_replication_key("unknown"))
 
@@ -27,8 +29,10 @@ class TestSyncHelpers(unittest.TestCase):
         self.assertEqual("2024-01-01T00:00:00+00:00", sync_module.format_value("2024-01-01T00:00:00Z", {"type": "string", "format": "date-time"}))
         self.assertEqual(10, sync_module.format_value("10.5", {"type": "integer"}))
         self.assertEqual(4.2, sync_module.format_value("4.2", {"type": "number"}))
+        self.assertTrue(sync_module.format_value(True, {"type": "boolean"}))
         self.assertTrue(sync_module.format_value("true", {"type": "boolean"}))
         self.assertEqual("1", sync_module.format_value(1, {"type": "string"}))
+        self.assertEqual("raw", sync_module.format_value("raw", {"type": ["object", "null"]}))
 
     def test_get_available_fields_and_format_values(self):
         stream = {
@@ -53,6 +57,9 @@ class TestSyncHelpers(unittest.TestCase):
 
         formatted = sync_module.format_values(stream, row, available_fields)
         self.assertEqual({"id": 1, "name": "Alice"}, formatted)
+
+        formatted_with_default = sync_module.format_values(stream, row)
+        self.assertEqual({"id": 1, "name": "Alice"}, formatted_with_default)
 
     @patch("tap_marketo.sync.singer.write_state")
     def test_update_state_with_export_info(self, _write_state):
@@ -90,6 +97,55 @@ class TestSyncHelpers(unittest.TestCase):
         self.assertEqual("x", flattened["primary_attribute_value"])
         self.assertEqual("y", flattened["primary_attribute_value_id"])
         self.assertEqual("127.0.0.1", flattened["client_ip_address"])
+
+    def test_normalize_helpers_cover_object_paths(self):
+        class DictLike:
+            def __init__(self, payload):
+                self._payload = payload
+
+            def to_dict(self):
+                return self._payload
+
+        class MetaLike:
+            def __init__(self):
+                self.breadcrumb = ("properties", "id")
+                self.metadata = {"selected": True}
+
+        dict_result = sync_module._to_dict({"a": 1})
+        self.assertEqual({"a": 1}, dict_result)
+
+        self.assertIsNone(sync_module._to_dict(object()))
+        self.assertEqual({"x": 2}, sync_module._to_dict(DictLike({"x": 2})))
+
+        normalized_entries = sync_module._normalize_metadata_entries([
+            {"breadcrumb": (), "metadata": {"selected": True}},
+            DictLike({"breadcrumb": ("properties", "name"), "metadata": {"inclusion": "automatic"}}),
+            MetaLike(),
+        ])
+        self.assertEqual(3, len(normalized_entries))
+
+        stream_from_to_dict = sync_module._normalize_stream(DictLike({
+            "tap_stream_id": "campaigns",
+            "metadata": [{"breadcrumb": (), "metadata": {"selected": True}}],
+        }))
+        self.assertEqual("campaigns", stream_from_to_dict["tap_stream_id"])
+
+        class StreamLike:
+            tap_stream_id = "lists"
+            stream = "lists"
+            key_properties = ["id"]
+            schema = {"properties": {}}
+            metadata = [MetaLike()]
+            replication_method = "INCREMENTAL"
+            replication_key = "updatedAt"
+            parent_stream = None
+
+        stream_from_attrs = sync_module._normalize_stream(StreamLike())
+        self.assertEqual("lists", stream_from_attrs["tap_stream_id"])
+        self.assertEqual(("properties", "id"), stream_from_attrs["metadata"][0]["breadcrumb"])
+
+        catalog_obj = SimpleNamespace(streams=[{"tap_stream_id": "lists"}])
+        self.assertEqual(1, len(sync_module._get_catalog_streams(catalog_obj)))
 
 
 class TestSyncRouting(unittest.TestCase):
@@ -160,3 +216,41 @@ class TestSyncRouting(unittest.TestCase):
         sync_module.sync(client, catalog_obj, {}, state)
 
         _sync_paginated.assert_called_once()
+
+    @patch("tap_marketo.sync.singer.log_info")
+    def test_sync_logs_and_skips_unselected_stream(self, log_info):
+        client = SimpleNamespace(use_corona=True)
+        state = {"bookmarks": {}}
+        catalog = {"streams": [self._stream("campaigns", selected=False)]}
+
+        sync_module.sync(client, catalog, {}, state)
+
+        log_info.assert_any_call("%s: not selected", "campaigns")
+
+    @patch("tap_marketo.sync.singer.write_state")
+    @patch("tap_marketo.sync.singer.metrics.record_counter", return_value=DummyCounter())
+    @patch("tap_marketo.sync.sync_programs", return_value=({"bookmarks": {}}, 3))
+    @patch("tap_marketo.sync.sync_activities", return_value=({"bookmarks": {}}, 2))
+    @patch("tap_marketo.sync.sync_activity_types", return_value=({"bookmarks": {}}, 1))
+    def test_sync_routes_activity_types_activities_and_programs(
+            self,
+            mock_sync_activity_types,
+            mock_sync_activities,
+            mock_sync_programs,
+            _counter,
+            _write_state):
+        client = SimpleNamespace(use_corona=True)
+        state = {"bookmarks": {"activities_open_email": {"activityDate": "2023-01-01T00:00:00Z"}}}
+        catalog = {
+            "streams": [
+                self._stream("activity_types", selected=True),
+                self._stream("activities_open_email", selected=True),
+                self._stream("programs", selected=True),
+            ]
+        }
+
+        sync_module.sync(client, catalog, {}, state)
+
+        mock_sync_activity_types.assert_called_once()
+        mock_sync_activities.assert_called_once()
+        mock_sync_programs.assert_called_once()
