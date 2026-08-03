@@ -8,7 +8,7 @@ jobs:
       - run:
           name: 'Setup'
           command: |
-            uv venv --python 3.11 /usr/local/share/virtualenvs/tap-marketo
+            uv venv --python 3.12 /usr/local/share/virtualenvs/tap-marketo
             source /usr/local/share/virtualenvs/tap-marketo/bin/activate
             uv pip install .[test]
             uv pip install pylint
@@ -26,12 +26,28 @@ jobs:
           name: 'Unit Tests'
           command: |
             source /usr/local/share/virtualenvs/tap-marketo/bin/activate
-            uv pip install nose2 parameterized nose2[coverage_plugin]>=0.6.5
-            nose2 --with-coverage -v -s tests
+            uv pip install pytest pytest-cov coverage
+            mkdir -p test_output
+            coverage run --source=tap_marketo -m pytest tests/unittests -v \
+              --junitxml=test_output/unit-report.xml
+      - run:
+          name: 'Mocked Integration Tests'
+          command: |
+            source /usr/local/share/virtualenvs/tap-marketo/bin/activate
+            coverage run --source=tap_marketo --append -m pytest tests/test_*.py -v \
+              --junitxml=test_output/integration-report.xml
+      - run:
+          name: 'Coverage Report'
+          command: |
+            source /usr/local/share/virtualenvs/tap-marketo/bin/activate
+            coverage report -m --fail-under=100 | tee coverage.txt
+            coverage html
       - store_test_results:
-          path: test_output/report.xml
+          path: test_output
       - store_artifacts:
           path: htmlcov
+      - store_artifacts:
+          path: coverage.txt
       # - add_ssh_keys
       # - run:
       #     name: 'Integration Tests'

@@ -11,6 +11,13 @@ from singer import bookmarks
 from singer import utils
 from tap_marketo.client import ExportFailed, ApiQuotaExceeded
 
+
+def utcnow():
+    try:
+        return pendulum.utcnow()
+    except AttributeError:
+        return pendulum.now("UTC")
+
 # We can request up to 30 days worth of activities per export.
 MAX_EXPORT_DAYS = 30
 
@@ -126,8 +133,8 @@ def update_state_with_export_info(state, stream, bookmark=None, export_id=None, 
 
 def get_export_end(export_start, end_days=MAX_EXPORT_DAYS):
     export_end = export_start.add(days=end_days)
-    if export_end >= pendulum.utcnow():
-        export_end = pendulum.utcnow()
+    if export_end >= utcnow():
+        export_end = utcnow()
 
     return export_end.replace(microsecond=0)
 
@@ -362,7 +369,7 @@ def sync_leads(client, state, stream, config):
     if client.use_corona:
         export_start = export_start.subtract(days=ATTRIBUTION_WINDOW_DAYS)
 
-    job_started = pendulum.utcnow()
+    job_started = utcnow()
     record_count = 0
     max_bookmark = initial_bookmark
     available_fields = get_available_fields(stream)
@@ -398,7 +405,7 @@ def sync_activities(client, state, stream, config):
     replication_key = determine_replication_key(stream['tap_stream_id'])
     singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
     export_start = pendulum.parse(bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key))
-    job_started = pendulum.utcnow()
+    job_started = utcnow()
     record_count = 0
 
     activity_metadata = metadata.to_map(stream["metadata"])
@@ -437,7 +444,7 @@ def sync_programs(client, state, stream):
 
     singer.write_schema("programs", stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
     start_date = bookmarks.get_bookmark(state, "programs", replication_key)
-    end_dt = pendulum.utcnow()
+    end_dt = utcnow()
     end_date = end_dt.isoformat()
 
     if pendulum.parse(start_date) >= end_dt:
@@ -505,7 +512,7 @@ def sync_paginated(client, state, stream):
 
     # Keep querying pages of data until no next page token.
     record_count = 0
-    job_started = pendulum.utcnow().isoformat()
+    job_started = utcnow().isoformat()
     available_fields = get_available_fields(stream)
     while True:
         data = client.request("GET", endpoint, endpoint_name=stream["tap_stream_id"], params=params)
