@@ -124,7 +124,6 @@ class TestClient(unittest.TestCase):
 
 
 class TestExports(unittest.TestCase):
-    # Covers export creation/polling/streaming error and success paths.
     """Covers bulk export lifecycle polling and file streaming behavior."""
 
     def setUp(self):
