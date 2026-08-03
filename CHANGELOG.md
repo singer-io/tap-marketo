@@ -1,10 +1,10 @@
 # Changelog
 
 # 2.10.0
-  * Python Upgrade, Dependency Upgrade, Added unit tests and mocked integration tests.
+  * Python Upgrade, Dependency Upgrade, Added unit tests and mocked integration tests. [#119](https://github.com/singer-io/tap-marketo/pull/119)
 
 # 2.9.4
-  * Kept `pendulum` pinned at `1.2.0` for compatibility with existing datetime helper usage.
+  * Added retry for brokenpipe [#117](https://github.com/singer-io/tap-marketo/pull/117)
 
 # 2.9.3
   * Preserve API quota error when shrinking window to minimum value [#116](https://github.com/singer-io/tap-marketo/pull/116)
