@@ -1,3 +1,5 @@
+"""Branch-focused unit tests for less common tap_marketo client paths."""
+
 import unittest
 from unittest.mock import Mock, patch
 import requests
@@ -14,6 +16,8 @@ from tap_marketo.client import (
 
 
 class TestClientBranches(unittest.TestCase):
+    """Exercises error branches and wrapper paths for client methods."""
+
     @patch("tap_marketo.client.pendulum.now")
     @patch("tap_marketo.client.pendulum.utcnow", side_effect=AttributeError("utcnow"))
     def test_utcnow_falls_back_to_pendulum_now(self, _mock_utcnow, mock_now):

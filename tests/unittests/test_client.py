@@ -1,3 +1,5 @@
+"""Unit tests for tap_marketo client request, auth, and export helpers."""
+
 import itertools
 import logging
 import unittest
@@ -14,6 +16,8 @@ logging.disable(logging.CRITICAL)
 
 
 class TestClient(unittest.TestCase):
+    """Validates client authentication, quota handling, and request behavior."""
+
     def setUp(self):
         self.client = Client("123-ABC-789", "id", "secret")
 
@@ -115,6 +119,8 @@ class TestClient(unittest.TestCase):
 
 
 class TestExports(unittest.TestCase):
+    """Covers bulk export lifecycle polling and file streaming behavior."""
+
     def setUp(self):
         self.client = Client("123-ABC-456", "id", "secret")
         self.client.token_expires = pendulum.utcnow().add(days=1)

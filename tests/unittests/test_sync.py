@@ -1,3 +1,5 @@
+"""Unit tests for sync streaming utilities and export-window logic."""
+
 import unittest
 import unittest.mock
 import urllib.parse
@@ -21,6 +23,8 @@ def parse_params(request):
 
 
 class MockResponse:
+    """Minimal response object used for byte-stream and CSV parsing tests."""
+
     def __init__(self, data):
         self.data = data if isinstance(data, bytes) else data.encode('utf-8')
         self.closed = False
@@ -33,6 +37,8 @@ class MockResponse:
 
 
 class TestSyncPrograms(unittest.TestCase):
+    """Tests program stream incremental boundaries and early-return behavior."""
+
     def setUp(self):
         self.client = Client("123-ABC-456", "id", "secret")
         self.client.token_expires = pendulum.utcnow().add(days=1)
@@ -532,6 +538,8 @@ class TestSyncPrograms(unittest.TestCase):
 
 
 class TestIterStream(unittest.TestCase):
+    """Validates IterStream buffering semantics across chunk boundaries."""
+
     def test_reads_single_chunk(self):
         chunks = iter([b'hello,world\n'])
         stream = IterStream(chunks)
@@ -565,6 +573,8 @@ class TestIterStream(unittest.TestCase):
 
 
 class TestStreamRows(unittest.TestCase):
+    """Ensures stream_rows decodes, sanitizes, and closes responses correctly."""
+
     def _make_mock_client(self, chunks):
         """Return a mock client whose stream_export yields the given byte chunks."""
         class MultiChunkResponse:
@@ -628,6 +638,8 @@ class TestStreamRows(unittest.TestCase):
 
 
 class TestResumableDownload(unittest.TestCase):
+    """Covers resumable download retry behavior for dropped connections."""
+
     class ByteResponse:
         """Yields its data one byte at a time, optionally dropping the
         connection once a given number of bytes have been emitted."""
@@ -745,6 +757,8 @@ class TestResumableDownload(unittest.TestCase):
 
 @freezegun.freeze_time("2017-02-15")
 class TestCreateExportWithQuotaBackoff(unittest.TestCase):
+    """Verifies window-shrinking logic when Marketo bulk quota is exceeded."""
+
     # export_start is well in the past so the full window isn't capped at "now".
     export_start = pendulum.parse("2017-01-01T00:00:00+00:00")
 

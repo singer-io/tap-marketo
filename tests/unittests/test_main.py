@@ -1,3 +1,5 @@
+"""Unit tests for tap_marketo main entrypoint and state validation wiring."""
+
 import unittest
 import runpy
 from unittest.mock import MagicMock, patch
@@ -6,6 +8,8 @@ import tap_marketo
 
 
 class TestMainModule(unittest.TestCase):
+    """Ensures CLI/main orchestration calls the expected internal flows."""
+
     @patch("tap_marketo.singer.write_state")
     def test_validate_state_sets_missing_bookmark(self, _write_state):
         config = {"start_date": "2024-01-01T00:00:00Z"}

@@ -9,14 +9,8 @@ import singer
 from singer import metadata
 from singer import bookmarks
 from singer import utils
-from tap_marketo.client import ExportFailed, ApiQuotaExceeded
+from tap_marketo.client import utcnow, ExportFailed, ApiQuotaExceeded
 
-
-def utcnow():
-    try:
-        return pendulum.utcnow()
-    except AttributeError:
-        return pendulum.now("UTC")
 
 # We can request up to 30 days worth of activities per export.
 MAX_EXPORT_DAYS = 30
@@ -133,8 +127,9 @@ def update_state_with_export_info(state, stream, bookmark=None, export_id=None, 
 
 def get_export_end(export_start, end_days=MAX_EXPORT_DAYS):
     export_end = export_start.add(days=end_days)
-    if export_end >= utcnow():
-        export_end = utcnow()
+    current_time = utcnow()
+    if export_end >= current_time:
+        export_end = current_time
 
     return export_end.replace(microsecond=0)
 

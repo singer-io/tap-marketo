@@ -1,3 +1,5 @@
+"""Unit tests for discovery helper functions and stream-specific builders."""
+
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -13,6 +15,8 @@ from tap_marketo.discover import (
 
 
 class TestDiscoverCoreHelpers(unittest.TestCase):
+    """Covers schema typing and replication metadata helper behavior."""
+
     def test_get_schema_for_type_variants(self):
         mdata = metadata.new()
 
@@ -56,6 +60,8 @@ class TestDiscoverCoreHelpers(unittest.TestCase):
 
 
 class TestDiscoverCoreStreams(unittest.TestCase):
+    """Validates stream-level discovery transformations and edge cases."""
+
     @patch("tap_marketo.discover.get_activity_type_stream")
     def test_discover_activities_maps_rows(self, mock_get_activity):
         mock_get_activity.side_effect = [{"tap_stream_id": "activities_a"}, {"tap_stream_id": "activities_b"}]

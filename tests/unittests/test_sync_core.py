@@ -1,3 +1,5 @@
+"""Unit tests for sync helper primitives and stream routing orchestration."""
+
 from types import SimpleNamespace
 import unittest
 from unittest.mock import MagicMock, patch
@@ -7,6 +9,8 @@ sync_module = importlib.import_module("tap_marketo.sync")
 
 
 class DummyCounter:
+    """Minimal stand-in for Singer counters used in sync routing tests."""
+
     def __init__(self):
         self.value = 0
 
@@ -15,6 +19,8 @@ class DummyCounter:
 
 
 class TestSyncHelpers(unittest.TestCase):
+    """Validates replication key resolution, formatting, and state helpers."""
+
     @patch("tap_marketo.sync.pendulum.now")
     @patch("tap_marketo.sync.pendulum.utcnow", side_effect=AttributeError("utcnow"))
     def test_utcnow_falls_back_to_pendulum_now(self, _mock_utcnow, mock_now):
@@ -123,6 +129,8 @@ class TestSyncHelpers(unittest.TestCase):
 
 
 class TestSyncRouting(unittest.TestCase):
+    """Covers sync stream-selection logic and per-stream dispatch behavior."""
+
     def _stream(self, tap_stream_id, selected=True):
         return {
             "tap_stream_id": tap_stream_id,

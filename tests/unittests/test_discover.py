@@ -1,3 +1,5 @@
+"""Unit tests for discover orchestration and catalog-building entry points."""
+
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -5,6 +7,8 @@ from tap_marketo.discover import discover, discover_catalog, discover_activities
 
 
 class TestDiscover(unittest.TestCase):
+    """Verifies discovery output shape and delegation behavior."""
+
     @patch("tap_marketo.discover.json.dump")
     @patch("tap_marketo.discover.discover_catalog")
     @patch("tap_marketo.discover.discover_activities")

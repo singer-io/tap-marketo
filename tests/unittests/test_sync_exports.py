@@ -1,3 +1,5 @@
+"""Unit tests for export creation/reuse and endpoint-specific sync branches."""
+
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -28,6 +30,8 @@ def _selected_field_metadata(*fields):
 
 
 class TestExportHelpers(unittest.TestCase):
+    """Tests helper behavior for creating, reusing, and waiting on exports."""
+
     @patch("tap_marketo.sync.update_state_with_export_info", side_effect=lambda state, stream: state)
     def test_wait_for_export_clears_state_on_failure(self, _update_state):
         client = MagicMock()
@@ -245,6 +249,8 @@ class TestExportHelpers(unittest.TestCase):
 
 
 class TestSyncEndpointBranches(unittest.TestCase):
+    """Validates lead/activity/paginated endpoint sync branch behavior."""
+
     @patch("tap_marketo.sync.singer.write_state")
     @patch("tap_marketo.sync.singer.write_schema")
     @patch("tap_marketo.sync.singer.write_record")
