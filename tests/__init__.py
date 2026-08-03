@@ -2,4 +2,7 @@ import pendulum
 
 
 if not hasattr(pendulum, "utcnow"):
-	pendulum.utcnow = lambda: pendulum.now("UTC")
+     def _utcnow():
+          return pendulum.now("UTC")
+
+     pendulum.utcnow = _utcnow
