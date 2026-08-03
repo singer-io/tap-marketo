@@ -31,6 +31,7 @@ class TestRequestTimeoutValue(unittest.TestCase):
 
 
     def test_no_request_timeout_in_config(self, mocked_get, mocked_prepare, mocked_send):
+        # Ensures default timeout is used when request_timeout is not provided.
         """
             Verify that if request_timeout is not provided in config then default value is used
         """
@@ -60,6 +61,7 @@ class TestRequestTimeoutValue(unittest.TestCase):
                                       timeout=300.0)
 
     def test_integer_request_timeout_in_config(self, mocked_get, mocked_prepare, mocked_send):
+        # Ensures integer timeout values are accepted and used in all HTTP paths.
         """
             Verify that if request_timeout is provided in config(integer value) then it should be use
         """
@@ -90,6 +92,7 @@ class TestRequestTimeoutValue(unittest.TestCase):
                                       timeout=100.0)
 
     def test_float_request_timeout_in_config(self, mocked_get, mocked_prepare, mocked_send):
+        # Ensures float timeout values are accepted and used in all HTTP paths.
         """
             Verify that if request_timeout is provided in config(float value) then it should be use
         """
@@ -120,6 +123,7 @@ class TestRequestTimeoutValue(unittest.TestCase):
                                       timeout=100.5)
 
     def test_string_request_timeout_in_config(self, mocked_get, mocked_prepare, mocked_send):
+        # Ensures numeric string timeout values are coerced and used correctly.
         """
             Verify that if request_timeout is provided in config(string value) then it should be use
         """
@@ -150,6 +154,7 @@ class TestRequestTimeoutValue(unittest.TestCase):
                                       timeout=100.0)
 
     def test_empty_string_request_timeout_in_config(self, mocked_get, mocked_prepare, mocked_send):
+        # Ensures empty string timeout values fall back to default timeout.
         """
             Verify that if request_timeout is provided in config with empty string then default value is used
         """
@@ -180,6 +185,7 @@ class TestRequestTimeoutValue(unittest.TestCase):
                                       timeout=300.0)
 
     def test_zero_request_timeout_in_config(self, mocked_get, mocked_prepare, mocked_send):
+        # Ensures numeric zero timeout is treated as invalid and reset to default.
         """
             Verify that if request_timeout is provided in config with zero value then default value is used
         """
@@ -210,6 +216,7 @@ class TestRequestTimeoutValue(unittest.TestCase):
                                       timeout=300.0)
 
     def test_zero_string_request_timeout_in_config(self, mocked_get, mocked_prepare, mocked_send):
+        # Ensures zero-like timeout strings are treated as invalid and reset to default.
         """
             Verify that if request_timeout is provided in config with zero in string format then default value is used
         """
@@ -242,11 +249,13 @@ class TestRequestTimeoutValue(unittest.TestCase):
 
 @mock.patch("time.sleep")
 class TestRequestTimeoutBackoff(unittest.TestCase):
+    # Validates timeout-triggered retry behavior in auth and request paths.
     """Validates timeout-triggered retry behavior for request functions."""
 
 
     @mock.patch("requests.get", side_effect = requests.exceptions.Timeout)
     def test_request_timeout_backoff_in_refresh_token(self, mocked_request, mocked_sleep):
+        # Verifies refresh_token retries the expected number of times on timeout.
         """
             Verify refresh_token function is backoff for 5 times on Timeout exceeption
         """
@@ -268,6 +277,7 @@ class TestRequestTimeoutBackoff(unittest.TestCase):
 
     @mock.patch('requests.Session.send', side_effect = requests.exceptions.Timeout)
     def test_request_timeout_backoff_in__request_function(self, mocked_send, mocked_sleep):
+        # Verifies _request retries the expected number of times on timeout.
         """
             Verify _request function is backoff for 5 times on Timeout exceeption
         """

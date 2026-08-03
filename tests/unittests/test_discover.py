@@ -14,6 +14,7 @@ class TestDiscover(unittest.TestCase):
     @patch("tap_marketo.discover.discover_activities")
     @patch("tap_marketo.discover.discover_leads")
     def test_discover_writes_catalog(self, mock_leads, mock_activities, mock_catalog, mock_dump):
+        # Verifies discover() composes streams and writes a complete catalog payload.
         mock_leads.return_value = {"tap_stream_id": "leads"}
         mock_activities.return_value = [{"tap_stream_id": "activities_visit_webpage"}]
         mock_catalog.side_effect = [
@@ -32,6 +33,7 @@ class TestDiscover(unittest.TestCase):
         self.assertEqual(6, len(payload["streams"]))
 
     def test_discover_activities_calls_client(self):
+        # Ensures activity type discovery requests and maps client results.
         client = MagicMock()
         client.request.return_value = {
             "result": [
@@ -45,6 +47,7 @@ class TestDiscover(unittest.TestCase):
         self.assertEqual("activities_visit_webpage", streams[0]["tap_stream_id"])
 
     def test_discover_leads_builds_metadata(self):
+        # Ensures lead field discovery builds schema properties and metadata.
         client = MagicMock()
         client.request.return_value = {
             "result": [
@@ -61,6 +64,7 @@ class TestDiscover(unittest.TestCase):
         self.assertIn("updatedAt", stream["schema"]["properties"])
 
     def test_discover_catalog_includes_metadata(self):
+        # Verifies static catalog discovery includes key properties and root metadata.
         stream = discover_catalog("campaigns", frozenset(["id", "createdAt", "updatedAt"]))
 
         self.assertEqual("campaigns", stream["tap_stream_id"])

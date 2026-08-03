@@ -22,12 +22,14 @@ class TestClient(unittest.TestCase):
         self.client = Client("123-ABC-789", "id", "secret")
 
     def test_extract_domain(self):
+        # Verifies domain extraction and invalid domain error handling.
         self.assertEqual("123-ABC-789", extract_domain("https://123-ABC-789.mktorest.com/rest"))
         with self.assertRaises(ValueError):
             extract_domain("notadomain")
 
     @freezegun.freeze_time("2017-01-01")
     def test_refresh_token(self):
+        # Ensures successful token refresh stores token and adjusted expiry timestamp.
         with requests_mock.Mocker(real_http=True) as mock:
             mock.register_uri("GET", self.client.get_url("identity/oauth/token"), json={"access_token": "token", "expires_in": 1800})
             self.client.refresh_token()
@@ -37,12 +39,14 @@ class TestClient(unittest.TestCase):
         self.assertEqual(expires, self.client.token_expires)
 
     def test_refresh_token_error_not_2xx(self):
+        # Ensures non-2xx auth responses raise ApiException.
         with requests_mock.Mocker(real_http=True) as mock:
             mock.register_uri("GET", self.client.get_url("identity/oauth/token"), status_code=404)
             with self.assertRaises(ApiException):
                 self.client.refresh_token()
 
     def test_refresh_token_error_raises_exception(self):
+        # Ensures error payloads in auth responses raise ApiException.
         with requests_mock.Mocker(real_http=True) as mock:
             mock.register_uri("GET", self.client.get_url("identity/oauth/token"), json={"error": "oops"})
             with self.assertRaises(ApiException):
@@ -64,6 +68,7 @@ class TestClient(unittest.TestCase):
         self.assertEqual("token", self.client.access_token)
 
     def test_update_calls_today(self):
+        # Verifies daily usage totals are read and persisted to calls_today.
         self.client.token_expires = pendulum.utcnow().add(days=1)
         with requests_mock.Mocker(real_http=True) as mock:
             mock.register_uri("GET", self.client.get_url("rest/v1/stats/usage.json"), json={"result": [{"total": 200}]})
@@ -119,6 +124,7 @@ class TestClient(unittest.TestCase):
 
 
 class TestExports(unittest.TestCase):
+    # Covers export creation/polling/streaming error and success paths.
     """Covers bulk export lifecycle polling and file streaming behavior."""
 
     def setUp(self):
@@ -127,6 +133,7 @@ class TestExports(unittest.TestCase):
         self.client.calls_today = 1
 
     def test_export_enqueued(self):
+        # Verifies wait_for_export enqueues and eventually completes a job.
         export_id = "123"
         self.client.poll_interval = 0
         self.client.poll_export = unittest.mock.MagicMock(side_effect=["Created", "Completed"])
@@ -136,6 +143,7 @@ class TestExports(unittest.TestCase):
         self.client.enqueue_export.assert_called_once_with("test", export_id)
 
     def test_api_exception(self):
+        # Ensures API exceptions during polling are re-raised by wait_for_export.
         export_id = "123"
         self.client.poll_interval = 0
         self.client.poll_export = unittest.mock.MagicMock(side_effect=ApiException("Oh no!"))
@@ -144,6 +152,7 @@ class TestExports(unittest.TestCase):
             self.client.wait_for_export("test", export_id)
 
     def test_export_timed_out(self):
+        # Ensures wait_for_export raises ExportFailed when timeout is exceeded.
         export_id = "123"
         self.client.poll_interval = 0
         self.client.job_timeout = 0
@@ -153,6 +162,7 @@ class TestExports(unittest.TestCase):
             self.client.wait_for_export("test", export_id)
 
     def test_export_failed(self):
+        # Ensures failed export statuses raise ExportFailed.
         export_id = "123"
         self.client.poll_interval = 0
         self.client.poll_export = unittest.mock.MagicMock(side_effect=["Failed"])
@@ -164,6 +174,7 @@ class TestExports(unittest.TestCase):
         return self.client.get_url(self.client.get_bulk_endpoint("leads", "file", export_id))
 
     def test_stream_export_returns_streaming_response_for_csv(self):
+        # Verifies CSV export responses are returned as streaming content.
         self.client.access_token = "token"
         with requests_mock.Mocker(real_http=True) as mock:
             mock.register_uri("GET", self._file_url(), content=b"id,name\n1,Alice\n",
