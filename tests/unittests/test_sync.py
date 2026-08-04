@@ -48,7 +48,7 @@ class TestSyncPrograms(unittest.TestCase):
     @unittest.mock.patch("singer.write_schema")
     @unittest.mock.patch("singer.write_state")
     def test_future_bookmark_returns_early_without_request(self, write_state, write_schema):
-        # Ensures future bookmarks short-circuit program sync without API requests.
+        """Ensures future bookmarks short-circuit program sync without API requests."""
         # Bookmark is in the future — should return immediately with 0 records
         # and not call the Marketo API to avoid the 701 "End date should always
         # be after start date" error.
@@ -67,7 +67,7 @@ class TestSyncPrograms(unittest.TestCase):
     @unittest.mock.patch("singer.write_state")
     @freezegun.freeze_time("2017-01-15")
     def test_past_bookmark_syncs_records(self, write_state, write_schema, write_record):
-        # Ensures past bookmarks trigger program sync and bookmark advancement.
+        """Ensures past bookmarks trigger program sync and bookmark advancement."""
         # Bookmark is in the past — should request from Marketo and return records.
         state = {"bookmarks": {"programs": {"updatedAt": "2017-01-01T00:00:00+00:00"}}}
 
@@ -543,21 +543,21 @@ class TestIterStream(unittest.TestCase):
     """Validates IterStream buffering semantics across chunk boundaries."""
 
     def test_reads_single_chunk(self):
-        # Verifies IterStream returns a single chunk unchanged.
+        """Verifies IterStream returns a single chunk unchanged."""
         chunks = iter([b'hello,world\n'])
         stream = IterStream(chunks)
         result = stream.read()
         self.assertEqual(b'hello,world\n', result)
 
     def test_reads_across_multiple_chunks(self):
-        # Verifies IterStream concatenates multiple chunks in order.
+        """Verifies IterStream concatenates multiple chunks in order."""
         chunks = iter([b'hel', b'lo,', b'wor', b'ld\n'])
         stream = IterStream(chunks)
         result = stream.read()
         self.assertEqual(b'hello,world\n', result)
 
     def test_leftover_bytes_carried_forward(self):
-        # Ensures readinto preserves and serves leftover bytes across calls.
+        """Ensures readinto preserves and serves leftover bytes across calls."""
         # readinto buf is smaller than the chunk — leftover must be preserved
         chunks = iter([b'abcdef'])
         stream = IterStream(chunks)
@@ -571,7 +571,7 @@ class TestIterStream(unittest.TestCase):
         self.assertEqual(b'ef', bytes(buf2[:n2]))
 
     def test_returns_zero_on_exhausted_iterator(self):
-        # Ensures readinto returns 0 when no data remains.
+        """Ensures readinto returns 0 when no data remains."""
         chunks = iter([])
         stream = IterStream(chunks)
         buf = bytearray(4)
@@ -598,35 +598,35 @@ class TestStreamRows(unittest.TestCase):
         return client, resp
 
     def test_basic_csv_parsing(self):
-        # Verifies stream_rows parses basic CSV into dictionaries.
+        """Verifies stream_rows parses basic CSV into dictionaries."""
         data = b'id,name\n1,Alice\n2,Bob\n'
         client, _ = self._make_mock_client([data])
         rows = list(stream_rows(client, 'leads', 'export-1'))
         self.assertEqual([{'id': '1', 'name': 'Alice'}, {'id': '2', 'name': 'Bob'}], rows)
 
     def test_cr_stripped(self):
-        # Verifies carriage returns are removed during CSV parsing.
+        """Verifies carriage returns are removed during CSV parsing."""
         data = b'id,name\r\n1,Alice\r\n'
         client, _ = self._make_mock_client([data])
         rows = list(stream_rows(client, 'leads', 'export-1'))
         self.assertEqual([{'id': '1', 'name': 'Alice'}], rows)
 
     def test_null_bytes_stripped(self):
-        # Verifies embedded null bytes are removed before parsing rows.
+        """Verifies embedded null bytes are removed before parsing rows."""
         data = b'id,name\n1,Ali\x00ce\n'
         client, _ = self._make_mock_client([data])
         rows = list(stream_rows(client, 'leads', 'export-1'))
         self.assertEqual([{'id': '1', 'name': 'Alice'}], rows)
 
     def test_response_closed_after_iteration(self):
-        # Ensures response objects are closed after successful iteration.
+        """Ensures response objects are closed after successful iteration."""
         data = b'id\n1\n'
         client, resp = self._make_mock_client([data])
         list(stream_rows(client, 'leads', 'export-1'))
         self.assertTrue(resp.closed)
 
     def test_response_closed_on_exception(self):
-        # Ensures response objects are closed even when parsing raises.
+        """Ensures response objects are closed even when parsing raises."""
         # Even if iteration raises, resp.close() must still be called.
         # An empty chunk produces no headers; next(reader) raises StopIteration,
         # which Python 3.7+ (PEP 479) converts to RuntimeError inside a generator.
@@ -638,7 +638,7 @@ class TestStreamRows(unittest.TestCase):
         self.assertTrue(resp.closed)
 
     def test_multibyte_utf8_split_across_chunks(self):
-        # Verifies multibyte UTF-8 characters survive chunk boundary splits.
+        """Verifies multibyte UTF-8 characters survive chunk boundary splits."""
         # 'café' encoded as UTF-8: b'caf\xc3\xa9' (\xc3\xa9 is a 2-byte sequence).
         # Split the chunk boundary between the two bytes of the multi-byte character.
         row = 'id,name\n1,café\n'.encode('utf-8')
@@ -676,7 +676,7 @@ class TestResumableDownload(unittest.TestCase):
         return client
 
     def test_resumes_from_byte_offset_after_drop(self):
-        # Verifies downloads resume from the exact byte offset after a drop.
+        """Verifies downloads resume from the exact byte offset after a drop."""
         full = b'id,name\n1,Alice\n2,Bob\n'
         split = full.index(b'2,Bob')  # drop right at the start of the 2nd data row
         client = self._client([
@@ -692,7 +692,7 @@ class TestResumableDownload(unittest.TestCase):
         self.assertEqual(2, client.stream_export.call_count)
 
     def test_resumes_multiple_times(self):
-        # Verifies repeated drops are handled with progressive resume offsets.
+        """Verifies repeated drops are handled with progressive resume offsets."""
         full = b'id,n\n1,a\n2,b\n3,c\n'
         client = self._client([
             self.ByteResponse(full, fail_after=8),
@@ -708,7 +708,7 @@ class TestResumableDownload(unittest.TestCase):
                          [c.kwargs['start_byte'] for c in client.stream_export.call_args_list])
 
     def test_all_responses_closed(self):
-        # Ensures all response objects are closed across resumed attempts.
+        """Ensures all response objects are closed across resumed attempts."""
         full = b'id\n1\n2\n'
         responses = [self.ByteResponse(full, fail_after=4), self.ByteResponse(full[4:])]
         client = self._client(responses)
@@ -716,7 +716,7 @@ class TestResumableDownload(unittest.TestCase):
         self.assertTrue(all(r.closed for r in responses))
 
     def test_gives_up_after_repeated_zero_progress_resumes(self):
-        # Verifies repeated zero-progress resumes eventually raise the connection error.
+        """Verifies repeated zero-progress resumes eventually raise the connection error."""
         # A connection that drops before yielding any bytes can't make progress;
         # after MAX_EMPTY_RESUMES retries we surface the error instead of looping.
         responses = [self.ByteResponse(b'id\n1\n', fail_after=0)
@@ -727,7 +727,7 @@ class TestResumableDownload(unittest.TestCase):
         self.assertEqual(MAX_EMPTY_RESUMES + 1, client.stream_export.call_count)
 
     def test_resumes_on_broken_pipe_error(self):
-        # Verifies resume behavior also handles BrokenPipeError interruptions.
+        """Verifies resume behavior also handles BrokenPipeError interruptions."""
         full = b'id,name\n1,Alice\n2,Bob\n'
         split = full.index(b'2,Bob')
         client = self._client([
@@ -742,7 +742,7 @@ class TestResumableDownload(unittest.TestCase):
         self.assertEqual(2, client.stream_export.call_count)
 
     def test_gives_up_after_repeated_zero_progress_broken_pipe(self):
-        # Verifies repeated zero-progress BrokenPipeError retries eventually fail.
+        """Verifies repeated zero-progress BrokenPipeError retries eventually fail."""
         responses = [self.ByteResponse(b'id\n1\n', fail_after=0, exc_class=BrokenPipeError)
                      for _ in range(MAX_EMPTY_RESUMES + 5)]
         client = self._client(responses)
@@ -751,7 +751,7 @@ class TestResumableDownload(unittest.TestCase):
         self.assertEqual(MAX_EMPTY_RESUMES + 1, client.stream_export.call_count)
 
     def test_resumes_on_protocol_error(self):
-        # Verifies resume behavior also handles ProtocolError interruptions.
+        """Verifies resume behavior also handles ProtocolError interruptions."""
         full = b'id,name\n1,Alice\n2,Bob\n'
         split = full.index(b'2,Bob')
         client = self._client([
@@ -766,7 +766,7 @@ class TestResumableDownload(unittest.TestCase):
         self.assertEqual(2, client.stream_export.call_count)
 
     def test_gives_up_after_repeated_zero_progress_protocol_error(self):
-        # Verifies repeated zero-progress ProtocolError retries eventually fail.
+        """Verifies repeated zero-progress ProtocolError retries eventually fail."""
         responses = [self.ByteResponse(b'id\n1\n', fail_after=0, exc_class=ProtocolError)
                      for _ in range(MAX_EMPTY_RESUMES + 5)]
         client = self._client(responses)
@@ -777,7 +777,6 @@ class TestResumableDownload(unittest.TestCase):
 
 @freezegun.freeze_time("2017-02-15")
 class TestCreateExportWithQuotaBackoff(unittest.TestCase):
-    # Validates quota-driven export window shrinking and retry termination.
     """Verifies window-shrinking logic when Marketo bulk quota is exceeded."""
 
     # export_start is well in the past so the full window isn't capped at "now".
@@ -787,7 +786,7 @@ class TestCreateExportWithQuotaBackoff(unittest.TestCase):
         return (export_end - self.export_start).in_days()
 
     def test_succeeds_on_first_try_uses_full_window(self):
-        # Ensures successful first attempt keeps the full requested export window.
+        """Ensures successful first attempt keeps the full requested export window."""
         calls = []
 
         def create(export_end):
@@ -803,7 +802,7 @@ class TestCreateExportWithQuotaBackoff(unittest.TestCase):
 
     @unittest.mock.patch("singer.log_warning")
     def test_halves_window_until_it_fits(self, _log_warning):
-        # Verifies quota errors trigger halving until an acceptable window is found.
+        """Verifies quota errors trigger halving until an acceptable window is found."""
         calls = []
 
         def create(export_end):
@@ -823,7 +822,7 @@ class TestCreateExportWithQuotaBackoff(unittest.TestCase):
 
     @unittest.mock.patch("singer.log_warning")
     def test_reraises_when_minimum_window_still_exceeds_quota(self, _log_warning):
-        # Verifies retries stop at minimum window and re-raise when still over quota.
+        """Verifies retries stop at minimum window and re-raise when still over quota."""
         calls = []
 
         def create(export_end):
@@ -839,7 +838,7 @@ class TestCreateExportWithQuotaBackoff(unittest.TestCase):
 
     @unittest.mock.patch("singer.log_warning")
     def test_does_not_shrink_below_minimum_for_small_window(self, _log_warning):
-        # Verifies already-small windows fail immediately without shrinking below minimum.
+        """Verifies already-small windows fail immediately without shrinking below minimum."""
         # A naturally small window (capped near "now") that still fails should
         # raise immediately rather than retry below the floor.
         small_start = pendulum.parse("2017-02-14T00:00:00+00:00")  # ~1 day before now

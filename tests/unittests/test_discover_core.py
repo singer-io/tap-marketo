@@ -18,7 +18,7 @@ class TestDiscoverCoreHelpers(unittest.TestCase):
     """Covers schema typing and replication metadata helper behavior."""
 
     def test_get_schema_for_type_variants(self):
-        # Verifies schema/type mapping across datetime, scalar, array, and fallback types.
+        """Verifies schema/type mapping across datetime, scalar, array, and fallback types."""
         mdata = metadata.new()
 
         dt_schema, mdata = get_schema_for_type("datetime", ("properties", "dt"), mdata, null=False)
@@ -36,7 +36,7 @@ class TestDiscoverCoreHelpers(unittest.TestCase):
         self.assertEqual("array", arr_schema["type"][0])
 
     def test_set_replication_metadata_full_table_and_incremental(self):
-        # Verifies replication metadata differs correctly for full-table vs incremental streams.
+        """Verifies replication metadata differs correctly for full-table vs incremental streams."""
         full = set_replication_metadata(metadata.new(), None)
         full_map = metadata.to_map(metadata.to_list(full))
         self.assertEqual("FULL_TABLE", full_map[()]["forced-replication-method"])
@@ -47,7 +47,7 @@ class TestDiscoverCoreHelpers(unittest.TestCase):
         self.assertEqual("updatedAt", inc_map[()]["valid-replication-keys"])
 
     def test_get_activity_type_stream(self):
-        # Ensures activity type rows are converted into normalized stream schemas.
+        """Ensures activity type rows are converted into normalized stream schemas."""
         activity = {
             "id": 101,
             "name": "Visit Webpage",
@@ -63,12 +63,11 @@ class TestDiscoverCoreHelpers(unittest.TestCase):
 
 
 class TestDiscoverCoreStreams(unittest.TestCase):
-    # Validates stream-level discovery transformations and unsupported type handling.
     """Validates stream-level discovery transformations and edge cases."""
 
     @patch("tap_marketo.discover.get_activity_type_stream")
     def test_discover_activities_maps_rows(self, mock_get_activity):
-        # Verifies discover_activities maps each API row through stream-builder helper.
+        """Verifies discover_activities maps each API row through stream-builder helper."""
         mock_get_activity.side_effect = [{"tap_stream_id": "activities_a"}, {"tap_stream_id": "activities_b"}]
         client = MagicMock()
         client.request.return_value = {"result": [{"id": 1}, {"id": 2}]}
@@ -79,7 +78,7 @@ class TestDiscoverCoreStreams(unittest.TestCase):
     @patch("tap_marketo.discover.singer.log_debug")
     @patch("tap_marketo.discover.get_schema_for_type")
     def test_discover_leads_handles_unsupported_schema(self, mock_get_schema, log_debug):
-        # Ensures unsupported lead field types are skipped with an explanatory debug log.
+        """Ensures unsupported lead field types are skipped with an explanatory debug log."""
         mock_get_schema.return_value = (None, metadata.new())
         client = MagicMock()
         client.request.return_value = {

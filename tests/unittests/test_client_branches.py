@@ -21,7 +21,7 @@ class TestClientBranches(unittest.TestCase):
     @patch("tap_marketo.client.pendulum.now")
     @patch("tap_marketo.client.pendulum.utcnow", side_effect=AttributeError("utcnow"))
     def test_utcnow_falls_back_to_pendulum_now(self, _mock_utcnow, mock_now):
-        # Confirms utcnow compatibility fallback uses pendulum.now("UTC").
+        """Confirms utcnow compatibility fallback uses pendulum.now("UTC")."""
         from tap_marketo.client import utcnow
 
         sentinel = object()
@@ -31,7 +31,7 @@ class TestClientBranches(unittest.TestCase):
         mock_now.assert_called_once_with("UTC")
 
     def test_raise_for_rate_limit_api_quota(self):
-        # Verifies API quota limit payloads raise ApiQuotaExceeded.
+        """Verifies API quota limit payloads raise ApiQuotaExceeded."""
         data = {"errors": [{"code": "1029", "message": "quota"}]}
         with self.assertRaises(ApiQuotaExceeded) as ctx:
             raise_for_rate_limit(data)
@@ -39,7 +39,7 @@ class TestClientBranches(unittest.TestCase):
 
     @patch("tap_marketo.client.singer.log_warning")
     def test_raise_for_rate_limit_short_term(self, log_warning):
-        # Verifies short-term quota payloads raise and emit one warning log.
+        """Verifies short-term quota payloads raise and emit one warning log."""
         data = {"errors": [{"code": "606", "message": "short"}]}
         with self.assertRaises(ShortTermQuotaExceeded) as ctx:
             raise_for_rate_limit(data)
@@ -47,7 +47,7 @@ class TestClientBranches(unittest.TestCase):
         log_warning.assert_called_once()
 
     def test_request_returns_empty_dict_for_empty_content(self):
-        # Ensures empty response content is normalized to an empty dictionary.
+        """Ensures empty response content is normalized to an empty dictionary."""
         client = Client("123-ABC-789", "id", "secret")
         client.calls_today = 1
         client.token_expires = object()
@@ -61,7 +61,7 @@ class TestClientBranches(unittest.TestCase):
         self.assertEqual({}, result)
 
     def test_request_stream_mode_raises_on_non_200_206(self):
-        # Ensures streaming mode rejects non-200/206 statuses with ApiException.
+        """Ensures streaming mode rejects non-200/206 statuses with ApiException."""
         client = Client("123-ABC-789", "id", "secret")
         client.calls_today = 1
         client.token_expires = object()
@@ -75,7 +75,7 @@ class TestClientBranches(unittest.TestCase):
                 client.request("GET", "rest/v1/foo.json", stream=True)
 
     def test_refresh_token_unauthorized_error_message(self):
-        # Validates auth failures include a clear authorization error message.
+        """Validates auth failures include a clear authorization error message."""
         client = Client("123-ABC-789", "id", "secret")
         mock_resp = Mock(status_code=200)
         mock_resp.json.return_value = {"error": "unauthorized", "error_description": "bad creds"}
@@ -87,7 +87,7 @@ class TestClientBranches(unittest.TestCase):
         self.assertIn("Authorization failed", str(err.exception))
 
     def test_refresh_token_connection_error_raises_api_exception(self):
-        # Confirms connection errors during token refresh are wrapped as ApiException.
+        """Confirms connection errors during token refresh are wrapped as ApiException."""
         client = Client("123-ABC-789", "id", "secret")
 
         with patch("tap_marketo.client.requests.get", side_effect=requests.exceptions.ConnectionError("down")):
@@ -95,7 +95,7 @@ class TestClientBranches(unittest.TestCase):
                 Client.refresh_token.__wrapped__(client)
 
     def test_update_calls_today_missing_result_raises(self):
-        # Ensures update_calls_today raises when expected result keys are missing.
+        """Ensures update_calls_today raises when expected result keys are missing."""
         client = Client("123-ABC-789", "id", "secret")
         with patch.object(client, "_request") as mock_request:
             mock_request.return_value.json.return_value = {"success": True}
@@ -103,7 +103,7 @@ class TestClientBranches(unittest.TestCase):
                 client.update_calls_today()
 
     def test_request_raises_on_unsuccessful_payload(self):
-        # Verifies unsuccessful API payloads are surfaced as ApiException.
+        """Verifies unsuccessful API payloads are surfaced as ApiException."""
         client = Client("123-ABC-789", "id", "secret")
         client.calls_today = 1
         client.token_expires = object()
@@ -120,7 +120,7 @@ class TestClientBranches(unittest.TestCase):
                 client.request("GET", "rest/v1/foo.json")
 
     def test_create_enqueue_cancel_and_status_wrappers(self):
-        # Verifies export wrapper methods delegate correctly through client.request.
+        """Verifies export wrapper methods delegate correctly through client.request."""
         client = Client("123-ABC-789", "id", "secret")
 
         with patch.object(client, "request") as mock_request:
@@ -136,7 +136,7 @@ class TestClientBranches(unittest.TestCase):
             self.assertEqual("Completed", client.poll_export("leads", "exp-1"))
 
     def test_get_existing_exports_and_export_available_paths(self):
-        # Covers existing-export parsing and export_available true/false branches.
+        """Covers existing-export parsing and export_available true/false branches."""
         client = Client("123-ABC-789", "id", "secret")
 
         with patch.object(client, "request", return_value={"result": [{"exportId": "exp-1", "status": "Completed"}]}) as mock_request:
@@ -155,7 +155,7 @@ class TestClientBranches(unittest.TestCase):
             self.assertFalse(client.export_available("leads", "exp-missing"))
 
     def test_export_file_exists_paths(self):
-        # Validates export file existence behavior across queued/404/500 cases.
+        """Validates export file existence behavior across queued/404/500 cases."""
         client = Client("123-ABC-789", "id", "secret")
 
         self.assertTrue(client.export_file_exists("leads", "exp-1", {"exp-1": {"status": "Queued"}}))
@@ -177,7 +177,7 @@ class TestClientBranches(unittest.TestCase):
                 client.export_file_exists("leads", "exp-1", {"exp-1": {"status": "Completed"}})
 
     def test_stream_export_resume_headers(self):
-        # Ensures resumable download requests send the correct HTTP Range header.
+        """Ensures resumable download requests send the correct HTTP Range header."""
         client = Client("123-ABC-789", "id", "secret")
         response = Mock()
         response.headers = {"Content-Type": "text/csv"}

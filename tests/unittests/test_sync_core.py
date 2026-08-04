@@ -24,7 +24,7 @@ class TestSyncHelpers(unittest.TestCase):
     @patch("tap_marketo.sync.pendulum.now")
     @patch("tap_marketo.sync.pendulum.utcnow", side_effect=AttributeError("utcnow"))
     def test_utcnow_falls_back_to_pendulum_now(self, _mock_utcnow, mock_now):
-        # Confirms sync.utcnow falls back to pendulum.now("UTC") when needed.
+        """Confirms sync.utcnow falls back to pendulum.now("UTC") when needed."""
         sentinel = object()
         mock_now.return_value = sentinel
 
@@ -32,7 +32,7 @@ class TestSyncHelpers(unittest.TestCase):
         mock_now.assert_called_once_with("UTC")
 
     def test_determine_replication_key(self):
-        # Verifies replication key selection for activity, incremental, and full-table streams.
+        """Verifies replication key selection for activity, incremental, and full-table streams."""
         self.assertEqual("activityDate", sync_module.determine_replication_key("activities_open_email"))
         self.assertEqual("updatedAt", sync_module.determine_replication_key("leads"))
         self.assertEqual("updatedAt", sync_module.determine_replication_key("lists"))
@@ -42,7 +42,7 @@ class TestSyncHelpers(unittest.TestCase):
 
     @patch("tap_marketo.sync.singer.log_warning")
     def test_format_value_paths(self, _log_warning):
-        # Covers type coercion and date-time formatting for diverse schema types.
+        """Covers type coercion and date-time formatting for diverse schema types."""
         self.assertIsNone(sync_module.format_value("", {"type": "string"}))
         self.assertEqual("2024-01-01T00:00:00+00:00", sync_module.format_value("2024-01-01T00:00:00Z", {"type": "string", "format": "date-time"}))
         self.assertEqual(10, sync_module.format_value("10.5", {"type": "integer"}))
@@ -53,7 +53,7 @@ class TestSyncHelpers(unittest.TestCase):
         self.assertEqual("raw", sync_module.format_value("raw", {"type": ["object", "null"]}))
 
     def test_get_available_fields_and_format_values(self):
-        # Ensures selected/automatic fields are emitted and non-selected fields are skipped.
+        """Ensures selected/automatic fields are emitted and non-selected fields are skipped."""
         stream = {
             "metadata": [
                 {"breadcrumb": [], "metadata": {}},
@@ -82,7 +82,7 @@ class TestSyncHelpers(unittest.TestCase):
 
     @patch("tap_marketo.sync.singer.write_state")
     def test_update_state_with_export_info(self, _write_state):
-        # Validates export state bookkeeping persists export id/end and replication key.
+        """Validates export state bookkeeping persists export id/end and replication key."""
         state = {"bookmarks": {}}
         stream = {"tap_stream_id": "leads"}
 
@@ -100,7 +100,7 @@ class TestSyncHelpers(unittest.TestCase):
         self.assertEqual("2024-01-02T00:00:00Z", lead_bookmarks["updatedAt"])
 
     def test_flatten_activity(self):
-        # Verifies activity payload flattening including attributes and primary fields.
+        """Verifies activity payload flattening including attributes and primary fields."""
         row = {
             "marketoGUID": "g",
             "leadId": 1,
@@ -120,7 +120,7 @@ class TestSyncHelpers(unittest.TestCase):
         self.assertEqual("127.0.0.1", flattened["client_ip_address"])
 
     def test_catalog_object_not_supported(self):
-        # Ensures unsupported catalog object shapes raise a clear TypeError.
+        """Ensures unsupported catalog object shapes raise a clear TypeError."""
         client = SimpleNamespace(use_corona=True)
         state = {"bookmarks": {"campaigns": {"updatedAt": "2023-01-01T00:00:00Z"}}}
         stream_obj = SimpleNamespace(
@@ -136,7 +136,6 @@ class TestSyncHelpers(unittest.TestCase):
 
 
 class TestSyncRouting(unittest.TestCase):
-    # Exercises stream selection, skip logic, and routing dispatch in sync().
     """Covers sync stream-selection logic and per-stream dispatch behavior."""
 
     def _stream(self, tap_stream_id, selected=True):
@@ -152,7 +151,7 @@ class TestSyncRouting(unittest.TestCase):
     @patch("tap_marketo.sync.sync_paginated", return_value=({"bookmarks": {}}, 2))
     @patch("tap_marketo.sync.sync_leads", return_value=({"bookmarks": {}}, 1))
     def test_sync_skips_until_currently_syncing(self, _sync_leads, _sync_paginated, _counter, _write_state):
-        # Verifies sync resumes from currently_syncing and skips earlier streams.
+        """Verifies sync resumes from currently_syncing and skips earlier streams."""
         client = SimpleNamespace(use_corona=True)
         state = {"currently_syncing": "campaigns", "bookmarks": {}}
         catalog = {
@@ -172,7 +171,7 @@ class TestSyncRouting(unittest.TestCase):
     @patch("tap_marketo.sync.singer.metrics.record_counter", return_value=DummyCounter())
     @patch("tap_marketo.sync.sync_leads", return_value=({"bookmarks": {}}, 1))
     def test_sync_logs_corona_warning_for_leads_without_corona(self, _sync_leads, _counter, _write_state, log_warning):
-        # Ensures a warning is logged when leads sync runs without Corona support.
+        """Ensures a warning is logged when leads sync runs without Corona support."""
         client = SimpleNamespace(use_corona=False)
         state = {"bookmarks": {}}
         catalog = {"streams": [self._stream("leads", selected=True)]}
@@ -183,7 +182,7 @@ class TestSyncRouting(unittest.TestCase):
 
     @patch("tap_marketo.sync.singer.write_state")
     def test_sync_raises_for_unimplemented_stream(self, _write_state):
-        # Ensures unknown selected streams fail fast with an exception.
+        """Ensures unknown selected streams fail fast with an exception."""
         client = SimpleNamespace(use_corona=True)
         state = {"bookmarks": {}}
         catalog = {"streams": [self._stream("not_implemented", selected=True)]}
@@ -193,7 +192,7 @@ class TestSyncRouting(unittest.TestCase):
 
     @patch("tap_marketo.sync.singer.log_info")
     def test_sync_logs_and_skips_unselected_stream(self, log_info):
-        # Verifies unselected streams are logged and skipped without syncing.
+        """Verifies unselected streams are logged and skipped without syncing."""
         client = SimpleNamespace(use_corona=True)
         state = {"bookmarks": {}}
         catalog = {"streams": [self._stream("campaigns", selected=False)]}
@@ -214,7 +213,7 @@ class TestSyncRouting(unittest.TestCase):
             mock_sync_programs,
             _counter,
             _write_state):
-        # Verifies sync routes activity_types, activities, and programs to their handlers.
+        """Verifies sync routes activity_types, activities, and programs to their handlers."""
         client = SimpleNamespace(use_corona=True)
         state = {"bookmarks": {"activities_open_email": {"activityDate": "2023-01-01T00:00:00Z"}}}
         catalog = {
