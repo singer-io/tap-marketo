@@ -192,3 +192,27 @@ class TestExports(unittest.TestCase):
             resp = self.client.stream_export("leads", "exp-1")
             self.assertEqual(b"id,name\n1,Alice\n", resp.content)
             self.assertEqual(2, mock.call_count)
+
+    @unittest.mock.patch("time.sleep")
+    def test_stream_export_retries_on_615_concurrent_access_limit(self, _sleep):
+        # A 615 envelope (concurrent access limit reached) should raise
+        # ConcurrentAccessLimitError and be retried by the backoff decorator.
+        self.client.access_token = "token"
+        with requests_mock.Mocker(real_http=True) as mock:
+            mock.register_uri("GET", self._file_url(), [
+                {"json": {"requestId": "x", "success": False,
+                          "errors": [{"code": "615", "message": "Concurrent access limit '10' reached"}]},
+                 "headers": {"Content-Type": "application/json"}},
+                {"content": b"id,name\n1,Alice\n",
+                 "headers": {"Content-Type": "text/csv"}},
+            ])
+            resp = self.client.stream_export("leads", "exp-1")
+            self.assertEqual(b"id,name\n1,Alice\n", resp.content)
+            self.assertEqual(2, mock.call_count)
+
+    @unittest.mock.patch("time.sleep")
+    def test_raise_for_rate_limit_raises_concurrent_access_limit_error(self, _sleep):
+        # Ensure raise_for_rate_limit raises ConcurrentAccessLimitError for code 615.
+        data = {"errors": [{"code": "615", "message": "Concurrent access limit '10' reached"}]}
+        with self.assertRaises(ConcurrentAccessLimitError):
+            raise_for_rate_limit(data)

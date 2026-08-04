@@ -1,5 +1,9 @@
 # Changelog
 
+# 2.9.5
+  * Add exponential backoff delay before reconnecting resumed bulk export downloads to prevent hitting Marketo's concurrent access limit (error 615) [#118](https://github.com/singer-io/tap-marketo/pull/118)
+  * Handle Marketo error 615 (concurrent access limit) as a retryable error in stream_export with exponential backoff [#118](https://github.com/singer-io/tap-marketo/pull/118)
+
 # 2.9.4
   * Added retry for brokenpipe [#117](https://github.com/singer-io/tap-marketo/pull/116)
 

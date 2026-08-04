@@ -651,7 +651,8 @@ class TestResumableDownload(unittest.TestCase):
         client.stream_export.side_effect = responses
         return client
 
-    def test_resumes_from_byte_offset_after_drop(self):
+    @unittest.mock.patch('tap_marketo.sync.time.sleep')
+    def test_resumes_from_byte_offset_after_drop(self, _sleep):
         full = b'id,name\n1,Alice\n2,Bob\n'
         split = full.index(b'2,Bob')  # drop right at the start of the 2nd data row
         client = self._client([
@@ -666,7 +667,8 @@ class TestResumableDownload(unittest.TestCase):
         self.assertEqual(split, client.stream_export.call_args_list[1].kwargs['start_byte'])
         self.assertEqual(2, client.stream_export.call_count)
 
-    def test_resumes_multiple_times(self):
+    @unittest.mock.patch('tap_marketo.sync.time.sleep')
+    def test_resumes_multiple_times(self, _sleep):
         full = b'id,n\n1,a\n2,b\n3,c\n'
         client = self._client([
             self.ByteResponse(full, fail_after=8),
@@ -681,14 +683,16 @@ class TestResumableDownload(unittest.TestCase):
         self.assertEqual([0, 8, 12],
                          [c.kwargs['start_byte'] for c in client.stream_export.call_args_list])
 
-    def test_all_responses_closed(self):
+    @unittest.mock.patch('tap_marketo.sync.time.sleep')
+    def test_all_responses_closed(self, _sleep):
         full = b'id\n1\n2\n'
         responses = [self.ByteResponse(full, fail_after=4), self.ByteResponse(full[4:])]
         client = self._client(responses)
         list(stream_rows(client, 'leads', 'export-1'))
         self.assertTrue(all(r.closed for r in responses))
 
-    def test_gives_up_after_repeated_zero_progress_resumes(self):
+    @unittest.mock.patch('tap_marketo.sync.time.sleep')
+    def test_gives_up_after_repeated_zero_progress_resumes(self, _sleep):
         # A connection that drops before yielding any bytes can't make progress;
         # after MAX_EMPTY_RESUMES retries we surface the error instead of looping.
         responses = [self.ByteResponse(b'id\n1\n', fail_after=0)
@@ -698,7 +702,8 @@ class TestResumableDownload(unittest.TestCase):
             list(stream_rows(client, 'leads', 'export-1'))
         self.assertEqual(MAX_EMPTY_RESUMES + 1, client.stream_export.call_count)
 
-    def test_resumes_on_broken_pipe_error(self):
+    @unittest.mock.patch('tap_marketo.sync.time.sleep')
+    def test_resumes_on_broken_pipe_error(self, _sleep):
         full = b'id,name\n1,Alice\n2,Bob\n'
         split = full.index(b'2,Bob')
         client = self._client([
@@ -712,7 +717,8 @@ class TestResumableDownload(unittest.TestCase):
         self.assertEqual(split, client.stream_export.call_args_list[1].kwargs['start_byte'])
         self.assertEqual(2, client.stream_export.call_count)
 
-    def test_gives_up_after_repeated_zero_progress_broken_pipe(self):
+    @unittest.mock.patch('tap_marketo.sync.time.sleep')
+    def test_gives_up_after_repeated_zero_progress_broken_pipe(self, _sleep):
         responses = [self.ByteResponse(b'id\n1\n', fail_after=0, exc_class=BrokenPipeError)
                      for _ in range(MAX_EMPTY_RESUMES + 5)]
         client = self._client(responses)
@@ -720,7 +726,8 @@ class TestResumableDownload(unittest.TestCase):
             list(stream_rows(client, 'leads', 'export-1'))
         self.assertEqual(MAX_EMPTY_RESUMES + 1, client.stream_export.call_count)
 
-    def test_resumes_on_protocol_error(self):
+    @unittest.mock.patch('tap_marketo.sync.time.sleep')
+    def test_resumes_on_protocol_error(self, _sleep):
         full = b'id,name\n1,Alice\n2,Bob\n'
         split = full.index(b'2,Bob')
         client = self._client([
@@ -734,13 +741,92 @@ class TestResumableDownload(unittest.TestCase):
         self.assertEqual(split, client.stream_export.call_args_list[1].kwargs['start_byte'])
         self.assertEqual(2, client.stream_export.call_count)
 
-    def test_gives_up_after_repeated_zero_progress_protocol_error(self):
+    @unittest.mock.patch('tap_marketo.sync.time.sleep')
+    def test_gives_up_after_repeated_zero_progress_protocol_error(self, _sleep):
         responses = [self.ByteResponse(b'id\n1\n', fail_after=0, exc_class=ProtocolError)
                      for _ in range(MAX_EMPTY_RESUMES + 5)]
         client = self._client(responses)
         with self.assertRaises(ProtocolError):
             list(stream_rows(client, 'leads', 'export-1'))
         self.assertEqual(MAX_EMPTY_RESUMES + 1, client.stream_export.call_count)
+
+    @unittest.mock.patch('tap_marketo.sync.time.sleep')
+    def test_waits_before_resuming_on_broken_pipe(self, mock_sleep):
+        """A dropped connection triggers a sleep of RESUME_WAIT_BASE_SECS before the first resume."""
+        full = b'id,name\n1,Alice\n2,Bob\n'
+        split = full.index(b'2,Bob')
+        client = self._client([
+            self.ByteResponse(full, fail_after=split, exc_class=BrokenPipeError),
+            self.ByteResponse(full[split:]),
+        ])
+
+        rows = list(stream_rows(client, 'leads', 'export-1'))
+
+        self.assertEqual([{'id': '1', 'name': 'Alice'}, {'id': '2', 'name': 'Bob'}], rows)
+        mock_sleep.assert_called_once_with(RESUME_WAIT_BASE_SECS)
+
+    @unittest.mock.patch('tap_marketo.sync.time.sleep')
+    def test_wait_uses_exponential_backoff(self, mock_sleep):
+        """Consecutive drops without progress double the wait each time, capped at the max."""
+        # Three drops with no progress: waits should be 20, 40, 80 seconds.
+        responses = [
+            self.ByteResponse(b'id\n1\n', fail_after=0, exc_class=BrokenPipeError),
+            self.ByteResponse(b'id\n1\n', fail_after=0, exc_class=BrokenPipeError),
+            self.ByteResponse(b'id\n1\n', fail_after=0, exc_class=BrokenPipeError),
+            self.ByteResponse(b'id\n1\n'),
+        ]
+        client = self._client(responses)
+
+        list(stream_rows(client, 'leads', 'export-1'))
+
+        expected_waits = [
+            unittest.mock.call(RESUME_WAIT_BASE_SECS),           # resume_count=1: 20s
+            unittest.mock.call(RESUME_WAIT_BASE_SECS * 2),       # resume_count=2: 40s
+            unittest.mock.call(RESUME_WAIT_BASE_SECS * 4),       # resume_count=3: 80s
+        ]
+        self.assertEqual(expected_waits, mock_sleep.call_args_list)
+
+    @unittest.mock.patch('tap_marketo.sync.time.sleep')
+    def test_wait_resets_after_progress(self, mock_sleep):
+        """After a connection makes forward progress, resume_count resets to zero so the
+        next drop always starts back at RESUME_WAIT_BASE_SECS."""
+        full = b'id,name\n1,Alice\n2,Bob\n3,Carol\n'
+        split1 = full.index(b'2,Bob')
+        split2 = full.index(b'3,Carol')
+        client = self._client([
+            self.ByteResponse(full, fail_after=split1, exc_class=BrokenPipeError),
+            self.ByteResponse(full[split1:], fail_after=split2 - split1, exc_class=BrokenPipeError),
+            self.ByteResponse(full[split2:]),
+        ])
+
+        rows = list(stream_rows(client, 'leads', 'export-1'))
+
+        self.assertEqual(
+            [{'id': '1', 'name': 'Alice'}, {'id': '2', 'name': 'Bob'}, {'id': '3', 'name': 'Carol'}],
+            rows)
+        # Both drops made progress → resume_count resets each time → always base wait.
+        expected_waits = [
+            unittest.mock.call(RESUME_WAIT_BASE_SECS),
+            unittest.mock.call(RESUME_WAIT_BASE_SECS),
+        ]
+        self.assertEqual(expected_waits, mock_sleep.call_args_list)
+
+    @unittest.mock.patch('tap_marketo.sync.time.sleep')
+    def test_wait_capped_at_max(self, mock_sleep):
+        """The wait never exceeds RESUME_WAIT_MAX_SECS regardless of how many drops occur."""
+        # 10 consecutive drops with no progress; last expected wait is RESUME_WAIT_MAX_SECS.
+        responses = [
+            self.ByteResponse(b'id\n1\n', fail_after=0, exc_class=BrokenPipeError)
+            for _ in range(MAX_EMPTY_RESUMES)
+        ] + [self.ByteResponse(b'id\n1\n')]
+        client = self._client(responses)
+
+        list(stream_rows(client, 'leads', 'export-1'))
+
+        actual_waits = [call.args[0] for call in mock_sleep.call_args_list]
+        self.assertTrue(all(w <= RESUME_WAIT_MAX_SECS for w in actual_waits),
+                        f"Wait exceeded max: {actual_waits}")
+        self.assertEqual(RESUME_WAIT_MAX_SECS, actual_waits[-1])
 
 
 @freezegun.freeze_time("2017-02-15")
