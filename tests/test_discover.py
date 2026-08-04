@@ -39,7 +39,7 @@ class TestDiscover(unittest.TestCase):
                               'marketo.activity-id': 1,
                               'marketo.primary-attribute-name': 'webpage_id',
                               'forced-replication-method': 'INCREMENTAL',
-                              'valid-replication-keys': 'activityDate'}},
+                              'valid-replication-keys': ['activityDate']}},
                 {
                     "metadata" : {
                         "inclusion": "automatic"
@@ -150,7 +150,7 @@ class TestDiscover(unittest.TestCase):
         root_result_metadata = next(m["metadata"] for m in result_metadata if m["breadcrumb"] == ())
         self.assertEqual(root_result_metadata.get("table-key-properties"), ["marketoGUID"])
         self.assertEqual(root_result_metadata.get("forced-replication-method"), "INCREMENTAL")
-        self.assertEqual(root_result_metadata.get("valid-replication-keys"), "activityDate")
+        self.assertEqual(root_result_metadata.get("valid-replication-keys"), ["activityDate"])
         self.assertEqual(11, len(result_metadata))
         self.assertEqual(7,automatic_count)
 
@@ -200,7 +200,7 @@ class TestDiscover(unittest.TestCase):
         self.assertEqual(1,automatic_count)
         # Test new replication metadata
         self.assertEqual(root_metadata['forced-replication-method'], 'INCREMENTAL')
-        self.assertEqual(root_metadata['valid-replication-keys'], 'updatedAt')
+        self.assertEqual(root_metadata['valid-replication-keys'], ['updatedAt'])
 
     def test_discover_catalog_campaigns(self):
         result = discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION)
@@ -219,7 +219,7 @@ class TestDiscover(unittest.TestCase):
         
         # Test new replication metadata
         self.assertEqual(root_metadata['forced-replication-method'], 'INCREMENTAL')
-        self.assertEqual(root_metadata['valid-replication-keys'], 'updatedAt')
+        self.assertEqual(root_metadata['valid-replication-keys'], ['updatedAt'])
         self.assertEqual(root_metadata['table-key-properties'], ['id'])
 
     def test_discover_catalog_activity_types(self):
@@ -259,7 +259,7 @@ class TestDiscover(unittest.TestCase):
         result_dict = metadata.to_map(result_list)
         
         self.assertEqual(result_dict[()]['forced-replication-method'], 'INCREMENTAL')
-        self.assertEqual(result_dict[()]['valid-replication-keys'], 'updatedAt')
+        self.assertEqual(result_dict[()]['valid-replication-keys'], ['updatedAt'])
 
     def test_determine_replication_key(self):
         # Test activity streams
@@ -293,7 +293,7 @@ class TestDiscover(unittest.TestCase):
         
         # Test new replication metadata
         self.assertEqual(root_metadata['forced-replication-method'], 'INCREMENTAL')
-        self.assertEqual(root_metadata['valid-replication-keys'], 'updatedAt')
+        self.assertEqual(root_metadata['valid-replication-keys'], ['updatedAt'])
         self.assertEqual(root_metadata['table-key-properties'], ['id'])
 
     def test_discover_catalog_programs(self):
@@ -313,5 +313,5 @@ class TestDiscover(unittest.TestCase):
         
         # Test new replication metadata
         self.assertEqual(root_metadata['forced-replication-method'], 'INCREMENTAL')
-        self.assertEqual(root_metadata['valid-replication-keys'], 'updatedAt')
+        self.assertEqual(root_metadata['valid-replication-keys'], ['updatedAt'])
         self.assertEqual(root_metadata['table-key-properties'], ['id'])

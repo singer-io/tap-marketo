@@ -21,8 +21,8 @@ class DummyCounter:
 class TestSyncHelpers(unittest.TestCase):
     """Validates replication key resolution, formatting, and state helpers."""
 
-    @patch("tap_marketo.sync.pendulum.now")
-    @patch("tap_marketo.sync.pendulum.utcnow", side_effect=AttributeError("utcnow"))
+    @patch("tap_marketo.client.pendulum.now")
+    @patch("tap_marketo.client.pendulum.utcnow", side_effect=AttributeError("utcnow"))
     def test_utcnow_falls_back_to_pendulum_now(self, _mock_utcnow, mock_now):
         """Confirms sync.utcnow falls back to pendulum.now("UTC") when needed."""
         sentinel = object()

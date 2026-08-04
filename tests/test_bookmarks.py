@@ -4,7 +4,7 @@ import pytest
 pytest.importorskip("tap_tester")
 from tap_tester import connections, menagerie, runner
 
-from base import MarketoBaseTest
+from tests.base import MarketoBaseTest
 
 
 class TestMarketoBookmarks(MarketoBaseTest):
