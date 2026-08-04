@@ -44,7 +44,7 @@ class TestDiscoverCoreHelpers(unittest.TestCase):
         incremental = set_replication_metadata(metadata.new(), "updatedAt")
         inc_map = metadata.to_map(metadata.to_list(incremental))
         self.assertEqual("INCREMENTAL", inc_map[()]["forced-replication-method"])
-        self.assertEqual(["updatedAt"], inc_map[()]["valid-replication-keys"])
+        self.assertEqual("updatedAt", inc_map[()]["valid-replication-keys"])
 
     def test_get_activity_type_stream(self):
         """Ensures activity type rows are converted into normalized stream schemas."""
