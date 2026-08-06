@@ -131,7 +131,7 @@ def get_activity_type_stream(activity):
     mdata = metadata.write(mdata, (), 'table-key-properties', ['marketoGUID'])
     mdata = set_replication_metadata(
         mdata,
-        valid_replication_keys=determine_replication_key("activities")
+        valid_replication_keys=determine_replication_key('activities')
     )
 
     return {
