@@ -38,8 +38,7 @@ class TestDiscover(unittest.TestCase):
                  'metadata': {'table-key-properties': ['marketoGUID'],
                               'marketo.activity-id': 1,
                               'marketo.primary-attribute-name': 'webpage_id',
-                              'forced-replication-method': 'INCREMENTAL',
-                              'valid-replication-keys': 'activityDate'}},
+                              'forced-replication-method': 'FULL_TABLE'}},
                 {
                     "metadata" : {
                         "inclusion": "automatic"
@@ -149,8 +148,8 @@ class TestDiscover(unittest.TestCase):
         self.assertDictEqual(stream, result)
         root_result_metadata = next(m["metadata"] for m in result_metadata if m["breadcrumb"] == ())
         self.assertEqual(root_result_metadata.get("table-key-properties"), ["marketoGUID"])
-        self.assertEqual(root_result_metadata.get("forced-replication-method"), "INCREMENTAL")
-        self.assertEqual(root_result_metadata.get("valid-replication-keys"), "activityDate")
+        self.assertEqual(root_result_metadata.get("forced-replication-method"), "FULL_TABLE")
+        self.assertIsNone(root_result_metadata.get("valid-replication-keys"))
         self.assertEqual(11, len(result_metadata))
         self.assertEqual(7,automatic_count)
 
@@ -263,6 +262,7 @@ class TestDiscover(unittest.TestCase):
 
     def test_determine_replication_key(self):
         # Test activity streams
+        self.assertIsNone(determine_replication_key('activities'))
         self.assertEqual(determine_replication_key('activities_visit_webpage'), 'activityDate')
         self.assertEqual(determine_replication_key('activities_email_sent'), 'activityDate')
         

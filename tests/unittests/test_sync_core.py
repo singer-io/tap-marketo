@@ -33,6 +33,7 @@ class TestSyncHelpers(unittest.TestCase):
 
     def test_determine_replication_key(self):
         """Verifies replication key selection for activity, incremental, and full-table streams."""
+        self.assertIsNone(sync_module.determine_replication_key("activities"))
         self.assertEqual("activityDate", sync_module.determine_replication_key("activities_open_email"))
         self.assertEqual("updatedAt", sync_module.determine_replication_key("leads"))
         self.assertEqual("updatedAt", sync_module.determine_replication_key("lists"))
