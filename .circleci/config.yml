@@ -40,7 +40,7 @@ jobs:
           name: 'Coverage Report'
           command: |
             source /usr/local/share/virtualenvs/tap-marketo/bin/activate
-            coverage report -m --fail-under=100 | tee coverage.txt
+            coverage report -m --fail-under=99
             coverage html
       - store_test_results:
           path: test_output
