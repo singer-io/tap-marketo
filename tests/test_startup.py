@@ -1,8 +1,5 @@
 import unittest
 
-import pendulum
-import requests_mock
-
 from tap_marketo import validate_state
 from tap_marketo.sync import determine_replication_key
 
