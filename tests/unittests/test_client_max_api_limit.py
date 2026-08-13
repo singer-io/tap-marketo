@@ -1,7 +1,10 @@
+"""Unit tests for max_daily_calls configuration parsing and validation."""
+
 import unittest
 from tap_marketo.client import Client, MAX_DAILY_CALLS
 
 class TestmaxdailycallsConfig(unittest.TestCase):
+    """Ensures max_daily_calls values map to safe runtime limits."""
     
     def test_maxdailycalls_default_no_val(self):
         """

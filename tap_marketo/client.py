@@ -7,6 +7,13 @@ import requests
 import singer
 
 
+def utcnow():
+    try:
+        return pendulum.utcnow()
+    except AttributeError:
+        return pendulum.now("UTC")
+
+
 # By default, jobs will run for 3 hours and be polled every 5 minutes.
 JOB_TIMEOUT = 60 * 180
 POLL_INTERVAL = 60 * 5
@@ -145,7 +152,7 @@ class Client:
     @property
     def headers(self):
         # http://developers.marketo.com/rest-api/authentication/#using_an_access_token
-        if not self.token_expires or self.token_expires <= pendulum.utcnow():
+        if not self.token_expires or self.token_expires <= utcnow():
             self.refresh_token()
 
         return {
@@ -178,7 +185,7 @@ class Client:
         try:
             url = self.get_url("identity/oauth/token")
             resp = requests.get(url, params=params, timeout=self.request_timeout)
-            resp_time = pendulum.utcnow()
+            resp_time = utcnow()
         except requests.exceptions.ConnectionError as e:
             raise ApiException("Connection error while refreshing token at {}.".format(url)) from e
 
@@ -352,8 +359,8 @@ class Client:
     def wait_for_export(self, stream_type, export_id):
         # Poll the export status until it enters a finalized state or
         # exceeds the job timeout time.
-        timeout_time = pendulum.utcnow().add(seconds=self.job_timeout)
-        while pendulum.utcnow() < timeout_time:
+        timeout_time = utcnow().add(seconds=self.job_timeout)
+        while utcnow() < timeout_time:
             status = self.poll_export(stream_type, export_id)
             singer.log_info("export %s status is %s", export_id, status)
 
@@ -382,7 +389,7 @@ class Client:
         # We test for Corona by requesting a one-second export of leads
         # using the updatedAt filter.
         singer.log_info("Testing for Corona support")
-        start_pen = pendulum.utcnow().subtract(days=1).replace(microsecond=0)
+        start_pen = utcnow().subtract(days=1).replace(microsecond=0)
         end_pen = start_pen.add(seconds=1)
         payload = {
             "format": "CSV",
