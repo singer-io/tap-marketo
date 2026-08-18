@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import time
 import pendulum
 from requests.exceptions import ChunkedEncodingError, ConnectionError
 from urllib3.exceptions import ProtocolError
@@ -206,6 +207,14 @@ class IterStream(io.RawIOBase):
 
 MAX_EMPTY_RESUMES = 5
 
+# Seconds to wait before reconnecting after a dropped export download.
+# Each consecutive drop (within the same connection window) doubles the wait,
+# capped at RESUME_WAIT_MAX_SECS. Marketo's per-subscription concurrent download
+# limit is 10; without a delay, rapid reconnects accumulate open connections on
+# the Marketo server and trigger error 615.
+RESUME_WAIT_BASE_SECS = 20
+RESUME_WAIT_MAX_SECS = 120
+
 def resumable_iter_content(client, stream_type, export_id):
     """Yield the export file's bytes, reconnecting on a dropped connection.
 
@@ -215,9 +224,13 @@ def resumable_iter_content(client, stream_type, export_id):
     re-requesting from the byte offset already yielded and continuing. Resuming
     here, below the CSV parser, keeps the byte stream contiguous so callers
     never see the seam.
+
+    A delay is inserted before each reconnect to allow Marketo to release the
+    previous connection's concurrency slot before the next request is made.
     """
     start_byte = 0
     empty_resumes = 0
+    resume_count = 0
     while True:
         resp = client.stream_export(stream_type, export_id, start_byte=start_byte)
         bytes_this_connection = 0
@@ -228,15 +241,22 @@ def resumable_iter_content(client, stream_type, export_id):
                 yield chunk
             return
         except (ChunkedEncodingError, ConnectionError, BrokenPipeError, ProtocolError) as ex:
+            # Release this connection's concurrency slot before waiting, so the
+            # backoff actually gives Marketo time to free it.
+            resp.close()
             if bytes_this_connection:
                 empty_resumes = 0
+                resume_count = 0
             else:
                 empty_resumes += 1
                 if empty_resumes > MAX_EMPTY_RESUMES:
                     raise ex
+            resume_count += 1
+            wait_secs = min(RESUME_WAIT_BASE_SECS * (2 ** (resume_count - 1)), RESUME_WAIT_MAX_SECS)
             singer.log_warning(
-                "Export download connection dropped after %s bytes; resuming "
-                "from byte %s: %s.", bytes_this_connection, start_byte, ex)
+                "Export download connection dropped after %s bytes; waiting %s seconds before "
+                "resuming from byte %s: %s.", bytes_this_connection, wait_secs, start_byte, ex)
+            time.sleep(wait_secs)
         finally:
             resp.close()
 
