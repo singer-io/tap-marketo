@@ -241,6 +241,9 @@ def resumable_iter_content(client, stream_type, export_id):
                 yield chunk
             return
         except (ChunkedEncodingError, ConnectionError, BrokenPipeError, ProtocolError) as ex:
+            # Release this connection's concurrency slot before waiting, so the
+            # backoff actually gives Marketo time to free it.
+            resp.close()
             if bytes_this_connection:
                 empty_resumes = 0
                 resume_count = 0

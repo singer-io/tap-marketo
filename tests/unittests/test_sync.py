@@ -652,6 +652,14 @@ class TestStreamRows(unittest.TestCase):
 class TestResumableDownload(unittest.TestCase):
     """Covers resumable download retry behavior for dropped connections."""
 
+    def setUp(self):
+        # Every resume now waits with a real backoff sleep; keep it mocked for
+        # all tests in this class so the suite doesn't hang. Tests that assert
+        # on waits patch time.sleep again themselves.
+        patcher = unittest.mock.patch('tap_marketo.sync.time.sleep')
+        self.addCleanup(patcher.stop)
+        patcher.start()
+
     class ByteResponse:
         """Yields its data one byte at a time, optionally dropping the
         connection once a given number of bytes have been emitted."""
@@ -790,6 +798,22 @@ class TestResumableDownload(unittest.TestCase):
         mock_sleep.assert_called_once_with(RESUME_WAIT_BASE_SECS)
 
     @unittest.mock.patch('tap_marketo.sync.time.sleep')
+    def test_response_closed_before_wait(self, mock_sleep):
+        """The dropped response is closed before sleeping, so its concurrency
+        slot is released for the whole duration of the backoff wait."""
+        full = b'id,name\n1,Alice\n2,Bob\n'
+        split = full.index(b'2,Bob')
+        dropped = self.ByteResponse(full, fail_after=split, exc_class=BrokenPipeError)
+        client = self._client([dropped, self.ByteResponse(full[split:])])
+
+        closed_at_sleep = []
+        mock_sleep.side_effect = lambda _: closed_at_sleep.append(dropped.closed)
+
+        list(stream_rows(client, 'leads', 'export-1'))
+
+        self.assertEqual([True], closed_at_sleep)
+
+    @unittest.mock.patch('tap_marketo.sync.time.sleep')
     def test_wait_uses_exponential_backoff(self, mock_sleep):
         """Consecutive drops without progress double the wait each time, capped at the max."""
         # Three drops with no progress: waits should be 20, 40, 80 seconds.
@@ -838,7 +862,7 @@ class TestResumableDownload(unittest.TestCase):
     @unittest.mock.patch('tap_marketo.sync.time.sleep')
     def test_wait_capped_at_max(self, mock_sleep):
         """The wait never exceeds RESUME_WAIT_MAX_SECS regardless of how many drops occur."""
-        # 10 consecutive drops with no progress; last expected wait is RESUME_WAIT_MAX_SECS.
+        # MAX_EMPTY_RESUMES consecutive drops with no progress; last expected wait is RESUME_WAIT_MAX_SECS.
         responses = [
             self.ByteResponse(b'id\n1\n', fail_after=0, exc_class=BrokenPipeError)
             for _ in range(MAX_EMPTY_RESUMES)
