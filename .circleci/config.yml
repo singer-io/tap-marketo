@@ -28,24 +28,26 @@ jobs:
             source /usr/local/share/virtualenvs/tap-marketo/bin/activate
             uv pip install pytest pytest-cov coverage
             mkdir -p test_output
-            coverage run -m pytest tests/unittests -v \
+            coverage run --source=tap_marketo -m pytest tests/unittests -v \
               --junitxml=test_output/unit-report.xml
       - run:
           name: 'Mocked Integration Tests'
           command: |
             source /usr/local/share/virtualenvs/tap-marketo/bin/activate
-            coverage run --append -m pytest tests/test_*.py -v \
+            coverage run --source=tap_marketo --append -m pytest tests/test_*.py -v \
               --junitxml=test_output/integration-report.xml
       - run:
           name: 'Coverage Report'
           command: |
             source /usr/local/share/virtualenvs/tap-marketo/bin/activate
-            coverage report -m
+            coverage report -m --fail-under=99
             coverage html
       - store_test_results:
           path: test_output
       - store_artifacts:
           path: htmlcov
+      - store_artifacts:
+          path: coverage.txt
       # - add_ssh_keys
       # - run:
       #     name: 'Integration Tests'

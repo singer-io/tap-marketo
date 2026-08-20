@@ -76,6 +76,10 @@ def _main(config, properties, state, discover_mode=False):
         catalog = discover(client)
         json.dump(catalog, sys.stdout, indent=2)
     elif properties:
+        # singer-python >= 3.0 returns a Catalog object; convert to dict for
+        # backward-compatible dict-style access used throughout this tap.
+        if hasattr(properties, "to_dict"):
+            properties = properties.to_dict()
         state = validate_state(config, properties, state)
         sync(client, properties, config, state)
 

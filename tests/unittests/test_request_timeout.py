@@ -1,3 +1,5 @@
+"""Unit tests for request timeout configuration and retry/backoff handling."""
+
 import unittest
 import requests
 import pendulum
@@ -15,6 +17,8 @@ def get_mock_http_response(*args, **kwargs):
 
 # Mock request object
 class MockRequest:
+    """Simple request payload holder used by timeout behavior tests."""
+
     def __init__(self):
         self.url = "test"
 mock_request_object = MockRequest()
@@ -23,6 +27,8 @@ mock_request_object = MockRequest()
 @mock.patch("requests.Request.prepare")
 @mock.patch("requests.get", side_effect = get_mock_http_response)
 class TestRequestTimeoutValue(unittest.TestCase):
+    """Verifies request_timeout coercion and defaulting behavior."""
+
 
     def test_no_request_timeout_in_config(self, mocked_get, mocked_prepare, mocked_send):
         """
@@ -236,6 +242,8 @@ class TestRequestTimeoutValue(unittest.TestCase):
 
 @mock.patch("time.sleep")
 class TestRequestTimeoutBackoff(unittest.TestCase):
+    """Validates timeout-triggered retry behavior for request functions."""
+
 
     @mock.patch("requests.get", side_effect = requests.exceptions.Timeout)
     def test_request_timeout_backoff_in_refresh_token(self, mocked_request, mocked_sleep):

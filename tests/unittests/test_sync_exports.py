@@ -1,3 +1,5 @@
+"""Unit tests for export creation/reuse and endpoint-specific sync branches."""
+
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -28,8 +30,11 @@ def _selected_field_metadata(*fields):
 
 
 class TestExportHelpers(unittest.TestCase):
+    """Tests helper behavior for creating, reusing, and waiting on exports."""
+
     @patch("tap_marketo.sync.update_state_with_export_info", side_effect=lambda state, stream: state)
     def test_wait_for_export_clears_state_on_failure(self, _update_state):
+        """Ensures failed export polling clears saved export metadata."""
         client = MagicMock()
         client.wait_for_export.side_effect = ExportFailed("failed")
         state = {"bookmarks": {}}
@@ -42,6 +47,7 @@ class TestExportHelpers(unittest.TestCase):
         _update_state.assert_called_once_with(state, stream)
 
     def test_wait_for_export_uses_leads_stream_type(self):
+        """Verifies lead exports are polled using the leads stream type."""
         client = MagicMock()
         state = {"bookmarks": {}}
         stream = {"tap_stream_id": "leads"}
@@ -55,6 +61,7 @@ class TestExportHelpers(unittest.TestCase):
     @patch("tap_marketo.sync.create_export_with_quota_backoff")
     @patch("tap_marketo.sync.update_state_with_export_info", side_effect=lambda state, stream, **kwargs: state)
     def test_get_or_create_export_for_leads_creates_new_export(self, _update_state, mock_backoff):
+        """Verifies new lead exports are created with expected fields and date windows."""
         client = MagicMock()
         client.use_corona = False
         stream = {
@@ -89,6 +96,7 @@ class TestExportHelpers(unittest.TestCase):
         _update_state.assert_called_once()
 
     def test_get_or_create_export_for_leads_reuses_existing_export(self):
+        """Ensures existing available lead exports are reused."""
         client = MagicMock()
         client.export_available.return_value = True
         state = {
@@ -111,6 +119,7 @@ class TestExportHelpers(unittest.TestCase):
     @patch("tap_marketo.sync.create_export_with_quota_backoff")
     @patch("tap_marketo.sync.update_state_with_export_info", side_effect=lambda state, stream, **kwargs: state)
     def test_get_or_create_export_for_leads_recreates_when_saved_export_unavailable(self, _update_state, mock_backoff):
+        """Ensures stale unavailable lead exports are recreated."""
         client = MagicMock()
         client.export_available.return_value = False
         client.use_corona = True
@@ -151,6 +160,7 @@ class TestExportHelpers(unittest.TestCase):
     @patch("tap_marketo.sync.create_export_with_quota_backoff")
     @patch("tap_marketo.sync.update_state_with_export_info", side_effect=lambda state, stream, **kwargs: state)
     def test_get_or_create_export_for_activities_uses_activity_type_id(self, _update_state, mock_backoff):
+        """Verifies activity exports include activityTypeIds from stream metadata."""
         client = MagicMock()
         client.export_available.return_value = True
         activity_mdata = metadata.to_list(metadata.write(metadata.new(), (), "marketo.activity-id", 33))
@@ -182,6 +192,7 @@ class TestExportHelpers(unittest.TestCase):
         self.assertEqual([33], create_call.args[2]["activityTypeIds"])
 
     def test_get_or_create_export_for_activities_reuses_existing_export(self):
+        """Ensures existing available activity exports are reused."""
         client = MagicMock()
         client.export_available.return_value = True
         stream = {
@@ -212,6 +223,7 @@ class TestExportHelpers(unittest.TestCase):
     @patch("tap_marketo.sync.create_export_with_quota_backoff")
     @patch("tap_marketo.sync.update_state_with_export_info", side_effect=lambda state, stream, **kwargs: state)
     def test_get_or_create_export_for_activities_recreates_when_unavailable(self, _update_state, mock_backoff):
+        """Ensures unavailable activity exports are recreated."""
         client = MagicMock()
         client.export_available.return_value = False
         activity_mdata = metadata.to_list(metadata.write(metadata.new(), (), "marketo.activity-id", 12))
@@ -245,11 +257,14 @@ class TestExportHelpers(unittest.TestCase):
 
 
 class TestSyncEndpointBranches(unittest.TestCase):
+    """Validates lead/activity/paginated endpoint sync branch behavior."""
+
     @patch("tap_marketo.sync.singer.write_state")
     @patch("tap_marketo.sync.singer.write_schema")
     @patch("tap_marketo.sync.singer.write_record")
     @freezegun.freeze_time("2024-01-10")
     def test_sync_paginated_honors_start_date_and_clears_next_page(self, write_record, _write_schema, _write_state):
+        """Verifies paginated sync filters by bookmark and clears next_page_token when complete."""
         client = MagicMock()
         client.request.side_effect = [
             {
@@ -299,6 +314,7 @@ class TestSyncEndpointBranches(unittest.TestCase):
     @patch("tap_marketo.sync.singer.write_schema")
     @patch("tap_marketo.sync.singer.write_record")
     def test_sync_activity_types_streams_rows(self, write_record, _write_schema):
+        """Ensures activity type rows are streamed and counted correctly."""
         client = MagicMock()
         client.request.return_value = {
             "result": [
@@ -337,6 +353,7 @@ class TestSyncEndpointBranches(unittest.TestCase):
             _update,
             write_record,
             _write_schema):
+        """Verifies non-corona lead sync filters out records older than the bookmark."""
         client = MagicMock()
         client.use_corona = False
         stream = {
@@ -377,6 +394,7 @@ class TestSyncEndpointBranches(unittest.TestCase):
             _update,
             write_record,
             _write_schema):
+        """Verifies corona lead sync writes all streamed rows regardless of bookmark age."""
         client = MagicMock()
         client.use_corona = True
         stream = {
@@ -417,6 +435,7 @@ class TestSyncEndpointBranches(unittest.TestCase):
             _update,
             write_record,
             _write_schema):
+        """Verifies activity rows are flattened/formatted and emitted with correct types."""
         client = MagicMock()
         stream_mdata = metadata.new()
         stream_mdata = metadata.write(stream_mdata, (), "marketo.primary-attribute-name", "webpage_id")

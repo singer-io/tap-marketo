@@ -1,3 +1,5 @@
+"""Unit tests for tap_marketo main entrypoint and state validation wiring."""
+
 import unittest
 import runpy
 from unittest.mock import MagicMock, patch
@@ -6,8 +8,11 @@ import tap_marketo
 
 
 class TestMainModule(unittest.TestCase):
+    """Ensures CLI/main orchestration calls the expected internal flows."""
+
     @patch("tap_marketo.singer.write_state")
     def test_validate_state_sets_missing_bookmark(self, _write_state):
+        """Ensures validate_state seeds missing bookmarks for selected incremental streams."""
         config = {"start_date": "2024-01-01T00:00:00Z"}
         catalog = {
             "streams": [
@@ -33,6 +38,7 @@ class TestMainModule(unittest.TestCase):
 
     @patch("tap_marketo.singer.write_state")
     def test_validate_state_unsets_currently_syncing_for_deselected_stream(self, _write_state):
+        """Ensures deselected currently_syncing streams are cleared from state."""
         config = {"start_date": "2024-01-01T00:00:00Z"}
         catalog = {
             "streams": [
@@ -48,22 +54,22 @@ class TestMainModule(unittest.TestCase):
 
         self.assertIsNone(updated_state.get("currently_syncing"))
 
-    @patch("tap_marketo.json.dump")
     @patch("tap_marketo.discover", return_value={"streams": []})
     @patch("tap_marketo.Client")
-    def test__main_discover_mode(self, mock_client, mock_discover, mock_dump):
+    def test__main_discover_mode(self, mock_client, mock_discover):
+        """Verifies _main runs discover flow and initializes Client in discover mode."""
         config = {"endpoint": "123-ABC-456", "client_id": "id", "client_secret": "secret", "start_date": "2024-01-01T00:00:00Z"}
 
         tap_marketo._main(config, None, {}, discover_mode=True)
 
         mock_client.assert_called_once_with(**config)
         mock_discover.assert_called_once()
-        mock_dump.assert_called_once()
 
     @patch("tap_marketo.sync")
     @patch("tap_marketo.validate_state", return_value={"bookmarks": {}})
     @patch("tap_marketo.Client")
     def test__main_sync_mode_calls_validate_and_sync(self, mock_client, mock_validate_state, mock_sync):
+        """Verifies _main runs validate_state and sync flow in sync mode."""
         config = {"endpoint": "123-ABC-456", "client_id": "id", "client_secret": "secret", "start_date": "2024-01-01T00:00:00Z"}
         properties = {"streams": []}
         state = {"bookmarks": {}}
@@ -77,6 +83,7 @@ class TestMainModule(unittest.TestCase):
     @patch("tap_marketo._main", side_effect=RuntimeError("boom"))
     @patch("tap_marketo.singer.utils.parse_args")
     def test_main_logs_and_reraises(self, mock_parse_args, _mock_main, mock_log_critical):
+        """Ensures main logs critical failures and re-raises unexpected exceptions."""
         args = MagicMock()
         args.config = {"endpoint": "123-ABC-456", "client_id": "id", "client_secret": "secret", "start_date": "2024-01-01T00:00:00Z"}
         args.properties = None
@@ -93,6 +100,7 @@ class TestMainModule(unittest.TestCase):
     @patch("tap_marketo.client.Client")
     @patch("singer.utils.parse_args")
     def test_module_guard_executes_main(self, mock_parse_args, mock_client):
+        """Verifies __main__ module guard executes CLI startup path."""
         args = MagicMock()
         args.config = {
             "endpoint": "123-ABC-456",

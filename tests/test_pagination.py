@@ -5,7 +5,7 @@ import pytest
 pytest.importorskip("tap_tester")
 from tap_tester import connections, runner
 
-from base import MarketoBaseTest
+from tests.base import MarketoBaseTest
 
 
 class TestMarketoPagination(MarketoBaseTest):
