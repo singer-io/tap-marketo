@@ -83,7 +83,7 @@ class TestMainModule(unittest.TestCase):
     @patch("tap_marketo.validate_state", return_value={"bookmarks": {}})
     @patch("tap_marketo.Client")
     def test__main_sync_mode_converts_catalog_object_to_dict(self, _mock_client, mock_validate_state, mock_sync):
-        """Verifies _main converts Catalog-like objects via to_dict before validation/sync."""
+        """Verifies _main converts Catalog-like properties via to_dict before sync flow."""
         config = {"endpoint": "123-ABC-456", "client_id": "id", "client_secret": "secret", "start_date": "2024-01-01T00:00:00Z"}
         state = {"bookmarks": {}}
 
@@ -91,8 +91,7 @@ class TestMainModule(unittest.TestCase):
             def to_dict(self):
                 return {"streams": []}
 
-        properties = CatalogLike()
-        tap_marketo._main(config, properties, state, discover_mode=False)
+        tap_marketo._main(config, CatalogLike(), state, discover_mode=False)
 
         mock_validate_state.assert_called_once_with(config, {"streams": []}, state)
         mock_sync.assert_called_once()

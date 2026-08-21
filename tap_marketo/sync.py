@@ -29,66 +29,6 @@ ACTIVITY_FIELDS = BASE_ACTIVITY_FIELDS + [
     "attributes",
 ]
 
-
-def _to_dict(value):
-    if isinstance(value, dict):
-        return value
-    to_dict = getattr(value, "to_dict", None)
-    if callable(to_dict):
-        result = to_dict()
-        if isinstance(result, dict):
-            return result
-    return None
-
-
-def _normalize_metadata_entries(metadata_entries):
-    normalized = []
-    for entry in metadata_entries or []:
-        if isinstance(entry, dict):
-            normalized.append(entry)
-            continue
-
-        entry_dict = _to_dict(entry)
-        if entry_dict is not None:
-            normalized.append(entry_dict)
-            continue
-
-        breadcrumb = getattr(entry, "breadcrumb", None)
-        metadata_map = getattr(entry, "metadata", None)
-        if breadcrumb is not None and metadata_map is not None:
-            normalized.append({"breadcrumb": breadcrumb, "metadata": metadata_map})
-
-    return normalized
-
-
-def _normalize_stream(stream):
-    if isinstance(stream, dict):
-        normalized = dict(stream)
-    else:
-        stream_dict = _to_dict(stream)
-        if stream_dict is not None:
-            normalized = stream_dict
-        else:
-            normalized = {
-                "tap_stream_id": getattr(stream, "tap_stream_id", None),
-                "stream": getattr(stream, "stream", None),
-                "key_properties": getattr(stream, "key_properties", None),
-                "schema": getattr(stream, "schema", None),
-                "metadata": getattr(stream, "metadata", None),
-                "replication_method": getattr(stream, "replication_method", None),
-                "replication_key": getattr(stream, "replication_key", None),
-                "parent_stream": getattr(stream, "parent_stream", None),
-            }
-
-    normalized["metadata"] = _normalize_metadata_entries(normalized.get("metadata", []))
-    return normalized
-
-
-def _get_catalog_streams(catalog):
-    if isinstance(catalog, dict):
-        return catalog.get("streams", [])
-    return getattr(catalog, "streams", [])
-
 def determine_replication_key(tap_stream_id):
     if tap_stream_id.startswith("activities_"):
         return 'activityDate'
@@ -632,8 +572,7 @@ def sync(client, catalog, config, state):
         singer.log_info("Starting sync")
 
     corona_warning_flag = False
-    for raw_stream in _get_catalog_streams(catalog):
-        stream = _normalize_stream(raw_stream)
+    for stream in catalog['streams']:
         # Skip unselected streams.
         mdata = metadata.to_map(stream['metadata'])
 

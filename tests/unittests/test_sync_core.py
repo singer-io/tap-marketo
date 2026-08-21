@@ -121,7 +121,7 @@ class TestSyncHelpers(unittest.TestCase):
         self.assertEqual("127.0.0.1", flattened["client_ip_address"])
 
     def test_catalog_object_not_supported(self):
-        """Ensures object-based catalog input fails clearly when client lacks request()."""
+        """Ensures unsupported catalog object shapes raise a clear TypeError."""
         client = SimpleNamespace(use_corona=True)
         state = {"bookmarks": {"campaigns": {"updatedAt": "2023-01-01T00:00:00Z"}}}
         stream_obj = SimpleNamespace(
@@ -132,60 +132,8 @@ class TestSyncHelpers(unittest.TestCase):
         )
         catalog_obj = SimpleNamespace(streams=[stream_obj])
 
-        with self.assertRaises(AttributeError):
+        with self.assertRaises(TypeError):
             sync_module.sync(client, catalog_obj, {}, state)
-
-    def test_to_dict_helper_branches(self):
-        """Covers _to_dict for dict, to_dict->dict, to_dict->non-dict, and no to_dict."""
-        self.assertEqual({"a": 1}, sync_module._to_dict({"a": 1}))
-
-        class DictLike:
-            def to_dict(self):
-                return {"k": "v"}
-
-        class NonDictLike:
-            def to_dict(self):
-                return "not-a-dict"
-
-        class NoDictLike:
-            pass
-
-        self.assertEqual({"k": "v"}, sync_module._to_dict(DictLike()))
-        self.assertIsNone(sync_module._to_dict(NonDictLike()))
-        self.assertIsNone(sync_module._to_dict(NoDictLike()))
-
-    def test_normalize_metadata_entries_uses_entry_to_dict(self):
-        """Ensures metadata entries are normalized when objects provide to_dict()."""
-        class Entry:
-            def to_dict(self):
-                return {"breadcrumb": ["properties", "id"], "metadata": {"selected": True}}
-
-        normalized = sync_module._normalize_metadata_entries([Entry()])
-        self.assertEqual(1, len(normalized))
-        self.assertEqual(["properties", "id"], normalized[0]["breadcrumb"])
-
-    def test_normalize_stream_uses_stream_to_dict(self):
-        """Ensures stream normalization honors object-level to_dict() output."""
-        class StreamLike:
-            def to_dict(self):
-                return {
-                    "tap_stream_id": "campaigns",
-                    "schema": {"properties": {}},
-                    "metadata": [],
-                    "key_properties": ["id"],
-                }
-
-        normalized = sync_module._normalize_stream(StreamLike())
-        self.assertEqual("campaigns", normalized["tap_stream_id"])
-
-    def test_normalize_metadata_entries_skips_unusable_entries(self):
-        """Ensures unusable metadata entry objects are ignored rather than breaking normalization."""
-        class BadEntry:
-            breadcrumb = None
-            metadata = None
-
-        normalized = sync_module._normalize_metadata_entries([BadEntry()])
-        self.assertEqual([], normalized)
 
 
 class TestSyncRouting(unittest.TestCase):
