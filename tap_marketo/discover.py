@@ -347,22 +347,17 @@ def discover(client):
 
     activity_streams = discover_activities(client)
     if activity_streams is not None:
-        accessible_activity_streams = []
-        for activity_stream in activity_streams:
-            activity_stream_name = activity_stream["tap_stream_id"]
-            if check_stream_access(client, activity_stream_name):
-                accessible_activity_streams.append(activity_stream)
-            else:
-                inaccessible_streams.append(activity_stream_name)
-
         activity_types_stream = discover_catalog(
             "activity_types",
             ACTIVITY_TYPES_AUTOMATIC_INCLUSION,
             unsupported=ACTIVITY_TYPES_UNSUPPORTED,
+            client=client,
         )
         if activity_types_stream:
             streams.append(activity_types_stream)
-        streams.extend(accessible_activity_streams)
+            streams.extend(activity_streams)
+        else:
+            inaccessible_streams.append("activity_types")
     else:
         inaccessible_streams.append("activity_types")
 

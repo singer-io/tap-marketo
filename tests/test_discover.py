@@ -207,7 +207,7 @@ class TestDiscover(unittest.TestCase):
         self.assertEqual(1,automatic_count)
         # Test new replication metadata
         self.assertEqual(root_metadata['forced-replication-method'], 'INCREMENTAL')
-        self.assertEqual(root_metadata['valid-replication-keys'], 'updatedAt')
+        self.assertEqual(root_metadata['valid-replication-keys'], ['updatedAt'])
 
     def test_discover_catalog_campaigns(self):
         result = discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION)

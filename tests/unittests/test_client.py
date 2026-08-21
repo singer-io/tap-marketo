@@ -122,6 +122,14 @@ class TestClient(unittest.TestCase):
             mock.register_uri("POST", self.client.get_url(create), json={"errors": [{"code": "1035"}]})
             self.assertFalse(self.client.use_corona)
 
+    def test_raise_for_status_forbidden(self):
+        """Ensures provider-specific forbidden responses map to MarketoForbiddenError."""
+        response = unittest.mock.MagicMock()
+        response.status_code = 403
+
+        with self.assertRaises(MarketoForbiddenError):
+            self.client._raise_for_status(response)
+
 
 class TestExports(unittest.TestCase):
     """Covers bulk export lifecycle polling and file streaming behavior."""
