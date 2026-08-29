@@ -1,0 +1,32 @@
+{
+  "tap_stream_id": "usage_last7days",
+  "stream": "usage_last7days",
+  "key_properties": ["date"],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "date": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "total": {
+        "type": "integer"
+      },
+      "users": {
+        "type": ["array", "null"],
+        "items": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": ["null", "integer"]
+            },
+            "userId": {
+              "type": ["null", "string"]
+            }
+          }
+        }
+      }
+    }
+  }
+}
