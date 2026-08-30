@@ -358,6 +358,14 @@ def discover(client):
             streams.extend(activity_streams)
         else:
             inaccessible_streams.append("activity_types")
+            for stream in activity_streams:
+                child_stream_id = stream["tap_stream_id"]
+                singer.log_warning(
+                    "Excluding child stream '%s' from catalog because parent stream '%s' is not accessible.",
+                    child_stream_id,
+                    "activity_types",
+                )
+                inaccessible_streams.append(child_stream_id)
     else:
         inaccessible_streams.append("activity_types")
 
@@ -379,16 +387,16 @@ def discover(client):
     else:
         inaccessible_streams.append("programs")
 
-    if inaccessible_streams:
-        singer.log_warning(
-            "No 'read' access to stream(s): %s. Excluded from catalog.",
-            ", ".join(inaccessible_streams),
-        )
-
     if not streams:
         raise MarketoForbiddenError(
             "HTTP-error-code: 403, Error: The credentials do not have "
             "'read' access to any supported streams."
+        )
+
+    if inaccessible_streams:
+        singer.log_warning(
+            "Unauthorized streams excluded from catalog: %s",
+            ", ".join(inaccessible_streams),
         )
 
     catalog = {"streams": streams}
