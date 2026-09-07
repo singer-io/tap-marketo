@@ -28,6 +28,10 @@ API_QUOTA_EXCEEDED_MESSAGE = "Marketo API returned error(s): {}. Data can resume
 # Marketo has a 100 requests per 20 seconds quota, this raises a 606 code if hit
 SHORT_TERM_QUOTA_EXCEEDED = "606"
 
+# Marketo application-level access denied error codes can be returned with HTTP 200
+# and success=false payloads.
+ACCESS_DENIED_ERROR_CODES = frozenset(["603"])
+
 SHORT_TERM_QUOTA_EXCEEDED_MESSAGE = "Marketo API returned error(s): {}. This is due to a short term rate limiting mechanism. Backing off and retrying the request."
 
 # Marketo limits REST requests to 50000 per day with a rate limit of 100
@@ -87,6 +91,12 @@ def raise_for_rate_limit(data):
         message = SHORT_TERM_QUOTA_EXCEEDED_MESSAGE.format(data['errors'])
         singer.log_warning(message)
         raise ShortTermQuotaExceeded(message)
+
+
+def is_access_denied_error(data):
+    """Return True when API payload represents an access denied response."""
+    err_codes = {str(err.get("code")) for err in data.get("errors", []) if isinstance(err, dict)}
+    return bool(err_codes.intersection(ACCESS_DENIED_ERROR_CODES))
 
 class Client:
     # pylint: disable=unused-argument
@@ -242,6 +252,8 @@ class Client:
             raise_for_rate_limit(data)
             if not data["success"]:
                 err = ", ".join("{code}: {message}".format(**e) for e in data["errors"])
+                if is_access_denied_error(data):
+                    raise MarketoForbiddenError("Marketo API returned error(s): {}".format(err))
                 raise ApiException("Marketo API returned error(s): {}".format(err))
 
 

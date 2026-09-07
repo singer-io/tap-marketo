@@ -9,6 +9,7 @@ from tap_marketo.client import (
     ApiException,
     ApiQuotaExceeded,
     Client,
+    MarketoForbiddenError,
     ShortTermQuotaExceeded,
     SHORT_TERM_QUOTA_EXCEEDED_MESSAGE,
     raise_for_rate_limit,
@@ -118,6 +119,25 @@ class TestClientBranches(unittest.TestCase):
         with patch.object(client, "_request", return_value=response):
             with self.assertRaises(ApiException):
                 client.request("GET", "rest/v1/foo.json")
+
+    def test_request_maps_access_denied_envelope_to_forbidden(self):
+        """Verifies success=false code 603 responses raise MarketoForbiddenError."""
+        client = Client("123-ABC-789", "id", "secret")
+        client.calls_today = 1
+        client.token_expires = object()
+
+        response = Mock()
+        response.content = b'{"success": false}'
+        response.json.return_value = {
+            "success": False,
+            "errors": [{"code": "603", "message": "Access denied"}],
+        }
+
+        with patch.object(client, "_request", return_value=response):
+            with self.assertRaises(MarketoForbiddenError) as err:
+                client.request("GET", "rest/v1/campaigns.json")
+
+        self.assertIn("603: Access denied", str(err.exception))
 
     def test_create_enqueue_cancel_and_status_wrappers(self):
         """Verifies export wrapper methods delegate correctly through client.request."""
