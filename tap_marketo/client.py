@@ -28,8 +28,8 @@ API_QUOTA_EXCEEDED_MESSAGE = "Marketo API returned error(s): {}. Data can resume
 # Marketo has a 100 requests per 20 seconds quota, this raises a 606 code if hit
 SHORT_TERM_QUOTA_EXCEEDED = "606"
 
-# Marketo application-level access denied error codes can be returned with HTTP 200
-# and success=false payloads.
+# Marketo may return access-denied as an application error envelope
+# (HTTP 200 + success=false + errors[].code=603) instead of HTTP 403.
 ACCESS_DENIED_ERROR_CODES = frozenset(["603"])
 
 SHORT_TERM_QUOTA_EXCEEDED_MESSAGE = "Marketo API returned error(s): {}. This is due to a short term rate limiting mechanism. Backing off and retrying the request."
