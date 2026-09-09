@@ -9,6 +9,7 @@ from tap_marketo.client import (
     ApiException,
     ApiQuotaExceeded,
     Client,
+    MarketoForbiddenError,
     ShortTermQuotaExceeded,
     SHORT_TERM_QUOTA_EXCEEDED_MESSAGE,
     raise_for_rate_limit,
@@ -94,6 +95,18 @@ class TestClientBranches(unittest.TestCase):
             with self.assertRaises(ApiException):
                 Client.refresh_token.__wrapped__(client)
 
+    def test_refresh_token_5xx_raises_http_error_for_backoff(self):
+        """Verifies HTTP 5xx auth responses raise HTTPError so the backoff decorator can retry."""
+        client = Client("123-ABC-789", "id", "secret")
+        mock_resp = Mock(status_code=504, content=b"gateway timeout")
+        mock_resp.raise_for_status.side_effect = requests.exceptions.HTTPError("504")
+
+        with patch("tap_marketo.client.requests.get", return_value=mock_resp):
+            with self.assertRaises(requests.exceptions.HTTPError):
+                Client.refresh_token.__wrapped__(client)
+
+        mock_resp.raise_for_status.assert_called_once()
+
     def test_update_calls_today_missing_result_raises(self):
         """Ensures update_calls_today raises when expected result keys are missing."""
         client = Client("123-ABC-789", "id", "secret")
@@ -118,6 +131,73 @@ class TestClientBranches(unittest.TestCase):
         with patch.object(client, "_request", return_value=response):
             with self.assertRaises(ApiException):
                 client.request("GET", "rest/v1/foo.json")
+
+    def test_request_maps_access_denied_envelope_to_forbidden(self):
+        """Verifies success=false code 603 responses raise MarketoForbiddenError."""
+        client = Client("123-ABC-789", "id", "secret")
+        client.calls_today = 1
+        client.token_expires = object()
+
+        response = Mock()
+        response.content = b'{"success": false}'
+        response.json.return_value = {
+            "success": False,
+            "errors": [{"code": "603", "message": "Access denied"}],
+        }
+
+        with patch.object(client, "_request", return_value=response):
+            with self.assertRaises(MarketoForbiddenError) as err:
+                client.request("GET", "rest/v1/campaigns.json")
+
+        self.assertIn("603: Access denied", str(err.exception))
+
+    def test_request_retries_once_on_access_token_expired(self):
+        """Verifies code 602 triggers token refresh and one retry of the same request."""
+        client = Client("123-ABC-789", "id", "secret")
+        client.calls_today = 1
+        client.token_expires = object()
+
+        first_response = Mock()
+        first_response.content = b'{"success": false}'
+        first_response.json.return_value = {
+            "success": False,
+            "errors": [{"code": "602", "message": "Access token expired"}],
+        }
+
+        second_response = Mock()
+        second_response.content = b'{"success": true}'
+        second_response.json.return_value = {
+            "success": True,
+            "result": [{"id": 1}],
+        }
+
+        with patch.object(client, "_request", side_effect=[first_response, second_response]) as mock_request, \
+                patch.object(client, "refresh_token") as mock_refresh:
+            result = client.request("GET", "rest/v1/campaigns.json")
+
+        self.assertEqual({"success": True, "result": [{"id": 1}]}, result)
+        self.assertEqual(2, mock_request.call_count)
+        mock_refresh.assert_called_once()
+
+    @patch("time.sleep")
+    def test_request_retries_transient_system_error(self, _mock_sleep):
+        """Verifies code 611 is treated as transient and retried by backoff wrapper."""
+        client = Client("123-ABC-789", "id", "secret")
+        client.calls_today = 1
+        client.token_expires = object()
+
+        response = Mock()
+        response.content = b'{"success": false}'
+        response.json.return_value = {
+            "success": False,
+            "errors": [{"code": "611", "message": "System error"}],
+        }
+
+        with patch.object(client, "_request", return_value=response) as mock_request:
+            with self.assertRaises(ShortTermQuotaExceeded):
+                client.request("GET", "rest/v1/campaigns.json")
+
+        self.assertEqual(5, mock_request.call_count)
 
     def test_create_enqueue_cancel_and_status_wrappers(self):
         """Verifies export wrapper methods delegate correctly through client.request."""

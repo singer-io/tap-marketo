@@ -7,6 +7,7 @@ import unittest.mock
 
 import freezegun
 import pendulum
+import requests
 import requests_mock
 
 from tap_marketo.client import *
@@ -121,6 +122,19 @@ class TestClient(unittest.TestCase):
             cancel = self.client.get_bulk_endpoint("leads", "cancel", "123")
             mock.register_uri("POST", self.client.get_url(create), json={"errors": [{"code": "1035"}]})
             self.assertFalse(self.client.use_corona)
+
+    def test_raise_for_status_forbidden(self):
+        """Ensures HTTP 403 is surfaced as requests HTTPError from _request."""
+        self.client.token_expires = pendulum.utcnow().add(days=1)
+        self.client.access_token = "token"
+        response = unittest.mock.MagicMock()
+        response.status_code = 403
+        response.raise_for_status.side_effect = requests.exceptions.HTTPError("403")
+
+        self.client._session.send = unittest.mock.MagicMock(return_value=response)
+
+        with self.assertRaises(requests.exceptions.HTTPError):
+            self.client._request("GET", "rest/v1/forbidden.json")
 
 
 class TestExports(unittest.TestCase):
