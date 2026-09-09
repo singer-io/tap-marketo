@@ -312,7 +312,7 @@ def _get_probe_key(stream_name):
 
 def check_stream_access(client, stream_name) -> bool:
     """Probe stream_name's endpoint and return whether the credentials have read access.
-    Returns False if a MarketoForbiddenError (HTTP 403) is raised; True otherwise.
+    Returns False if a MarketoForbiddenError is raised; True otherwise.
     Activity sub-streams (activities_*) delegate to the shared 'activity_types' probe.
     """
     probe_key = _get_probe_key(stream_name)
@@ -389,8 +389,7 @@ def discover(client):
 
     if not streams:
         raise MarketoForbiddenError(
-            "HTTP-error-code: 403, Error: The credentials do not have "
-            "'read' access to any supported streams."
+            "The credentials do not have 'read' access to any supported streams."
         )
 
     if inaccessible_streams:
