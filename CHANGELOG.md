@@ -1,5 +1,9 @@
 # Changelog
 
+# 3.0.0
+  * BREAKING: Updated replication method and replication key behavior for `activities_*` streams.
+  * Unauth stream exclusion and metadata changes. [#123](https://github.com/singer-io/tap-marketo/pull/123)
+
 # 2.10.0
   * Python Upgrade, Dependency Upgrade, Added unit tests and mocked integration tests. [#119](https://github.com/singer-io/tap-marketo/pull/119)
 
