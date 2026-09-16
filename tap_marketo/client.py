@@ -22,11 +22,19 @@ POLL_INTERVAL = 60 * 5
 # http://developers.marketo.com/rest-api/bulk-extract/bulk-lead-extract/#filters
 NO_CORONA_CODE = "1035"
 API_QUOTA_EXCEEDED = "1029"
+ACCESS_TOKEN_EXPIRED = "602"
+SYSTEM_ERROR = "611"
 
 API_QUOTA_EXCEEDED_MESSAGE = "Marketo API returned error(s): {}. Data can resume replicating at midnight central time. Read more about Marketo Bulk API limits here: http://developers.marketo.com/rest-api/bulk-extract/#limits"
 
 # Marketo has a 100 requests per 20 seconds quota, this raises a 606 code if hit
 SHORT_TERM_QUOTA_EXCEEDED = "606"
+
+# Marketo may return access-denied as an application error envelope
+# (HTTP 200 + success=false + errors[].code=603) instead of HTTP 403.
+ACCESS_DENIED_ERROR_CODES = frozenset(["603"])
+ACCESS_TOKEN_EXPIRED_ERROR_CODES = frozenset([ACCESS_TOKEN_EXPIRED])
+TRANSIENT_ERROR_CODES = frozenset([SYSTEM_ERROR])
 
 SHORT_TERM_QUOTA_EXCEEDED_MESSAGE = "Marketo API returned error(s): {}. This is due to a short term rate limiting mechanism. Backing off and retrying the request."
 
@@ -52,6 +60,10 @@ def extract_domain(url):
 
 class ApiException(Exception):
     """Indicates an error occured communicating with the Marketo API."""
+
+
+class MarketoForbiddenError(ApiException):
+    """Indicates the credentials do not have read access to the requested resource."""
 
 
 class ApiQuotaExceeded(Exception):
@@ -83,6 +95,24 @@ def raise_for_rate_limit(data):
         message = SHORT_TERM_QUOTA_EXCEEDED_MESSAGE.format(data['errors'])
         singer.log_warning(message)
         raise ShortTermQuotaExceeded(message)
+
+
+def is_access_denied_error(data):
+    """Return True when API payload represents an access denied response."""
+    err_codes = {str(err.get("code")) for err in data.get("errors", []) if isinstance(err, dict)}
+    return bool(err_codes.intersection(ACCESS_DENIED_ERROR_CODES))
+
+
+def is_access_token_expired_error(data):
+    """Return True when API payload indicates the access token has expired."""
+    err_codes = {str(err.get("code")) for err in data.get("errors", []) if isinstance(err, dict)}
+    return bool(err_codes.intersection(ACCESS_TOKEN_EXPIRED_ERROR_CODES))
+
+
+def is_transient_system_error(data):
+    """Return True when API payload indicates a transient provider-side system error."""
+    err_codes = {str(err.get("code")) for err in data.get("errors", []) if isinstance(err, dict)}
+    return bool(err_codes.intersection(TRANSIENT_ERROR_CODES))
 
 class Client:
     # pylint: disable=unused-argument
@@ -168,6 +198,8 @@ class Client:
             raise ApiException("Connection error while refreshing token at {}.".format(url)) from e
 
         if resp.status_code != 200:
+            if 500 <= resp.status_code < 600:
+                resp.raise_for_status()
             raise ApiException("Error refreshing token [{}]: {}".format(resp.status_code, resp.content))
 
         data = resp.json()
@@ -213,7 +245,7 @@ class Client:
         singer.log_info("Used %s of %s requests", self.calls_today, self.max_daily_calls)
 
     @handle_short_term_rate_limit()
-    def request(self, method, url, endpoint_name=None, **kwargs):
+    def request(self, method, url, endpoint_name=None, _allow_token_refresh=True, **kwargs):
         if self.calls_today % 250 == 0:
             self.update_calls_today()
 
@@ -230,6 +262,28 @@ class Client:
             raise_for_rate_limit(data)
             if not data["success"]:
                 err = ", ".join("{code}: {message}".format(**e) for e in data["errors"])
+                if is_access_token_expired_error(data) and _allow_token_refresh:
+                    singer.log_warning(
+                        "Access token expired while calling %s; refreshing token and retrying once.",
+                        endpoint_name or url,
+                    )
+                    self.refresh_token()
+                    return self.request(
+                        method,
+                        url,
+                        endpoint_name=endpoint_name,
+                        _allow_token_refresh=False,
+                        **kwargs
+                    )
+                if is_transient_system_error(data):
+                    message = (
+                        "Marketo API returned transient system error(s): {}. "
+                        "Backing off and retrying the request."
+                    ).format(err)
+                    singer.log_warning(message)
+                    raise ShortTermQuotaExceeded(message)
+                if is_access_denied_error(data):
+                    raise MarketoForbiddenError("Marketo API returned error(s): {}".format(err))
                 raise ApiException("Marketo API returned error(s): {}".format(err))
 
 
