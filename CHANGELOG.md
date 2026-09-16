@@ -1,5 +1,8 @@
 # Changelog
 
+# 2.10.1
+  * Addressed replication key issues for merge table. [#122](https://github.com/singer-io/tap-marketo/pull/122)
+
 # 2.10.0
   * Python Upgrade, Dependency Upgrade, Added unit tests and mocked integration tests. [#119](https://github.com/singer-io/tap-marketo/pull/119)
 
