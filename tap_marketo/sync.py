@@ -572,7 +572,7 @@ def sync(client, catalog, config, state):
         singer.log_info("Starting sync")
 
     corona_warning_flag = False
-    for stream in catalog["streams"]:
+    for stream in catalog['streams']:
         # Skip unselected streams.
         mdata = metadata.to_map(stream['metadata'])
 
