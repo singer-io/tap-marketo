@@ -61,6 +61,26 @@ class TestDiscoverCoreHelpers(unittest.TestCase):
         self.assertIn("client_ip_address", stream["schema"]["properties"])
         self.assertIn("primary_attribute_name", stream["schema"]["properties"])
 
+    def test_get_activity_type_stream_replication_method(self):
+        """Verifies activity streams get INCREMENTAL replication with activityDate as replication key."""
+        activity = {
+            "id": 102,
+            "name": "Email Sent",
+        }
+
+        stream = get_activity_type_stream(activity)
+
+        # Extract metadata map
+        mdata_map = {tuple(m["breadcrumb"]): m["metadata"] for m in stream["metadata"]}
+        root_metadata = mdata_map.get((), {})
+
+        # Verify INCREMENTAL replication method
+        self.assertEqual("INCREMENTAL", root_metadata.get("forced-replication-method"))
+        # Verify activityDate is the replication key
+        self.assertEqual("activityDate", root_metadata.get("valid-replication-keys"))
+        # Verify tap_stream_id follows naming convention
+        self.assertEqual("activities_email_sent", stream["tap_stream_id"])
+
 
 class TestDiscoverCoreStreams(unittest.TestCase):
     """Validates stream-level discovery transformations and edge cases."""
