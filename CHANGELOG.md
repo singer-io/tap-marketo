@@ -1,6 +1,6 @@
 # Changelog
 
-# 2.10.1
+# 3.0.0
   * Addressed replication key issues for merge table. [#122](https://github.com/singer-io/tap-marketo/pull/122)
 
 # 2.10.0
