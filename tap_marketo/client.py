@@ -30,6 +30,13 @@ SHORT_TERM_QUOTA_EXCEEDED = "606"
 
 SHORT_TERM_QUOTA_EXCEEDED_MESSAGE = "Marketo API returned error(s): {}. This is due to a short term rate limiting mechanism. Backing off and retrying the request."
 
+# Marketo limits concurrent bulk-export download connections per subscription to 10.
+# Resuming a dropped download opens a new connection before the old one is released,
+# so repeated fast resumes exhaust this limit and return error 615.
+CONCURRENT_ACCESS_LIMIT = "615"
+
+CONCURRENT_ACCESS_LIMIT_MESSAGE = "Marketo API returned error(s): {}. Concurrent access limit reached. Backing off before retrying the download."
+
 # Marketo limits REST requests to 50000 per day with a rate limit of 100
 # calls per 20 seconds.
 # http://developers.marketo.com/rest-api/
@@ -63,6 +70,9 @@ class ShortTermQuotaExceeded(Exception):
     been made in the past 20 seconds and that we need to back off.
     """
 
+class ConcurrentAccessLimitError(Exception):
+    """Indicates Marketo's per-subscription concurrent download limit (615) has been reached."""
+
 class ExportFailed(Exception):
 
     """Indicates an error occured while attempting a bulk export."""
@@ -75,6 +85,14 @@ def handle_short_term_rate_limit():
                                 jitter=None,
                                 logger=singer.get_logger())
 
+def handle_concurrent_access_limit():
+    return backoff.on_exception(backoff.expo,
+                                (ConcurrentAccessLimitError),
+                                max_tries=5,
+                                factor=20,
+                                jitter=None,
+                                logger=singer.get_logger())
+
 def raise_for_rate_limit(data):
     err_codes = set(err["code"] for err in data.get("errors", []))
     if API_QUOTA_EXCEEDED in err_codes:
@@ -83,6 +101,10 @@ def raise_for_rate_limit(data):
         message = SHORT_TERM_QUOTA_EXCEEDED_MESSAGE.format(data['errors'])
         singer.log_warning(message)
         raise ShortTermQuotaExceeded(message)
+    elif CONCURRENT_ACCESS_LIMIT in err_codes:
+        message = CONCURRENT_ACCESS_LIMIT_MESSAGE.format(data['errors'])
+        singer.log_warning(message)
+        raise ConcurrentAccessLimitError(message)
 
 class Client:
     # pylint: disable=unused-argument
@@ -310,6 +332,7 @@ class Client:
         # http://developers.marketo.com/rest-api/bulk-extract/#polling_job_status
         return self.get_export_status(stream_type, export_id)["result"][0]["status"]
 
+    @handle_concurrent_access_limit()
     @handle_short_term_rate_limit()
     def stream_export(self, stream_type, export_id, start_byte=0):
         # http://developers.marketo.com/rest-api/bulk-extract/#retrieving_your_data
