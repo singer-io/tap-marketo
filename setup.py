@@ -34,6 +34,10 @@ setup(name='tap-marketo',
               "activity_types.json",
               "campaigns.json",
               "programs.json",
+              "usage.json",
+              "usage_last7days.json",
+              "errors.json",
+              "errors_last7days.json"
           ]
       },
       include_package_data=True,
