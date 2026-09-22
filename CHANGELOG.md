@@ -1,5 +1,8 @@
 # Changelog
 
+# 3.0.0
+  * Addressed replication key issues for merge table. [#122](https://github.com/singer-io/tap-marketo/pull/122)
+
 # 2.10.1
   * Add exponential backoff delay before reconnecting resumed bulk export downloads to prevent hitting Marketo's concurrent access limit (error 615) [#118](https://github.com/singer-io/tap-marketo/pull/118)
   * Handle Marketo error 615 (concurrent access limit) as a retryable error in stream_export with exponential backoff [#118](https://github.com/singer-io/tap-marketo/pull/118)
