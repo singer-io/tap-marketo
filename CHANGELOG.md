@@ -4,6 +4,10 @@
   * BREAKING: Updated replication method and replication key behavior for `activities_*` streams.
   * Unauth stream exclusion and metadata changes. [#123](https://github.com/singer-io/tap-marketo/pull/123)
 
+# 2.10.1
+  * Add exponential backoff delay before reconnecting resumed bulk export downloads to prevent hitting Marketo's concurrent access limit (error 615) [#118](https://github.com/singer-io/tap-marketo/pull/118)
+  * Handle Marketo error 615 (concurrent access limit) as a retryable error in stream_export with exponential backoff [#118](https://github.com/singer-io/tap-marketo/pull/118)
+
 # 2.10.0
   * Python Upgrade, Dependency Upgrade, Added unit tests and mocked integration tests. [#119](https://github.com/singer-io/tap-marketo/pull/119)
 
