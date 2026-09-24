@@ -2,6 +2,9 @@
 
 # Marketo Docs are located at http://developers.marketo.com/rest-api/
 
+import json
+import sys
+
 import pendulum
 import singer
 from singer import bookmarks
@@ -33,12 +36,15 @@ REQUIRED_CONFIG_KEYS = [
 
 
 def validate_state(config, catalog, state):
-    for stream in catalog["streams"]:
+    for stream in catalog['streams']:
         for mdata in stream['metadata']:
-            if mdata['breadcrumb'] == [] and mdata['metadata'].get('selected') != True:
+            breadcrumb = mdata.get('breadcrumb')
+            mdata_metadata = mdata.get('metadata', {})
+
+            if breadcrumb == [] and mdata_metadata.get('selected') != True:
                 # If a stream is deselected while it's the current stream, unset the
                 # current stream.
-                if stream["tap_stream_id"] == get_currently_syncing(state):
+                if stream['tap_stream_id'] == get_currently_syncing(state):
                     set_currently_syncing(state, None)
                 break
 
@@ -49,11 +55,11 @@ def validate_state(config, catalog, state):
         # If there's no bookmark for a stream (new integration, newly selected,
         # reset, etc) we need to use the default start date from the config.
         bookmark = get_bookmark(state,
-                                stream["tap_stream_id"],
+                                stream['tap_stream_id'],
                                 replication_key)
         if bookmark is None:
             state = write_bookmark(state,
-                                   stream["tap_stream_id"],
+                                   stream['tap_stream_id'],
                                    replication_key,
                                    config["start_date"])
 
@@ -63,7 +69,8 @@ def validate_state(config, catalog, state):
 def _main(config, properties, state, discover_mode=False):
     client = Client(**config)
     if discover_mode:
-        discover(client)
+        catalog = discover(client)
+        json.dump(catalog, sys.stdout, indent=2)
     elif properties:
         # singer-python >= 3.0 returns a Catalog object; convert to dict for
         # backward-compatible dict-style access used throughout this tap.
