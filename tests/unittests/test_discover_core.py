@@ -44,7 +44,7 @@ class TestDiscoverCoreHelpers(unittest.TestCase):
         incremental = set_replication_metadata(metadata.new(), "updatedAt")
         inc_map = metadata.to_map(metadata.to_list(incremental))
         self.assertEqual("INCREMENTAL", inc_map[()]["forced-replication-method"])
-        self.assertEqual("updatedAt", inc_map[()]["valid-replication-keys"])
+        self.assertEqual(["updatedAt"], inc_map[()]["valid-replication-keys"])
 
     def test_get_activity_type_stream(self):
         """Ensures activity type rows are converted into normalized stream schemas."""
@@ -60,6 +60,26 @@ class TestDiscoverCoreHelpers(unittest.TestCase):
         self.assertEqual("activities_visit_webpage", stream["tap_stream_id"])
         self.assertIn("client_ip_address", stream["schema"]["properties"])
         self.assertIn("primary_attribute_name", stream["schema"]["properties"])
+
+    def test_get_activity_type_stream_replication_method(self):
+        """Verifies activity streams get INCREMENTAL replication with activityDate as replication key."""
+        activity = {
+            "id": 102,
+            "name": "Email Sent",
+        }
+
+        stream = get_activity_type_stream(activity)
+
+        # Extract metadata map
+        mdata_map = {tuple(m["breadcrumb"]): m["metadata"] for m in stream["metadata"]}
+        root_metadata = mdata_map.get((), {})
+
+        # Verify INCREMENTAL replication method
+        self.assertEqual("INCREMENTAL", root_metadata.get("forced-replication-method"))
+        # Verify activityDate is the replication key
+        self.assertEqual(["activityDate"], root_metadata.get("valid-replication-keys"))
+        # Verify tap_stream_id follows naming convention
+        self.assertEqual("activities_email_sent", stream["tap_stream_id"])
 
 
 class TestDiscoverCoreStreams(unittest.TestCase):
