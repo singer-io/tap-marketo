@@ -296,7 +296,22 @@ def discover_catalog(name, automatic_inclusion, client=None, **kwargs):
 # ---------------------------------------------------------------------------
 
 # Mapping of tap_stream_id to the probe endpoint used to verify access.
-# Activity type streams are probed via the shared activity_types endpoint.
+#
+# NOTE: Individual activities_* streams are NOT probed independently. Marketo's
+# Bulk Activity Extract API exposes a single shared, mutating, quota-consuming
+# export-creation endpoint (see sync.py's get_or_create_export_for_activities,
+# which filters by "activityTypeIds" in the request body) rather than a
+# distinct read-only permission-check endpoint per activity type. Probing each
+# activity type independently at discovery time would require creating a real
+# (quota-costing) export job per type, which is unacceptable. As a result,
+# activities_* children all delegate to the shared 'activity_types' describe
+# probe below (see _get_probe_key) and are only ever excluded in bulk if that
+# parent probe fails. A credential that can access activity_types but lacks
+# export access to one specific activity type will still receive that child
+# stream in the catalog; sync.py's sync() loop guards against this at the
+# point Marketo actually enforces the permission by catching
+# MarketoForbiddenError around the activities_* sync dispatch and skipping
+# just that one stream instead of crashing the whole run.
 STREAM_PROBE_ENDPOINTS = {
     "leads": ("GET", "rest/v1/leads/describe.json"),
     "activity_types": ("GET", "rest/v1/activities/types.json"),
@@ -313,7 +328,16 @@ def _get_probe_key(stream_name):
 def check_stream_access(client, stream_name) -> bool:
     """Probe stream_name's endpoint and return whether the credentials have read access.
     Returns False if a MarketoForbiddenError is raised; True otherwise.
-    Activity sub-streams (activities_*) delegate to the shared 'activity_types' probe.
+
+    Activity sub-streams (activities_*) delegate to the shared 'activity_types'
+    probe because Marketo has no non-mutating, per-activity-type endpoint to
+    check export permissions against ahead of time -- the only place that
+    permission is actually enforced is the (mutating) bulk export creation
+    call made during sync. This means a credential with access to the parent
+    'activity_types' describe endpoint but not to a specific activity type's
+    bulk export can still see that child stream in the catalog; sync.py
+    handles that case by catching MarketoForbiddenError around the per-stream
+    sync dispatch and skipping just the affected stream.
     """
     probe_key = _get_probe_key(stream_name)
     probe = STREAM_PROBE_ENDPOINTS.get(probe_key)

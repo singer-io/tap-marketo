@@ -10,7 +10,7 @@ import singer
 from singer import metadata
 from singer import bookmarks
 from singer import utils
-from tap_marketo.client import utcnow, ExportFailed, ApiQuotaExceeded
+from tap_marketo.client import utcnow, ExportFailed, ApiQuotaExceeded, MarketoForbiddenError
 
 
 # We can request up to 30 days worth of activities per export.
@@ -620,7 +620,24 @@ def sync(client, catalog, config, state):
             state, record_count = sync_leads(client, state, stream, config)
             corona_warning_flag = True
         elif stream["tap_stream_id"].startswith("activities_"):
-            state, record_count = sync_activities(client, state, stream, config)
+            try:
+                state, record_count = sync_activities(client, state, stream, config)
+            except MarketoForbiddenError as ex:
+                # The credentials can access the shared 'activity_types' parent
+                # stream (checked at discovery time) but lack export access to
+                # this specific activity type. Marketo has no non-mutating,
+                # per-activity-type permission-check endpoint, so this is the
+                # first point such a gap can be detected. Skip just this
+                # stream rather than crashing the entire sync.
+                singer.log_error(
+                    "%s: skipping stream, credentials do not have export access "
+                    "for this activity type. HTTP-Error-Message: %s",
+                    stream["tap_stream_id"],
+                    str(ex),
+                )
+                state = bookmarks.set_currently_syncing(state, None)
+                singer.write_state(state)
+                continue
             corona_warning_flag = True
         elif stream["tap_stream_id"] in ["campaigns", "lists"]:
             state, record_count = sync_paginated(client, state, stream)

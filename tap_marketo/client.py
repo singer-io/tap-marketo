@@ -31,7 +31,10 @@ API_QUOTA_EXCEEDED_MESSAGE = "Marketo API returned error(s): {}. Data can resume
 SHORT_TERM_QUOTA_EXCEEDED = "606"
 
 # Marketo may return access-denied as an application error envelope
-# (HTTP 200 + success=false + errors[].code=603) instead of HTTP 403.
+# (HTTP 200 + success=false + errors[].code=603) instead of a raw HTTP 403.
+# Both forms are normalized to MarketoForbiddenError: the 603 envelope case in
+# request() below, and the raw HTTP 403 case in _request()'s raise_for_status
+# handling. Callers only need to catch MarketoForbiddenError.
 ACCESS_DENIED_ERROR_CODES = frozenset(["603"])
 ACCESS_TOKEN_EXPIRED_ERROR_CODES = frozenset([ACCESS_TOKEN_EXPIRED])
 TRANSIENT_ERROR_CODES = frozenset([SYSTEM_ERROR])
@@ -252,8 +255,23 @@ class Client:
         with singer.metrics.http_request_timer(endpoint_name):
             resp = self._session.send(req, stream=stream, timeout=self.request_timeout)
 
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except requests.exceptions.HTTPError as ex:
+            if resp.status_code == 403:
+                # Marketo may return access-denied as a raw HTTP 403 (no JSON
+                # envelope) in addition to the HTTP-200 application-error form
+                # handled in request() via is_access_denied_error(). Normalize
+                # both to MarketoForbiddenError so callers (e.g. discovery's
+                # stream-access checks) only need to catch one exception type.
+                raise MarketoForbiddenError(
+                    "Marketo API returned HTTP 403: credentials do not have "
+                    "'read' access to {}. {}".format(endpoint_name, resp.content)
+                ) from ex
+            raise
+
         return resp
+
 
     def update_calls_today(self):
         # http://developers.marketo.com/rest-api/endpoint-reference/lead-database-endpoint-reference/#!/Usage/getDailyUsageUsingGET

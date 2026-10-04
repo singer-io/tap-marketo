@@ -3,7 +3,10 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from tap_marketo.client import MarketoForbiddenError
+import pendulum
+import requests_mock
+
+from tap_marketo.client import Client, MarketoForbiddenError
 from tap_marketo.discover import (
     CAMPAIGNS_AUTOMATIC_INCLUSION,
     discover,
@@ -196,6 +199,31 @@ class TestDiscover(unittest.TestCase):
         self.assertTrue(result)
         _, endpoint = client.request.call_args[0][0], client.request.call_args[0][1]
         self.assertEqual("rest/v1/activities/types.json", endpoint)
+
+    def test_check_stream_access_excludes_stream_on_raw_http_403(self):
+        """
+        Regression test: a real HTTP 403 (no JSON success=false envelope) must
+        be excluded from the catalog like any other forbidden stream, not
+        propagate as requests.exceptions.HTTPError and abort discovery.
+        Exercises the real Client/_request() stack (not a mock) so the
+        raise_for_status -> MarketoForbiddenError normalization in
+        client.py's _request() is actually under test.
+        """
+        client = Client("123-ABC-789", "id", "secret")
+        client.calls_today = 1
+        client.token_expires = pendulum.utcnow().add(days=1)
+        client.access_token = "token"
+
+        with requests_mock.Mocker(real_http=True) as mock:
+            mock.register_uri(
+                "GET",
+                client.get_url("rest/v1/campaigns.json"),
+                status_code=403,
+                content=b"Forbidden",
+            )
+            result = check_stream_access(client, "campaigns")
+
+        self.assertFalse(result)
 
     @patch("tap_marketo.discover.discover_catalog")
     @patch("tap_marketo.discover.discover_activities")

@@ -124,7 +124,8 @@ class TestClient(unittest.TestCase):
             self.assertFalse(self.client.use_corona)
 
     def test_raise_for_status_forbidden(self):
-        """Ensures HTTP 403 is surfaced as requests HTTPError from _request."""
+        """Ensures a raw HTTP 403 is normalized to MarketoForbiddenError by _request,
+        matching the application-error-envelope (code 603) path in request()."""
         self.client.token_expires = pendulum.utcnow().add(days=1)
         self.client.access_token = "token"
         response = unittest.mock.MagicMock()
@@ -133,8 +134,22 @@ class TestClient(unittest.TestCase):
 
         self.client._session.send = unittest.mock.MagicMock(return_value=response)
 
-        with self.assertRaises(requests.exceptions.HTTPError):
+        with self.assertRaises(MarketoForbiddenError):
             self.client._request("GET", "rest/v1/forbidden.json")
+
+    def test_raise_for_status_non_forbidden_still_raises_http_error(self):
+        """Ensures non-403 HTTP errors still surface as requests.HTTPError (unaffected
+        by the 403-to-MarketoForbiddenError normalization)."""
+        self.client.token_expires = pendulum.utcnow().add(days=1)
+        self.client.access_token = "token"
+        response = unittest.mock.MagicMock()
+        response.status_code = 404
+        response.raise_for_status.side_effect = requests.exceptions.HTTPError("404")
+
+        self.client._session.send = unittest.mock.MagicMock(return_value=response)
+
+        with self.assertRaises(requests.exceptions.HTTPError):
+            self.client._request("GET", "rest/v1/missing.json")
 
 
 class TestExports(unittest.TestCase):
