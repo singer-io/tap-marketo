@@ -243,9 +243,11 @@ class TestSyncRouting(unittest.TestCase):
             _counter,
             _write_state,
             log_error):
-        """Verifies a per-activity-type 403 skips just that stream rather than
-        crashing the whole sync, since Marketo has no non-mutating endpoint to
-        check export access to a specific activity type ahead of time."""
+        """Verifies a per-activity-type 403 skips just that stream (so other
+        selected streams still get a chance to sync), but the overall sync
+        still raises at the end rather than silently reporting success,
+        since Marketo has no non-mutating endpoint to check export access to
+        a specific activity type ahead of time."""
         mock_sync_activities.side_effect = sync_module.MarketoForbiddenError(
             "Access denied to activity type export"
         )
@@ -258,11 +260,13 @@ class TestSyncRouting(unittest.TestCase):
             ]
         }
 
-        # Should not raise, even though sync_activities raised a forbidden error.
-        sync_module.sync(client, catalog, {}, state)
+        # The subsequent stream must still be synced, but the overall sync
+        # must still raise once the loop finishes so the failure propagates.
+        with self.assertRaises(sync_module.MarketoForbiddenError) as err:
+            sync_module.sync(client, catalog, {}, state)
 
+        self.assertIn("activities_open_email", str(err.exception))
         mock_sync_activities.assert_called_once()
-        # The subsequent stream must still be synced.
         mock_sync_programs.assert_called_once()
         log_error.assert_called_once()
         self.assertIn("activities_open_email", log_error.call_args[0])

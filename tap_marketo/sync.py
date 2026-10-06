@@ -592,6 +592,13 @@ def sync(client, catalog, config, state):
         singer.log_info("Starting sync")
 
     corona_warning_flag = False
+    # Activity streams skipped mid-sync because the credentials lack export
+    # access (MarketoForbiddenError). These are tracked rather than raised
+    # immediately so that remaining selected streams still get a chance to
+    # sync, but the overall sync must still fail at the end -- otherwise a
+    # denied stream (including the only selected stream) would be silently
+    # dropped and the tap would report success despite incomplete data.
+    forbidden_streams = []
     for stream in catalog['streams']:
         # Skip unselected streams.
         mdata = metadata.to_map(stream['metadata'])
@@ -628,13 +635,16 @@ def sync(client, catalog, config, state):
                 # this specific activity type. Marketo has no non-mutating,
                 # per-activity-type permission-check endpoint, so this is the
                 # first point such a gap can be detected. Skip just this
-                # stream rather than crashing the entire sync.
+                # stream (so other selected streams still get synced) but
+                # record it so the sync is reported as a failure once the
+                # loop finishes, rather than returning success silently.
                 singer.log_error(
                     "%s: skipping stream, credentials do not have export access "
                     "for this activity type. HTTP-Error-Message: %s",
                     stream["tap_stream_id"],
                     str(ex),
                 )
+                forbidden_streams.append(stream["tap_stream_id"])
                 state = bookmarks.set_currently_syncing(state, None)
                 singer.write_state(state)
                 continue
@@ -661,3 +671,15 @@ def sync(client, catalog, config, state):
     singer.log_info("Finished sync.")
     if corona_warning_flag and not client.use_corona:
             singer.log_warning(NO_CORONA_WARNING)
+
+    if forbidden_streams:
+        # Propagate the failure instead of returning success: other selected
+        # streams were given a chance to sync above, but data for these
+        # activity streams is incomplete/missing, so the overall sync must
+        # not be reported as successful.
+        raise MarketoForbiddenError(
+            "Sync completed with errors: credentials do not have export access "
+            "for the following activity stream(s): {}".format(
+                ", ".join(forbidden_streams)
+            )
+        )
