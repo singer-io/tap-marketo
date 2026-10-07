@@ -16,6 +16,11 @@ from tap_marketo.client import utcnow, ExportFailed, ApiQuotaExceeded, MarketoFo
 # We can request up to 30 days worth of activities per export.
 MAX_EXPORT_DAYS = 30
 
+# State key used to durably persist activity streams that have been denied
+# export access (MarketoForbiddenError) so the failure survives a process
+# exit/crash that happens before the final aggregate raise in `sync()`.
+PENDING_FORBIDDEN_STREAMS_KEY = "pending_forbidden_streams"
+
 BASE_ACTIVITY_FIELDS = [
     "marketoGUID",
     "leadId",
@@ -598,7 +603,15 @@ def sync(client, catalog, config, state):
     # sync, but the overall sync must still fail at the end -- otherwise a
     # denied stream (including the only selected stream) would be silently
     # dropped and the tap would report success despite incomplete data.
-    forbidden_streams = []
+    #
+    # The list is also persisted to state (`pending_forbidden_streams`) as
+    # soon as a stream is found to be forbidden. This makes the failure
+    # durable: if the process exits for any reason before the final
+    # aggregate raise below (e.g. a crash while syncing a later stream),
+    # the persisted list -- not just this in-memory variable -- is what
+    # the next run relies on, so a denied stream can never be silently
+    # dropped just because the process didn't reach the end of this loop.
+    forbidden_streams = list(dict.fromkeys(state.get(PENDING_FORBIDDEN_STREAMS_KEY, [])))
     for stream in catalog['streams']:
         # Skip unselected streams.
         mdata = metadata.to_map(stream['metadata'])
@@ -644,10 +657,25 @@ def sync(client, catalog, config, state):
                     stream["tap_stream_id"],
                     str(ex),
                 )
-                forbidden_streams.append(stream["tap_stream_id"])
+                if stream["tap_stream_id"] not in forbidden_streams:
+                    forbidden_streams.append(stream["tap_stream_id"])
+                # Persist immediately (not just at the end of the loop) so
+                # the denial is durable even if the process exits before
+                # reaching the final aggregate raise.
+                state[PENDING_FORBIDDEN_STREAMS_KEY] = forbidden_streams
                 state = bookmarks.set_currently_syncing(state, None)
                 singer.write_state(state)
                 continue
+            else:
+                # Credentials now have export access (e.g. updated since a
+                # prior run) for a stream previously recorded as denied --
+                # clear it from the durable pending-failures list.
+                if stream["tap_stream_id"] in forbidden_streams:
+                    forbidden_streams.remove(stream["tap_stream_id"])
+                    if forbidden_streams:
+                        state[PENDING_FORBIDDEN_STREAMS_KEY] = forbidden_streams
+                    else:
+                        state.pop(PENDING_FORBIDDEN_STREAMS_KEY, None)
             corona_warning_flag = True
         elif stream["tap_stream_id"] in ["campaigns", "lists"]:
             state, record_count = sync_paginated(client, state, stream)
@@ -673,6 +701,11 @@ def sync(client, catalog, config, state):
             singer.log_warning(NO_CORONA_WARNING)
 
     if forbidden_streams:
+        # Keep the pending-failures list persisted in state until this
+        # aggregate error has actually been emitted/handled by the caller.
+        state[PENDING_FORBIDDEN_STREAMS_KEY] = forbidden_streams
+        singer.write_state(state)
+
         # Propagate the failure instead of returning success: other selected
         # streams were given a chance to sync above, but data for these
         # activity streams is incomplete/missing, so the overall sync must
@@ -683,3 +716,6 @@ def sync(client, catalog, config, state):
                 ", ".join(forbidden_streams)
             )
         )
+
+    state.pop(PENDING_FORBIDDEN_STREAMS_KEY, None)
+    singer.write_state(state)
