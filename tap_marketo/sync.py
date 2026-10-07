@@ -10,11 +10,16 @@ import singer
 from singer import metadata
 from singer import bookmarks
 from singer import utils
-from tap_marketo.client import utcnow, ExportFailed, ApiQuotaExceeded
+from tap_marketo.client import utcnow, ExportFailed, ApiQuotaExceeded, MarketoForbiddenError
 
 
 # We can request up to 30 days worth of activities per export.
 MAX_EXPORT_DAYS = 30
+
+# State key used to durably persist activity streams that have been denied
+# export access (MarketoForbiddenError) so the failure survives a process
+# exit/crash that happens before the final aggregate raise in `sync()`.
+PENDING_FORBIDDEN_STREAMS_KEY = "pending_forbidden_streams"
 
 BASE_ACTIVITY_FIELDS = [
     "marketoGUID",
@@ -592,7 +597,32 @@ def sync(client, catalog, config, state):
         singer.log_info("Starting sync")
 
     corona_warning_flag = False
-    for stream in catalog["streams"]:
+    # Activity streams skipped mid-sync because the credentials lack export
+    # access (MarketoForbiddenError). These are tracked rather than raised
+    # immediately so that remaining selected streams still get a chance to
+    # sync, but the overall sync must still fail at the end -- otherwise a
+    # denied stream (including the only selected stream) would be silently
+    # dropped and the tap would report success despite incomplete data.
+    #
+    # The list is also persisted to state (`pending_forbidden_streams`) as
+    # soon as a stream is found to be forbidden. This makes the failure
+    # durable: if the process exits for any reason before the final
+    # aggregate raise below (e.g. a crash while syncing a later stream),
+    # the persisted list -- not just this in-memory variable -- is what
+    # the next run relies on, so a denied stream can never be silently
+    # dropped just because the process didn't reach the end of this loop.
+    selected_activity_streams = {
+        stream["tap_stream_id"]
+        for stream in catalog["streams"]
+        if stream["tap_stream_id"].startswith("activities_")
+        and metadata.get(metadata.to_map(stream["metadata"]), (), "selected")
+    }
+    forbidden_streams = [
+        stream_id
+        for stream_id in dict.fromkeys(state.get(PENDING_FORBIDDEN_STREAMS_KEY, []))
+        if stream_id in selected_activity_streams
+    ]
+    for stream in catalog['streams']:
         # Skip unselected streams.
         mdata = metadata.to_map(stream['metadata'])
 
@@ -620,7 +650,42 @@ def sync(client, catalog, config, state):
             state, record_count = sync_leads(client, state, stream, config)
             corona_warning_flag = True
         elif stream["tap_stream_id"].startswith("activities_"):
-            state, record_count = sync_activities(client, state, stream, config)
+            try:
+                state, record_count = sync_activities(client, state, stream, config)
+            except MarketoForbiddenError as ex:
+                # The credentials can access the shared 'activity_types' parent
+                # stream (checked at discovery time) but lack export access to
+                # this specific activity type. Marketo has no non-mutating,
+                # per-activity-type permission-check endpoint, so this is the
+                # first point such a gap can be detected. Skip just this
+                # stream (so other selected streams still get synced) but
+                # record it so the sync is reported as a failure once the
+                # loop finishes, rather than returning success silently.
+                singer.log_error(
+                    "%s: skipping stream, credentials do not have export access "
+                    "for this activity type. HTTP-Error-Message: %s",
+                    stream["tap_stream_id"],
+                    str(ex),
+                )
+                if stream["tap_stream_id"] not in forbidden_streams:
+                    forbidden_streams.append(stream["tap_stream_id"])
+                # Persist immediately (not just at the end of the loop) so
+                # the denial is durable even if the process exits before
+                # reaching the final aggregate raise.
+                state[PENDING_FORBIDDEN_STREAMS_KEY] = forbidden_streams
+                state = bookmarks.set_currently_syncing(state, None)
+                singer.write_state(state)
+                continue
+            else:
+                # Credentials now have export access (e.g. updated since a
+                # prior run) for a stream previously recorded as denied --
+                # clear it from the durable pending-failures list.
+                if stream["tap_stream_id"] in forbidden_streams:
+                    forbidden_streams.remove(stream["tap_stream_id"])
+                    if forbidden_streams:
+                        state[PENDING_FORBIDDEN_STREAMS_KEY] = forbidden_streams
+                    else:
+                        state.pop(PENDING_FORBIDDEN_STREAMS_KEY, None)
             corona_warning_flag = True
         elif stream["tap_stream_id"] in ["campaigns", "lists"]:
             state, record_count = sync_paginated(client, state, stream)
@@ -644,3 +709,23 @@ def sync(client, catalog, config, state):
     singer.log_info("Finished sync.")
     if corona_warning_flag and not client.use_corona:
             singer.log_warning(NO_CORONA_WARNING)
+
+    if forbidden_streams:
+        # Keep the pending-failures list persisted in state until this
+        # aggregate error has actually been emitted/handled by the caller.
+        state[PENDING_FORBIDDEN_STREAMS_KEY] = forbidden_streams
+        singer.write_state(state)
+
+        # Propagate the failure instead of returning success: other selected
+        # streams were given a chance to sync above, but data for these
+        # activity streams is incomplete/missing, so the overall sync must
+        # not be reported as successful.
+        raise MarketoForbiddenError(
+            "Sync completed with errors: credentials do not have export access "
+            "for the following activity stream(s): {}".format(
+                ", ".join(forbidden_streams)
+            )
+        )
+
+    state.pop(PENDING_FORBIDDEN_STREAMS_KEY, None)
+    singer.write_state(state)

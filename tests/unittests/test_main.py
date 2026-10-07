@@ -79,6 +79,23 @@ class TestMainModule(unittest.TestCase):
         mock_validate_state.assert_called_once_with(config, properties, state)
         mock_sync.assert_called_once()
 
+    @patch("tap_marketo.sync")
+    @patch("tap_marketo.validate_state", return_value={"bookmarks": {}})
+    @patch("tap_marketo.Client")
+    def test__main_sync_mode_converts_catalog_object_to_dict(self, _mock_client, mock_validate_state, mock_sync):
+        """Verifies _main converts Catalog-like properties via to_dict before sync flow."""
+        config = {"endpoint": "123-ABC-456", "client_id": "id", "client_secret": "secret", "start_date": "2024-01-01T00:00:00Z"}
+        state = {"bookmarks": {}}
+
+        class CatalogLike:
+            def to_dict(self):
+                return {"streams": []}
+
+        tap_marketo._main(config, CatalogLike(), state, discover_mode=False)
+
+        mock_validate_state.assert_called_once_with(config, {"streams": []}, state)
+        mock_sync.assert_called_once()
+
     @patch("tap_marketo.singer.log_critical")
     @patch("tap_marketo._main", side_effect=RuntimeError("boom"))
     @patch("tap_marketo.singer.utils.parse_args")
