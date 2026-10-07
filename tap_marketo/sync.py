@@ -611,7 +611,17 @@ def sync(client, catalog, config, state):
     # the persisted list -- not just this in-memory variable -- is what
     # the next run relies on, so a denied stream can never be silently
     # dropped just because the process didn't reach the end of this loop.
-    forbidden_streams = list(dict.fromkeys(state.get(PENDING_FORBIDDEN_STREAMS_KEY, [])))
+    selected_activity_streams = {
+        stream["tap_stream_id"]
+        for stream in catalog["streams"]
+        if stream["tap_stream_id"].startswith("activities_")
+        and metadata.get(metadata.to_map(stream["metadata"]), (), "selected")
+    }
+    forbidden_streams = [
+        stream_id
+        for stream_id in dict.fromkeys(state.get(PENDING_FORBIDDEN_STREAMS_KEY, []))
+        if stream_id in selected_activity_streams
+    ]
     for stream in catalog['streams']:
         # Skip unselected streams.
         mdata = metadata.to_map(stream['metadata'])
