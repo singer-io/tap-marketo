@@ -248,6 +248,7 @@ def discover_leads(client):
 
 def discover_catalog(name, automatic_inclusion, client=None, **kwargs):
     unsupported = kwargs.get("unsupported", frozenset([]))
+    access_prevalidated = kwargs.get("access_prevalidated", False)
     root = os.path.dirname(os.path.realpath(__file__))
     path = os.path.join(root, 'schemas/{}.json'.format(name))
     mdata = metadata.new()
@@ -279,7 +280,7 @@ def discover_catalog(name, automatic_inclusion, client=None, **kwargs):
             determine_replication_key(tap_stream_id)
         )
 
-        if client and not check_stream_access(client, tap_stream_id):
+        if client and not access_prevalidated and not check_stream_access(client, tap_stream_id):
             return None
 
         return build_stream_entry(
@@ -376,6 +377,7 @@ def discover(client):
             ACTIVITY_TYPES_AUTOMATIC_INCLUSION,
             unsupported=ACTIVITY_TYPES_UNSUPPORTED,
             client=client,
+            access_prevalidated=True,
         )
         if activity_types_stream:
             streams.append(activity_types_stream)

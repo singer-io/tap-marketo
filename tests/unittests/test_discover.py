@@ -41,6 +41,11 @@ class TestDiscover(unittest.TestCase):
         self.assertIn("streams", result)
         self.assertEqual(6, len(result["streams"]))
 
+        # activity_types reuses the describe response from discover_activities()
+        # as proof of access instead of probing the endpoint a second time.
+        activity_types_call_kwargs = mock_catalog.call_args_list[0].kwargs
+        self.assertTrue(activity_types_call_kwargs.get("access_prevalidated"))
+
     @patch("tap_marketo.discover.check_stream_access", return_value=False)
     @patch("tap_marketo.discover.discover_catalog")
     @patch("tap_marketo.discover.discover_activities")
@@ -167,6 +172,23 @@ class TestDiscover(unittest.TestCase):
         stream = discover_catalog("campaigns", CAMPAIGNS_AUTOMATIC_INCLUSION, client=MagicMock())
         self.assertIsNone(stream)
 
+    @patch("tap_marketo.discover.check_stream_access")
+    def test_discover_catalog_skips_access_check_when_prevalidated(self, mock_check_access):
+        """Verifies discover_catalog skips the access probe when access_prevalidated=True.
+
+        This is the path activity_types takes after discover_activities() already
+        proved access via rest/v1/activities/types.json, avoiding a duplicate probe.
+        """
+        stream = discover_catalog(
+            "campaigns",
+            CAMPAIGNS_AUTOMATIC_INCLUSION,
+            client=MagicMock(),
+            access_prevalidated=True,
+        )
+
+        self.assertIsNotNone(stream)
+        mock_check_access.assert_not_called()
+
     def test_get_probe_key_for_activity_and_regular_streams(self):
         """Verifies activity sub-streams map to activity_types probe key."""
         self.assertEqual("activity_types", _get_probe_key("activities_open_email"))
@@ -245,6 +267,38 @@ class TestDiscover(unittest.TestCase):
         stream_names = [stream["tap_stream_id"] for stream in result["streams"]]
         self.assertNotIn("activity_types", stream_names)
         self.assertNotIn("activities_visit_webpage", stream_names)
+
+    @patch("tap_marketo.discover.discover_leads")
+    def test_discover_reuses_activity_types_probe_from_describe_call(self, mock_leads):
+        """Regression test for the duplicate activity_types probe.
+
+        discover_activities() already calls rest/v1/activities/types.json to build
+        the activity streams. discover() must reuse that successful response as
+        proof of access rather than calling check_stream_access() a second time
+        against the same endpoint.
+        """
+        mock_leads.return_value = {"tap_stream_id": "leads"}
+
+        client = MagicMock()
+
+        def request_side_effect(method, endpoint, endpoint_name=None):
+            if endpoint == "rest/v1/activities/types.json":
+                return {"result": [{"id": 1, "name": "Visit Webpage", "attributes": []}]}
+            return {"result": []}
+
+        client.request.side_effect = request_side_effect
+
+        result = discover(client)
+
+        activity_type_endpoint_calls = [
+            call for call in client.request.call_args_list
+            if call.args[1] == "rest/v1/activities/types.json"
+        ]
+        self.assertEqual(1, len(activity_type_endpoint_calls))
+
+        stream_names = [stream["tap_stream_id"] for stream in result["streams"]]
+        self.assertIn("activity_types", stream_names)
+        self.assertIn("activities_visit_webpage", stream_names)
 
 
 if __name__ == "__main__":
