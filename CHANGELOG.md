@@ -1,5 +1,8 @@
 # Changelog
 
+# 2.10.2
+  * Update datetime parsing logic to allow malformatted datetime strings seen from marketo's API, (i.e. 2000-01-01T00:00:00Z+0000 which contains both a timezone and timezone offset)
+
 # 2.10.1
   * Add exponential backoff delay before reconnecting resumed bulk export downloads to prevent hitting Marketo's concurrent access limit (error 615) [#118](https://github.com/singer-io/tap-marketo/pull/118)
   * Handle Marketo error 615 (concurrent access limit) as a retryable error in stream_export with exponential backoff [#118](https://github.com/singer-io/tap-marketo/pull/118)

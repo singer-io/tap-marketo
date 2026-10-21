@@ -954,3 +954,18 @@ class TestCreateExportWithQuotaBackoff(unittest.TestCase):
             create_export_with_quota_backoff(create, small_start, 30)
 
         self.assertEqual(1, len(calls))
+
+class TestParseDateTime(unittest.TestCase):
+    def test_parsed_datetime_with_timezone(self):
+        expected = pendulum.DateTime(2020, 1, 1, 0, 11, 22, tzinfo=pendulum.Timezone("UTC"))
+        self.assertEqual(expected, parse_datetime("2020-01-01T00:11:22Z"))
+
+    def test_parsed_datetime_with_offset(self):
+        expected = pendulum.DateTime(2020, 1, 1, 0, 11, 22, tzinfo=pendulum.FixedTimezone(7200, name="+02:00"))
+        self.assertEqual(expected, parse_datetime("2020-01-01T00:11:22+0200"))
+        self.assertEqual(expected, parse_datetime("2020-01-01T00:11:22+02:00"))
+
+    def test_parsed_datetime_with_timezone_and_offset(self):
+        expected = pendulum.DateTime(2020, 1, 1, 0, 11, 22, tzinfo=pendulum.Timezone("UTC"))
+        self.assertEqual(expected, parse_datetime("2020-01-01T00:11:22Z+0000"))
+        self.assertEqual(expected, parse_datetime("2020-01-01T00:11:22Z+00:00"))
