@@ -1,5 +1,9 @@
 # Changelog
 
+# 3.0.0
+  * Addressed replication key issues for merge table. [#122](https://github.com/singer-io/tap-marketo/pull/122)
+  * Emit `valid-replication-keys` as a list instead of a string to conform to the Singer spec.
+
 # 2.10.2
   * Update datetime parsing logic to allow malformatted datetime strings seen from marketo's API, (i.e. 2000-01-01T00:00:00Z+0000 which contains both a timezone and timezone offset)
 
