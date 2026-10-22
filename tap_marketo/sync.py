@@ -3,6 +3,7 @@ import io
 import json
 import time
 import pendulum
+import re
 from requests.exceptions import ChunkedEncodingError, ConnectionError
 from urllib3.exceptions import ProtocolError
 
@@ -58,6 +59,13 @@ ITER_CHUNK_SIZE = 512
 ATTRIBUTION_WINDOW_DAYS = 1
 
 
+def parse_datetime(value):
+    """Parse a Marketo date-time, tolerating malformed values like '2026-10-06T05:59:48Z+0000'."""
+    if isinstance(value, str):
+        value = re.sub(r"Z(?=[+-]\d{2}:?\d{2}$)", "", value)
+    return pendulum.parse(value)
+
+
 def format_value(value, schema):
     if not isinstance(schema["type"], list):
         field_type = [schema["type"]]
@@ -67,7 +75,7 @@ def format_value(value, schema):
     if value in [None, "", 'null']:
         return None
     elif schema.get("format") == "date-time":
-        return pendulum.parse(value).isoformat()
+        return parse_datetime(value).isoformat()
     elif "integer" in field_type:
         if isinstance(value, int):
             return value
@@ -309,7 +317,7 @@ def get_or_create_export_for_leads(client, state, stream, export_start, config):
         state = update_state_with_export_info(
             state, stream, export_id=export_id, export_end=export_end.isoformat())
     else:
-        export_end = pendulum.parse(bookmarks.get_bookmark(state, "leads", "export_end"))
+        export_end = parse_datetime(bookmarks.get_bookmark(state, "leads", "export_end"))
 
     return export_id, export_end
 
@@ -349,7 +357,7 @@ def get_or_create_export_for_activities(client, state, stream, export_start, con
         state = update_state_with_export_info(
             state, stream, export_id=export_id, export_end=export_end.isoformat())
     else:
-        export_end = pendulum.parse(bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_end"))
+        export_end = parse_datetime(bookmarks.get_bookmark(state, stream["tap_stream_id"], "export_end"))
 
     return export_id, export_end
 
@@ -379,8 +387,8 @@ def sync_leads(client, state, stream, config):
     replication_key = determine_replication_key(stream["tap_stream_id"])
 
     singer.write_schema("leads", stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
-    initial_bookmark = pendulum.parse(bookmarks.get_bookmark(state, "leads", replication_key))
-    export_start = pendulum.parse(bookmarks.get_bookmark(state, "leads", replication_key))
+    initial_bookmark = parse_datetime(bookmarks.get_bookmark(state, "leads", replication_key))
+    export_start = parse_datetime(bookmarks.get_bookmark(state, "leads", replication_key))
     if client.use_corona:
         export_start = export_start.subtract(days=ATTRIBUTION_WINDOW_DAYS)
 
@@ -395,7 +403,7 @@ def sync_leads(client, state, stream, config):
             time_extracted = utils.now()
 
             record = format_values(stream, row, available_fields)
-            record_bookmark = pendulum.parse(record[replication_key])
+            record_bookmark = parse_datetime(record[replication_key])
 
             if client.use_corona:
                 max_bookmark = export_end
@@ -419,7 +427,7 @@ def sync_activities(client, state, stream, config):
     # http://developers.marketo.com/rest-api/bulk-extract/bulk-activity-extract/
     replication_key = determine_replication_key(stream['tap_stream_id'])
     singer.write_schema(stream["tap_stream_id"], stream["schema"], stream["key_properties"], bookmark_properties=[replication_key])
-    export_start = pendulum.parse(bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key))
+    export_start = parse_datetime(bookmarks.get_bookmark(state, stream["tap_stream_id"], replication_key))
     job_started = utcnow()
     record_count = 0
 
@@ -462,7 +470,7 @@ def sync_programs(client, state, stream):
     end_dt = utcnow()
     end_date = end_dt.isoformat()
 
-    if pendulum.parse(start_date) >= end_dt:
+    if parse_datetime(start_date) >= end_dt:
         return state, 0
 
     params = {
