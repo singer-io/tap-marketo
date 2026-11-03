@@ -42,9 +42,7 @@ class TestDiscover(unittest.TestCase):
                               'marketo.activity-id': 1,
                               'marketo.primary-attribute-name': 'webpage_id',
                               'forced-replication-method': 'INCREMENTAL',
-                              'valid-replication-keys': ['activityDate'],
-                              'inclusion': 'available',
-                              'parent-tap-stream-id': 'activity_types'}},
+                              'valid-replication-keys': ['activityDate']}},
                 {
                     "metadata" : {
                         "inclusion": "automatic"

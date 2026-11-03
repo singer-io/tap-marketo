@@ -90,7 +90,9 @@ def get_schema_for_type(typ, breadcrumb, mdata, null=False):
 def set_replication_metadata(mdata, valid_replication_keys):
     mdata = metadata.write(mdata, (), 'forced-replication-method', 'FULL_TABLE')
     if valid_replication_keys:
-        if not isinstance(valid_replication_keys, list):
+        # The Singer spec defines `valid-replication-keys` as a list. Callers pass
+        # a single key from `determine_replication_key`, so normalize it here.
+        if isinstance(valid_replication_keys, str):
             valid_replication_keys = [valid_replication_keys]
         mdata = metadata.write(mdata, (), 'forced-replication-method', 'INCREMENTAL')
         mdata = metadata.write(mdata, (), 'valid-replication-keys', valid_replication_keys)
