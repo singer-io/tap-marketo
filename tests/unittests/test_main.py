@@ -54,6 +54,80 @@ class TestMainModule(unittest.TestCase):
 
         self.assertIsNone(updated_state.get("currently_syncing"))
 
+    @patch("tap_marketo.singer.write_state")
+    def test_validate_state_force_activities_backfill_clears_existing_bookmark(self, _write_state):
+        """Regression test for the activities_* replication-key migration:
+        setting force_activities_backfill in config must clear any existing
+        activities_* bookmark so validate_state() re-seeds it from
+        start_date, triggering a full historical backfill."""
+        config = {
+            "start_date": "2024-01-01T00:00:00Z",
+            "force_activities_backfill": True,
+        }
+        catalog = {
+            "streams": [
+                {
+                    "tap_stream_id": "activities_visit_webpage",
+                    "metadata": [{"breadcrumb": [], "metadata": {"selected": True}}],
+                },
+            ]
+        }
+        state = {"bookmarks": {"activities_visit_webpage": {"activityDate": "2024-06-01T00:00:00Z"}}}
+
+        updated_state = tap_marketo.validate_state(config, catalog, state)
+
+        self.assertEqual(
+            "2024-01-01T00:00:00Z",
+            updated_state["bookmarks"]["activities_visit_webpage"]["activityDate"],
+        )
+
+    @patch("tap_marketo.singer.write_state")
+    def test_validate_state_without_force_flag_preserves_existing_bookmark(self, _write_state):
+        """Ensures the activities_* bookmark is left untouched when
+        force_activities_backfill is not set (the default/normal path)."""
+        config = {"start_date": "2024-01-01T00:00:00Z"}
+        catalog = {
+            "streams": [
+                {
+                    "tap_stream_id": "activities_visit_webpage",
+                    "metadata": [{"breadcrumb": [], "metadata": {"selected": True}}],
+                },
+            ]
+        }
+        state = {"bookmarks": {"activities_visit_webpage": {"activityDate": "2024-06-01T00:00:00Z"}}}
+
+        updated_state = tap_marketo.validate_state(config, catalog, state)
+
+        self.assertEqual(
+            "2024-06-01T00:00:00Z",
+            updated_state["bookmarks"]["activities_visit_webpage"]["activityDate"],
+        )
+
+    @patch("tap_marketo.singer.write_state")
+    def test_validate_state_force_activities_backfill_noop_without_existing_bookmark(self, _write_state):
+        """Ensures the force flag doesn't error/misbehave when there is no
+        pre-existing bookmark to clear (e.g. a brand-new connection)."""
+        config = {
+            "start_date": "2024-01-01T00:00:00Z",
+            "force_activities_backfill": True,
+        }
+        catalog = {
+            "streams": [
+                {
+                    "tap_stream_id": "activities_visit_webpage",
+                    "metadata": [{"breadcrumb": [], "metadata": {"selected": True}}],
+                },
+            ]
+        }
+        state = {"bookmarks": {}}
+
+        updated_state = tap_marketo.validate_state(config, catalog, state)
+
+        self.assertEqual(
+            "2024-01-01T00:00:00Z",
+            updated_state["bookmarks"]["activities_visit_webpage"]["activityDate"],
+        )
+
     @patch("tap_marketo.discover", return_value={"streams": []})
     @patch("tap_marketo.Client")
     def test__main_discover_mode(self, mock_client, mock_discover):

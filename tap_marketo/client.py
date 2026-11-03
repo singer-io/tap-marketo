@@ -139,6 +139,48 @@ def is_transient_system_error(data):
     err_codes = {str(err.get("code")) for err in data.get("errors", []) if isinstance(err, dict)}
     return bool(err_codes.intersection(TRANSIENT_ERROR_CODES))
 
+
+# Upper bound on how much of an upstream HTTP response body we will ever
+# embed in an exception message. Response bodies are arbitrary,
+# upstream-controlled data (error pages, HTML, binary content, etc); without
+# a bound, a single large or malformed response could produce an unbounded
+# log message, and embedding it verbatim could expose arbitrary internal
+# response details. summarize_response_body() below truncates and strips
+# control characters so the summary is safe to embed in exception messages
+# that are later logged (e.g. MarketoForbiddenError in discover.py/sync.py).
+MAX_RESPONSE_BODY_LOG_LENGTH = 200
+
+
+def summarize_response_body(resp):
+    """Return a bounded, single-line, printable summary of resp's body,
+    safe to embed in an exception message that may end up in logs.
+
+    - Decodes bytes as UTF-8, replacing any undecodable bytes, so binary
+      bodies can't raise a secondary exception while building the summary.
+    - Strips control characters (including newlines/carriage returns) so the
+      summary can't inject extra log lines or terminal control sequences.
+    - Truncates to MAX_RESPONSE_BODY_LOG_LENGTH characters, noting the
+      original size, so large bodies can't produce unbounded log messages.
+    """
+    content = getattr(resp, "content", b"") or b""
+    if isinstance(content, bytes):
+        text = content.decode("utf-8", errors="replace")
+    else:
+        text = str(content)
+
+    sanitized = re.sub(r"[\x00-\x1f\x7f]+", " ", text).strip()
+
+    if not sanitized:
+        return "<empty response body>"
+
+    if len(sanitized) > MAX_RESPONSE_BODY_LOG_LENGTH:
+        return "{}... (truncated, {} bytes total)".format(
+            sanitized[:MAX_RESPONSE_BODY_LOG_LENGTH], len(content)
+        )
+
+    return sanitized
+
+
 class Client:
     # pylint: disable=unused-argument
     def __init__(self, endpoint, client_id, client_secret,
@@ -225,7 +267,7 @@ class Client:
         if resp.status_code != 200:
             if 500 <= resp.status_code < 600:
                 resp.raise_for_status()
-            raise ApiException("Error refreshing token [{}]: {}".format(resp.status_code, resp.content))
+            raise ApiException("Error refreshing token [{}]: {}".format(resp.status_code, summarize_response_body(resp)))
 
         data = resp.json()
         if "error" in data:
@@ -264,9 +306,13 @@ class Client:
                 # handled in request() via is_access_denied_error(). Normalize
                 # both to MarketoForbiddenError so callers (e.g. discovery's
                 # stream-access checks) only need to catch one exception type.
+                # The response body is bounded/sanitized before being embedded
+                # here: this exception's message is logged verbatim by
+                # discover.py/sync.py, so an unbounded or raw upstream body
+                # must not be propagated into logs unmodified.
                 raise MarketoForbiddenError(
                     "Marketo API returned HTTP 403: credentials do not have "
-                    "'read' access to {}. {}".format(endpoint_name, resp.content)
+                    "'read' access to {}. {}".format(endpoint_name, summarize_response_body(resp))
                 ) from ex
             raise
 
@@ -331,7 +377,7 @@ class Client:
         else:
             # NB: 206 Partial Content returned when checking for file existence
             if resp.status_code not in [200, 206]:
-                raise ApiException("Marketo API returned error: {0.status_code}: {0.content}".format(resp))
+                raise ApiException("Marketo API returned error: {}: {}".format(resp.status_code, summarize_response_body(resp)))
 
             return resp
 
@@ -424,7 +470,7 @@ class Client:
             err = ", ".join("{code}: {message}".format(**e) for e in data.get("errors", []))
             raise ApiException(
                 "Marketo API returned an error instead of the export file: {}".format(
-                    err or resp.content))
+                    err or summarize_response_body(resp)))
 
         return resp
 

@@ -15,6 +15,7 @@ from tap_marketo.sync import sync, determine_replication_key
 from singer.bookmarks import (
     get_bookmark,
     write_bookmark,
+    clear_bookmark,
     get_currently_syncing,
     set_currently_syncing,
 )
@@ -35,7 +36,52 @@ REQUIRED_CONFIG_KEYS = [
 ]
 
 
+# Config flag operators can set to force a one-time full historical backfill
+# of the activities_* streams. Needed when upgrading from a tap-marketo
+# version earlier than 3.1.0, which did not declare a stream-level
+# `replication_method`/`replication_key` in the catalog for activities_*
+# streams. Existing connections keep replicating forward from whatever
+# activityDate bookmark they already have, so destinations that key
+# merge/dedup behavior off those catalog fields may not have complete
+# historical activities_* data under the newly-declared INCREMENTAL
+# contract. Setting this to true for one sync clears the activities_*
+# bookmarks so they're re-seeded from config['start_date'] below and fully
+# backfilled; remove the flag (or set it back to false) afterwards so it
+# doesn't force a full backfill on every subsequent run. See README.md's
+# "Upgrading from tap-marketo < 3.1.0" section.
+FORCE_ACTIVITIES_BACKFILL_CONFIG_KEY = "force_activities_backfill"
+
+
+def _reset_activities_bookmarks(catalog, state):
+    """Clear the persisted replication-key bookmark for every activities_*
+    stream present in the catalog, so validate_state() re-seeds it from
+    config['start_date'] and a full historical backfill is triggered on the
+    next sync. See FORCE_ACTIVITIES_BACKFILL_CONFIG_KEY above.
+    """
+    for stream in catalog['streams']:
+        tap_stream_id = stream['tap_stream_id']
+        if not tap_stream_id.startswith('activities_'):
+            continue
+
+        replication_key = determine_replication_key(tap_stream_id)
+        if not replication_key:
+            continue
+
+        if get_bookmark(state, tap_stream_id, replication_key) is not None:
+            singer.log_warning(
+                "force_activities_backfill is set: clearing existing bookmark "
+                "for '%s' to force a full historical backfill.",
+                tap_stream_id,
+            )
+            state = clear_bookmark(state, tap_stream_id, replication_key)
+
+    return state
+
+
 def validate_state(config, catalog, state):
+    if config.get(FORCE_ACTIVITIES_BACKFILL_CONFIG_KEY):
+        state = _reset_activities_bookmarks(catalog, state)
+
     for stream in catalog['streams']:
         for mdata in stream['metadata']:
             breadcrumb = mdata.get('breadcrumb')

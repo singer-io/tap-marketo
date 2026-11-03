@@ -151,6 +151,98 @@ class TestClient(unittest.TestCase):
         with self.assertRaises(requests.exceptions.HTTPError):
             self.client._request("GET", "rest/v1/missing.json")
 
+    def test_raise_for_status_forbidden_bounds_and_sanitizes_response_body(self):
+        """Regression test: the MarketoForbiddenError message embeds a bounded,
+        sanitized summary of the response body (not the raw content), since
+        this exception's message is logged verbatim by discover.py/sync.py."""
+        self.client.token_expires = pendulum.utcnow().add(days=1)
+        self.client.access_token = "token"
+        response = unittest.mock.MagicMock()
+        response.status_code = 403
+        response.raise_for_status.side_effect = requests.exceptions.HTTPError("403")
+        huge_body = ("x" * 5000).encode("utf-8")
+        response.content = huge_body
+
+        self.client._session.send = unittest.mock.MagicMock(return_value=response)
+
+        with self.assertRaises(MarketoForbiddenError) as ctx:
+            self.client._request("GET", "rest/v1/forbidden.json")
+
+        message = str(ctx.exception)
+        self.assertLess(len(message), len(huge_body))
+        self.assertIn("truncated", message)
+        self.assertIn("5000 bytes total", message)
+
+    def test_raise_for_status_forbidden_strips_control_characters_from_body(self):
+        """Ensures newlines/control characters in the response body can't be
+        used to forge extra log lines via the MarketoForbiddenError message."""
+        self.client.token_expires = pendulum.utcnow().add(days=1)
+        self.client.access_token = "token"
+        response = unittest.mock.MagicMock()
+        response.status_code = 403
+        response.raise_for_status.side_effect = requests.exceptions.HTTPError("403")
+        response.content = b"real error\nCRITICAL fake injected log line"
+
+        self.client._session.send = unittest.mock.MagicMock(return_value=response)
+
+        with self.assertRaises(MarketoForbiddenError) as ctx:
+            self.client._request("GET", "rest/v1/forbidden.json")
+
+        message = str(ctx.exception)
+        self.assertNotIn("\n", message)
+        self.assertIn("real error CRITICAL fake injected log line", message)
+
+
+class TestSummarizeResponseBody(unittest.TestCase):
+    """Covers the bounded/sanitized response-body summary helper used when
+    building exception messages from upstream HTTP responses."""
+
+    def test_summarize_response_body_passes_through_short_text(self):
+        """Ensures short, clean bodies are returned unmodified."""
+        response = unittest.mock.MagicMock()
+        response.content = b"Forbidden: no access"
+        self.assertEqual("Forbidden: no access", summarize_response_body(response))
+
+    def test_summarize_response_body_handles_empty_content(self):
+        """Ensures an empty body produces a clear placeholder instead of an
+        empty/confusing message."""
+        response = unittest.mock.MagicMock()
+        response.content = b""
+        self.assertEqual("<empty response body>", summarize_response_body(response))
+
+    def test_summarize_response_body_truncates_long_content(self):
+        """Ensures long bodies are bounded to MAX_RESPONSE_BODY_LOG_LENGTH and
+        annotated with the original size."""
+        response = unittest.mock.MagicMock()
+        response.content = ("a" * 1000).encode("utf-8")
+
+        summary = summarize_response_body(response)
+
+        self.assertLessEqual(len(summary), MAX_RESPONSE_BODY_LOG_LENGTH + len("... (truncated, 1000 bytes total)"))
+        self.assertIn("truncated, 1000 bytes total", summary)
+
+    def test_summarize_response_body_strips_control_characters(self):
+        """Ensures newlines and other control characters are collapsed so the
+        summary can't inject extra log lines."""
+        response = unittest.mock.MagicMock()
+        response.content = b"line one\nline two\r\ttabbed"
+
+        summary = summarize_response_body(response)
+
+        self.assertNotIn("\n", summary)
+        self.assertNotIn("\r", summary)
+        self.assertNotIn("\t", summary)
+
+    def test_summarize_response_body_handles_non_utf8_bytes(self):
+        """Ensures undecodable bytes don't raise a secondary exception while
+        building the summary."""
+        response = unittest.mock.MagicMock()
+        response.content = b"\xff\xfe invalid utf-8 \xff"
+
+        # Should not raise.
+        summary = summarize_response_body(response)
+        self.assertIsInstance(summary, str)
+
 
 class TestExports(unittest.TestCase):
     """Covers bulk export lifecycle polling and file streaming behavior."""

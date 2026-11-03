@@ -3,7 +3,7 @@ import os
 
 import singer
 from singer import metadata
-from tap_marketo.client import MarketoForbiddenError
+from tap_marketo.client import MarketoForbiddenError, utcnow
 from tap_marketo.sync import determine_replication_key
 
 
@@ -324,6 +324,33 @@ STREAM_PROBE_ENDPOINTS = {
 }
 
 
+def _programs_probe_params():
+    # http://developers.marketo.com/rest-api/assets/programs/#by_date_range
+    #
+    # Programs' list endpoint (also used by sync.py's sync_programs) requires
+    # a bounded earliestUpdatedAt/latestUpdatedAt range; calling it with no
+    # parameters returns a Marketo "invalid parameters" application error
+    # (ApiException), not a 403. check_stream_access() below only catches
+    # MarketoForbiddenError, so that invalid-request response would otherwise
+    # propagate uncaught and abort discovery entirely for valid credentials.
+    # Probe with the smallest possible window (the last second) purely to
+    # validate read access without requesting any real program data.
+    now = utcnow()
+    return {
+        "maxReturn": 1,
+        "offset": 0,
+        "earliestUpdatedAt": now.subtract(seconds=1).isoformat(),
+        "latestUpdatedAt": now.isoformat(),
+    }
+
+
+# Mapping of probe_key -> callable returning the extra request params needed
+# for that probe to succeed. Most probes don't need any.
+STREAM_PROBE_PARAMS = {
+    "programs": _programs_probe_params,
+}
+
+
 def _get_probe_key(stream_name):
     return "activity_types" if stream_name.startswith("activities_") else stream_name
 
@@ -349,8 +376,19 @@ def check_stream_access(client, stream_name) -> bool:
         return True
 
     method, endpoint = probe
+    request_kwargs = {"endpoint_name": "{}_access_check".format(probe_key)}
+    params_fn = STREAM_PROBE_PARAMS.get(probe_key)
+    if params_fn is not None:
+        request_kwargs["params"] = params_fn()
+
     try:
-        client.request(method, endpoint, endpoint_name="{}_access_check".format(probe_key))
+        # Only MarketoForbiddenError (access-denied) is treated as "stream is
+        # unauthorized, exclude it from the catalog". Any other exception
+        # (e.g. ApiException from a genuinely invalid request, transient
+        # errors, etc.) is a real failure unrelated to permissions and is
+        # intentionally allowed to propagate rather than being misread as
+        # "inaccessible".
+        client.request(method, endpoint, **request_kwargs)
         return True
     except MarketoForbiddenError as ex:
         singer.log_warning(

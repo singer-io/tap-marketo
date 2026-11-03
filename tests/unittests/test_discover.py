@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pendulum
 import requests_mock
 
-from tap_marketo.client import Client, MarketoForbiddenError
+from tap_marketo.client import ApiException, Client, MarketoForbiddenError
 from tap_marketo.discover import (
     CAMPAIGNS_AUTOMATIC_INCLUSION,
     discover,
@@ -211,6 +211,36 @@ class TestDiscover(unittest.TestCase):
         self.assertTrue(check_stream_access(client, "unknown_stream"))
         client.request.assert_not_called()
 
+    def test_check_stream_access_programs_probe_includes_bounded_date_range(self):
+        """Regression test: the programs probe must supply a bounded
+        earliestUpdatedAt/latestUpdatedAt date range, matching the
+        parameters sync_programs() requires, instead of calling the endpoint
+        with no parameters at all."""
+        client = MagicMock()
+        client.request.return_value = {"result": []}
+
+        result = check_stream_access(client, "programs")
+
+        self.assertTrue(result)
+        _, kwargs = client.request.call_args[0], client.request.call_args[1]
+        params = kwargs.get("params")
+        self.assertIsNotNone(params)
+        self.assertIn("earliestUpdatedAt", params)
+        self.assertIn("latestUpdatedAt", params)
+        self.assertLessEqual(params["earliestUpdatedAt"], params["latestUpdatedAt"])
+
+    def test_check_stream_access_non_403_error_is_not_swallowed(self):
+        """Regression test: a non-403 application error (e.g. an
+        invalid-request ApiException unrelated to permissions) must not be
+        caught/treated as an access-denial by check_stream_access(); it
+        should propagate so discovery does not silently misreport a real
+        error as "unauthorized"."""
+        client = MagicMock()
+        client.request.side_effect = ApiException("Marketo API returned error(s): 1003: Invalid parameters")
+
+        with self.assertRaises(ApiException):
+            check_stream_access(client, "programs")
+
     def test_check_stream_access_activity_stream_uses_activity_probe(self):
         """Verifies activity sub-stream access check uses shared activity_types probe endpoint."""
         client = MagicMock()
@@ -281,7 +311,7 @@ class TestDiscover(unittest.TestCase):
 
         client = MagicMock()
 
-        def request_side_effect(method, endpoint, endpoint_name=None):
+        def request_side_effect(method, endpoint, endpoint_name=None, **kwargs):
             if endpoint == "rest/v1/activities/types.json":
                 return {"result": [{"id": 1, "name": "Visit Webpage", "attributes": []}]}
             return {"result": []}
