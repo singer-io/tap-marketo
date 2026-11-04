@@ -54,6 +54,80 @@ class TestMainModule(unittest.TestCase):
 
         self.assertIsNone(updated_state.get("currently_syncing"))
 
+    @patch("tap_marketo.singer.write_state")
+    def test_validate_state_force_activities_backfill_clears_existing_bookmark(self, _write_state):
+        """Regression test for the activities_* replication-key migration:
+        setting force_activities_backfill in config must clear any existing
+        activities_* bookmark so validate_state() re-seeds it from
+        start_date, triggering a full historical backfill."""
+        config = {
+            "start_date": "2024-01-01T00:00:00Z",
+            "force_activities_backfill": True,
+        }
+        catalog = {
+            "streams": [
+                {
+                    "tap_stream_id": "activities_visit_webpage",
+                    "metadata": [{"breadcrumb": [], "metadata": {"selected": True}}],
+                },
+            ]
+        }
+        state = {"bookmarks": {"activities_visit_webpage": {"activityDate": "2024-06-01T00:00:00Z"}}}
+
+        updated_state = tap_marketo.validate_state(config, catalog, state)
+
+        self.assertEqual(
+            "2024-01-01T00:00:00Z",
+            updated_state["bookmarks"]["activities_visit_webpage"]["activityDate"],
+        )
+
+    @patch("tap_marketo.singer.write_state")
+    def test_validate_state_without_force_flag_preserves_existing_bookmark(self, _write_state):
+        """Ensures the activities_* bookmark is left untouched when
+        force_activities_backfill is not set (the default/normal path)."""
+        config = {"start_date": "2024-01-01T00:00:00Z"}
+        catalog = {
+            "streams": [
+                {
+                    "tap_stream_id": "activities_visit_webpage",
+                    "metadata": [{"breadcrumb": [], "metadata": {"selected": True}}],
+                },
+            ]
+        }
+        state = {"bookmarks": {"activities_visit_webpage": {"activityDate": "2024-06-01T00:00:00Z"}}}
+
+        updated_state = tap_marketo.validate_state(config, catalog, state)
+
+        self.assertEqual(
+            "2024-06-01T00:00:00Z",
+            updated_state["bookmarks"]["activities_visit_webpage"]["activityDate"],
+        )
+
+    @patch("tap_marketo.singer.write_state")
+    def test_validate_state_force_activities_backfill_noop_without_existing_bookmark(self, _write_state):
+        """Ensures the force flag doesn't error/misbehave when there is no
+        pre-existing bookmark to clear (e.g. a brand-new connection)."""
+        config = {
+            "start_date": "2024-01-01T00:00:00Z",
+            "force_activities_backfill": True,
+        }
+        catalog = {
+            "streams": [
+                {
+                    "tap_stream_id": "activities_visit_webpage",
+                    "metadata": [{"breadcrumb": [], "metadata": {"selected": True}}],
+                },
+            ]
+        }
+        state = {"bookmarks": {}}
+
+        updated_state = tap_marketo.validate_state(config, catalog, state)
+
+        self.assertEqual(
+            "2024-01-01T00:00:00Z",
+            updated_state["bookmarks"]["activities_visit_webpage"]["activityDate"],
+        )
+
     @patch("tap_marketo.discover", return_value={"streams": []})
     @patch("tap_marketo.Client")
     def test__main_discover_mode(self, mock_client, mock_discover):
@@ -77,6 +151,23 @@ class TestMainModule(unittest.TestCase):
         tap_marketo._main(config, properties, state, discover_mode=False)
 
         mock_validate_state.assert_called_once_with(config, properties, state)
+        mock_sync.assert_called_once()
+
+    @patch("tap_marketo.sync")
+    @patch("tap_marketo.validate_state", return_value={"bookmarks": {}})
+    @patch("tap_marketo.Client")
+    def test__main_sync_mode_converts_catalog_object_to_dict(self, _mock_client, mock_validate_state, mock_sync):
+        """Verifies _main converts Catalog-like properties via to_dict before sync flow."""
+        config = {"endpoint": "123-ABC-456", "client_id": "id", "client_secret": "secret", "start_date": "2024-01-01T00:00:00Z"}
+        state = {"bookmarks": {}}
+
+        class CatalogLike:
+            def to_dict(self):
+                return {"streams": []}
+
+        tap_marketo._main(config, CatalogLike(), state, discover_mode=False)
+
+        mock_validate_state.assert_called_once_with(config, {"streams": []}, state)
         mock_sync.assert_called_once()
 
     @patch("tap_marketo.singer.log_critical")

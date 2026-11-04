@@ -2,6 +2,9 @@
 
 # Marketo Docs are located at http://developers.marketo.com/rest-api/
 
+import json
+import sys
+
 import pendulum
 import singer
 from singer import bookmarks
@@ -12,6 +15,7 @@ from tap_marketo.sync import sync, determine_replication_key
 from singer.bookmarks import (
     get_bookmark,
     write_bookmark,
+    clear_bookmark,
     get_currently_syncing,
     set_currently_syncing,
 )
@@ -32,13 +36,70 @@ REQUIRED_CONFIG_KEYS = [
 ]
 
 
+# Config flag operators can set to force a one-time full historical backfill
+# of the activities_* streams. Needed when upgrading from a tap-marketo
+# version earlier than 3.1.0, which did not declare a stream-level
+# `replication_method`/`replication_key` in the catalog for activities_*
+# streams. Existing connections keep replicating forward from whatever
+# activityDate bookmark they already have, so destinations that key
+# merge/dedup behavior off those catalog fields may not have complete
+# historical activities_* data under the newly-declared INCREMENTAL
+# contract. Setting this to true for one sync clears the activities_*
+# bookmarks so they're re-seeded from config['start_date'] below and fully
+# backfilled; remove the flag (or set it back to false) afterwards so it
+# doesn't force a full backfill on every subsequent run. See README.md's
+# "Upgrading from tap-marketo < 3.1.0" section.
+FORCE_ACTIVITIES_BACKFILL_CONFIG_KEY = "force_activities_backfill"
+
+
+def _reset_activities_bookmarks(catalog, state):
+    """Clear the persisted replication-key bookmark for every activities_*
+    stream present in the catalog, so validate_state() re-seeds it from
+    config['start_date'] and a full historical backfill is triggered on the
+    next sync. See FORCE_ACTIVITIES_BACKFILL_CONFIG_KEY above.
+    """
+    for stream in catalog['streams']:
+        tap_stream_id = stream['tap_stream_id']
+        if not tap_stream_id.startswith('activities_'):
+            continue
+
+        replication_key = determine_replication_key(tap_stream_id)
+        if not replication_key:
+            continue
+
+        if get_bookmark(state, tap_stream_id, replication_key) is not None:
+            singer.log_warning(
+                "force_activities_backfill is set: clearing existing bookmark "
+                "for '%s' to force a full historical backfill.",
+                tap_stream_id,
+            )
+            state = clear_bookmark(state, tap_stream_id, replication_key)
+        for export_key in ('export_id', 'export_end'):
+            if get_bookmark(state, tap_stream_id, export_key) is not None:
+                state = clear_bookmark(state, tap_stream_id, export_key)
+
+    return state
+
+
 def validate_state(config, catalog, state):
-    for stream in catalog["streams"]:
+    if config.get(FORCE_ACTIVITIES_BACKFILL_CONFIG_KEY):
+        state = _reset_activities_bookmarks(catalog, state)
+        state = set_currently_syncing(state, None)
+
+    stream_ids = {stream['tap_stream_id'] for stream in catalog['streams']}
+    currently_syncing = get_currently_syncing(state)
+    if currently_syncing and currently_syncing not in stream_ids:
+        state = set_currently_syncing(state, None)
+
+    for stream in catalog['streams']:
         for mdata in stream['metadata']:
-            if mdata['breadcrumb'] == [] and mdata['metadata'].get('selected') != True:
+            breadcrumb = mdata.get('breadcrumb')
+            mdata_metadata = mdata.get('metadata', {})
+
+            if breadcrumb == [] and mdata_metadata.get('selected') != True:
                 # If a stream is deselected while it's the current stream, unset the
                 # current stream.
-                if stream["tap_stream_id"] == get_currently_syncing(state):
+                if stream['tap_stream_id'] == get_currently_syncing(state):
                     set_currently_syncing(state, None)
                 break
 
@@ -49,11 +110,11 @@ def validate_state(config, catalog, state):
         # If there's no bookmark for a stream (new integration, newly selected,
         # reset, etc) we need to use the default start date from the config.
         bookmark = get_bookmark(state,
-                                stream["tap_stream_id"],
+                                stream['tap_stream_id'],
                                 replication_key)
         if bookmark is None:
             state = write_bookmark(state,
-                                   stream["tap_stream_id"],
+                                   stream['tap_stream_id'],
                                    replication_key,
                                    config["start_date"])
 
@@ -63,7 +124,8 @@ def validate_state(config, catalog, state):
 def _main(config, properties, state, discover_mode=False):
     client = Client(**config)
     if discover_mode:
-        discover(client)
+        catalog = discover(client)
+        json.dump(catalog, sys.stdout, indent=2)
     elif properties:
         # singer-python >= 3.0 returns a Catalog object; convert to dict for
         # backward-compatible dict-style access used throughout this tap.

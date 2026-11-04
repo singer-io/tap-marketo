@@ -70,6 +70,47 @@ This tap:
     tap-marketo --config config.json [--state state.json]
     ```
 
+## Upgrading from tap-marketo < 3.1.0
+
+Versions of tap-marketo prior to 3.1.0 did not declare a stream-level
+`replication_method`/`replication_key` in the catalog for the `activities_*`
+streams. As of 3.1.0, those streams declare `INCREMENTAL` replication with an
+explicit `activityDate` replication key, so destinations can properly
+merge/dedupe and rely on the bookmarked replication key.
+
+Existing connections that upgrade to 3.1.0+ keep replicating forward from
+whatever `activityDate` bookmark they already have. They do **not**
+automatically backfill history, which means the destination may be missing
+any `activities_*` records written before the tap started tracking that
+bookmark, or before the destination table was keyed/merged on the new
+replication key. If your destination relies on `activityDate` for merge or
+dedup behavior, that older data effectively falls outside its visibility
+until it is backfilled.
+
+To force a one-time full historical backfill of the `activities_*` streams:
+
+1. Add `"force_activities_backfill": true` to `config.json`.
+2. Run a sync. On this run the tap will:
+   - Clear the existing `activities_*` bookmarks (replication-key and any
+     in-progress export bookmarks), logging a warning for each stream
+     reset.
+   - Re-seed those bookmarks from `config["start_date"]`, causing every
+     `activities_*` stream to be fully re-extracted from `start_date`
+     forward.
+3. **Remove `force_activities_backfill` from `config.json`** (or set it back
+   to `false`) immediately after this sync completes. Leaving it set to
+   `true` forces a full backfill on **every** subsequent run, which is
+   wasteful and will repeatedly re-send already-synced activity history.
+
+**Destination replay implications:** because this reprocesses the full
+history of every `activities_*` stream, expect the destination to receive
+(and replay/merge) every historical `activities_*` record again for the
+configured `start_date` range. For most destinations this is safe because
+records are keyed and deduplicated/merged on `activityDate`/the stream's
+key properties, but it will temporarily increase sync duration, API usage
+against Marketo, and downstream write volume. Plan the one-time backfill
+sync for a low-traffic window if volume is a concern.
+
 
 ---
 

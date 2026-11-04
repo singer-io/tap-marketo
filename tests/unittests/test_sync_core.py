@@ -230,3 +230,159 @@ class TestSyncRouting(unittest.TestCase):
         mock_sync_activity_types.assert_called_once()
         mock_sync_activities.assert_called_once()
         mock_sync_programs.assert_called_once()
+
+    @patch("tap_marketo.sync.singer.log_error")
+    @patch("tap_marketo.sync.singer.write_state")
+    @patch("tap_marketo.sync.singer.metrics.record_counter", return_value=DummyCounter())
+    @patch("tap_marketo.sync.sync_programs", return_value=({"bookmarks": {}}, 1))
+    @patch("tap_marketo.sync.sync_activities")
+    def test_sync_skips_activity_stream_on_forbidden_error(
+            self,
+            mock_sync_activities,
+            mock_sync_programs,
+            _counter,
+            _write_state,
+            log_error):
+        """Verifies a per-activity-type 403 skips just that stream (so other
+        selected streams still get a chance to sync), but the overall sync
+        still raises at the end rather than silently reporting success,
+        since Marketo has no non-mutating endpoint to check export access to
+        a specific activity type ahead of time."""
+        mock_sync_activities.side_effect = sync_module.MarketoForbiddenError(
+            "Access denied to activity type export"
+        )
+        client = SimpleNamespace(use_corona=True)
+        state = {"bookmarks": {}}
+        catalog = {
+            "streams": [
+                self._stream("activities_open_email", selected=True),
+                self._stream("programs", selected=True),
+            ]
+        }
+
+        # The subsequent stream must still be synced, but the overall sync
+        # must still raise once the loop finishes so the failure propagates.
+        with self.assertRaises(sync_module.MarketoForbiddenError) as err:
+            sync_module.sync(client, catalog, {}, state)
+
+        self.assertIn("activities_open_email", str(err.exception))
+        mock_sync_activities.assert_called_once()
+        mock_sync_programs.assert_called_once()
+        log_error.assert_called_once()
+        self.assertIn("activities_open_email", log_error.call_args[0])
+
+    @patch("tap_marketo.sync.singer.write_state")
+    @patch("tap_marketo.sync.singer.metrics.record_counter", return_value=DummyCounter())
+    @patch(
+        "tap_marketo.sync.sync_activities",
+        side_effect=lambda client, state, stream, config: (state, 1),
+    )
+    def test_sync_filters_pending_forbidden_stream_no_longer_selected(
+            self,
+            mock_sync_activities,
+            _counter,
+            _write_state):
+        """Verifies a durably-persisted pending failure for a stream that is
+        no longer selected in the catalog is filtered out when `sync()`
+        loads `pending_forbidden_streams` from state, so a stale/unselected
+        entry can never resurrect a spurious aggregate failure. A persisted
+        entry for a stream that is still selected is retried normally."""
+        client = SimpleNamespace(use_corona=True)
+        state = {
+            "bookmarks": {},
+            sync_module.PENDING_FORBIDDEN_STREAMS_KEY: [
+                "activities_open_email",
+                "activities_click_email",
+            ],
+        }
+        catalog = {
+            "streams": [
+                self._stream("activities_open_email", selected=True),
+                self._stream("activities_click_email", selected=False),
+            ]
+        }
+
+        sync_module.sync(client, catalog, {}, state)
+
+        # Only the still-selected stream is retried; the unselected one is
+        # never attempted (and must not block completion).
+        mock_sync_activities.assert_called_once()
+        # The retry succeeded, so the durable key must be fully cleared --
+        # including the already-filtered, no-longer-selected entry.
+        self.assertNotIn(sync_module.PENDING_FORBIDDEN_STREAMS_KEY, state)
+
+    @patch("tap_marketo.sync.singer.write_state")
+    @patch("tap_marketo.sync.singer.metrics.record_counter", return_value=DummyCounter())
+    @patch(
+        "tap_marketo.sync.sync_programs",
+        side_effect=lambda client, state, stream: (state, 1),
+    )
+    @patch("tap_marketo.sync.sync_activities")
+    def test_sync_retains_pending_forbidden_stream_when_skipped_on_resume(
+            self,
+            mock_sync_activities,
+            mock_sync_programs,
+            _counter,
+            _write_state):
+        """Verifies a durably-persisted pending failure for a still-selected
+        activity stream is retained -- and still fails the overall sync --
+        even when a resumed run's `currently_syncing` bookmark causes that
+        specific stream to be skipped this invocation. This is the scenario
+        the durability fix targets: a process exit before the final
+        aggregate raise must not let a later resumed run silently drop the
+        previously denied stream just because it isn't reattempted."""
+        client = SimpleNamespace(use_corona=True)
+        state = {
+            "bookmarks": {},
+            "currently_syncing": "programs",
+            sync_module.PENDING_FORBIDDEN_STREAMS_KEY: ["activities_open_email"],
+        }
+        catalog = {
+            "streams": [
+                self._stream("activities_open_email", selected=True),
+                self._stream("programs", selected=True),
+            ]
+        }
+
+        with self.assertRaises(sync_module.MarketoForbiddenError) as err:
+            sync_module.sync(client, catalog, {}, state)
+
+        # The earlier stream is skipped this run because it doesn't match
+        # the resumed currently_syncing bookmark...
+        mock_sync_activities.assert_not_called()
+        mock_sync_programs.assert_called_once()
+        # ...but its previously-recorded denial must still be honored, both
+        # in the raised error and in the state that gets persisted.
+        self.assertIn("activities_open_email", str(err.exception))
+        self.assertEqual(
+            ["activities_open_email"],
+            state[sync_module.PENDING_FORBIDDEN_STREAMS_KEY],
+        )
+
+    @patch("tap_marketo.sync.singer.write_state")
+    @patch("tap_marketo.sync.singer.metrics.record_counter", return_value=DummyCounter())
+    @patch(
+        "tap_marketo.sync.sync_activities",
+        side_effect=lambda client, state, stream, config: (state, 1),
+    )
+    def test_sync_successful_retry_clears_pending_forbidden_state_key(
+            self,
+            mock_sync_activities,
+            _counter,
+            _write_state):
+        """Verifies the recovery invariant: once a previously-denied activity
+        stream is successfully retried, its entry -- and the durable
+        `pending_forbidden_streams` state key itself once empty -- is
+        removed, so a resolved failure cannot linger in state and trigger a
+        spurious aggregate failure on a future run."""
+        client = SimpleNamespace(use_corona=True)
+        state = {
+            "bookmarks": {},
+            sync_module.PENDING_FORBIDDEN_STREAMS_KEY: ["activities_open_email"],
+        }
+        catalog = {"streams": [self._stream("activities_open_email", selected=True)]}
+
+        sync_module.sync(client, catalog, {}, state)
+
+        mock_sync_activities.assert_called_once()
+        self.assertNotIn(sync_module.PENDING_FORBIDDEN_STREAMS_KEY, state)

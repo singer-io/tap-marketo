@@ -1,5 +1,9 @@
 # Changelog
 
+# 3.1.0
+  * Unauth stream exclusion and metadata changes. [#123](https://github.com/singer-io/tap-marketo/pull/123)
+  * `activities_*` streams now declare an explicit `INCREMENTAL` replication method and `activityDate` replication key in the catalog. Existing connections do not automatically backfill history for this change; see README.md's "Upgrading from tap-marketo < 3.1.0" section for how to force a one-time full backfill via `force_activities_backfill`.
+
 # 3.0.0
   * Addressed replication key issues for merge table. [#122](https://github.com/singer-io/tap-marketo/pull/122)
   * Emit `valid-replication-keys` as a list instead of a string to conform to the Singer spec.
