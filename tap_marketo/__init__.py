@@ -74,6 +74,9 @@ def _reset_activities_bookmarks(catalog, state):
                 tap_stream_id,
             )
             state = clear_bookmark(state, tap_stream_id, replication_key)
+        for export_key in ('export_id', 'export_end'):
+            if get_bookmark(state, tap_stream_id, export_key) is not None:
+                state = clear_bookmark(state, tap_stream_id, export_key)
 
     return state
 
@@ -81,6 +84,12 @@ def _reset_activities_bookmarks(catalog, state):
 def validate_state(config, catalog, state):
     if config.get(FORCE_ACTIVITIES_BACKFILL_CONFIG_KEY):
         state = _reset_activities_bookmarks(catalog, state)
+        state = set_currently_syncing(state, None)
+
+    stream_ids = {stream['tap_stream_id'] for stream in catalog['streams']}
+    currently_syncing = get_currently_syncing(state)
+    if currently_syncing and currently_syncing not in stream_ids:
+        state = set_currently_syncing(state, None)
 
     for stream in catalog['streams']:
         for mdata in stream['metadata']:

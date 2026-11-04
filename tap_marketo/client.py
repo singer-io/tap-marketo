@@ -266,7 +266,13 @@ class Client:
 
         if resp.status_code != 200:
             if 500 <= resp.status_code < 600:
-                resp.raise_for_status()
+                try:
+                    resp.raise_for_status()
+                except requests.exceptions.HTTPError:
+                    raise requests.exceptions.HTTPError(
+                        "Error refreshing token [{}]".format(resp.status_code),
+                        response=resp,
+                    ) from None
             raise ApiException("Error refreshing token [{}]: {}".format(resp.status_code, summarize_response_body(resp)))
 
         data = resp.json()
