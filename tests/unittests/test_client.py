@@ -314,6 +314,23 @@ class TestExports(unittest.TestCase):
             with self.assertRaises(ApiException):
                 self.client.stream_export("leads", "exp-1")
 
+    def test_stream_export_raises_marketo_forbidden_on_access_denied_envelope(self):
+        """Regression test: a 200 export-file response carrying the access-denied
+        envelope (code 603) must raise MarketoForbiddenError, not a plain
+        ApiException, so sync.py's per-activity-type permission handling
+        (which only catches MarketoForbiddenError around sync_activities())
+        records the stream as denied and continues syncing other selected
+        streams instead of aborting the whole sync."""
+        self.client.access_token = "token"
+        with requests_mock.Mocker(real_http=True) as mock:
+            mock.register_uri(
+                "GET", self._file_url(),
+                json={"requestId": "x", "success": False,
+                      "errors": [{"code": "603", "message": "Access denied"}]},
+                headers={"Content-Type": "application/json"})
+            with self.assertRaises(MarketoForbiddenError):
+                self.client.stream_export("leads", "exp-1")
+
     @unittest.mock.patch("time.sleep")
     def test_stream_export_retries_short_term_quota_then_succeeds(self, _sleep):
         """A 606 rate-limit envelope should back off and retry, then return the file."""

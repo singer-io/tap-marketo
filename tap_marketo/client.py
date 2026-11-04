@@ -474,9 +474,11 @@ class Client:
             data = resp.json()
             raise_for_rate_limit(data)
             err = ", ".join("{code}: {message}".format(**e) for e in data.get("errors", []))
-            raise ApiException(
-                "Marketo API returned an error instead of the export file: {}".format(
-                    err or summarize_response_body(resp)))
+            message = "Marketo API returned an error instead of the export file: {}".format(
+                err or summarize_response_body(resp))
+            if is_access_denied_error(data):
+                raise MarketoForbiddenError(message)
+            raise ApiException(message)
 
         return resp
 
